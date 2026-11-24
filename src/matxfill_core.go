@@ -61,8 +61,12 @@ func parseMatxCSV(csvText string) (drawingOrder []string, rows map[int][]string,
 		}
 		fields := strings.Split(line, ",")
 		if first {
-			if len(fields) < 1 || fields[0] != "행" {
-				return nil, nil, fmt.Errorf("CSV 헤더가 예상과 다릅니다 (첫 칸이 '행'이 아님): %q", line)
+			// 첫 칸은 "행"이라는 한글 머리글인데, MATX.lsp 가 AutoLISP open/write-line 으로
+			// 쓴 파일이라 윈도우 한글 코드페이지(CP949)로 저장돼 있어 UTF-8 "행"과 바이트가
+			// 다름. 이 칸 값 자체는 어디에도 쓰이지 않으므로 내용은 보지 않고 첫 줄을 그냥
+			// 머리글로 받아들인다 (도면번호 칸이 하나도 없으면만 오류로 봄).
+			if len(fields) < 2 {
+				return nil, nil, fmt.Errorf("CSV 헤더에 도면번호 칸이 없습니다: %q", line)
 			}
 			drawingOrder = fields[1:]
 			first = false
