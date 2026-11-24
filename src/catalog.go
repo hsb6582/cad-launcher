@@ -1,48 +1,55 @@
 package main
 
-// 리습 목록(catalog.json): 기능 분류 → 리습 → 명령어
+// 리습 목록(catalog.json) v2: 기능 분류 → 기능
+//   기능 = 이름(간단한 한국어) + 리습 + 명령어 + 설명서 + 옵션
+//   리습 = 파일, 공통 안내, 외부 프로그램 (여러 기능이 같은 리습을 씀)
 
 import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"unicode/utf16"
 	"unsafe"
 )
 
-type UpdateCfg struct {
-	Repo   string `json:"repo"`   // "계정/저장소"
-	Branch string `json:"branch"` // 기본 main
+type Lisp struct {
+	ID     string `json:"id"`
+	Desc   string `json:"desc,omitempty"`
+	File   string `json:"file,omitempty"`   // 런처 폴더 기준 상대경로 (예: lsp/GGv2.lsp)
+	Manual string `json:"manual,omitempty"` // 리습 공통 안내 (준비사항 등)
+	Tools  []Tool `json:"tools,omitempty"`  // 함께 쓰는 외부 프로그램
 }
 
-type Cmd struct {
-	Command string   `json:"command"`
-	Desc    string   `json:"desc"`
+type Item struct {
+	Name    string   `json:"name"`    // 기능 이름
+	Desc    string   `json:"desc"`    // 간단한 설명
+	Lisp    string   `json:"lisp"`    // Lisp.ID (기본 명령이면 빈칸)
+	Command string   `json:"command"` // 명령어
 	Manual  string   `json:"manual,omitempty"`
 	Options []Option `json:"options,omitempty"`
 }
 
-type Lisp struct {
-	Name     string `json:"name"`
-	Desc     string `json:"desc"`
-	File     string `json:"file,omitempty"` // 런처 폴더 기준 상대경로 (예: lsp/GGv2.lsp)
-	Manual   string `json:"manual,omitempty"`
-	Commands []Cmd  `json:"commands"`
-	Tools    []Tool `json:"tools,omitempty"` // 함께 쓰는 외부 프로그램
-}
-
 type Category struct {
 	Name  string `json:"name"`
-	Lisps []Lisp `json:"lisps"`
+	Items []Item `json:"items"`
 }
 
 type Catalog struct {
 	Version    int        `json:"version"`
-	Update     *UpdateCfg `json:"update,omitempty"` // (사용 안 함: 저장소는 프로그램에 고정)
+	Lisps      []Lisp     `json:"lisps"`
 	Categories []Category `json:"categories"`
+}
+
+// v1 (분류 → 리습 → 명령) 읽기용
+type v1Lisp struct {
+	Name, Desc, File, Manual string
+	Commands                 []struct {
+		Command, Desc, Manual string
+		Options               []Option
+	}
+	Tools []Tool
 }
 
 var cat Catalog
@@ -52,23 +59,46 @@ var loadedSha = map[string]string{} // 이번 런처 실행 중 마지막으로 
 func utf16Z(s string) []uint16 { return utf16.Encode([]rune(s)) }
 
 func loadCatalog() {
-	cat = Catalog{Version: 1}
+	cat = Catalog{Version: 2}
 	b, err := os.ReadFile(catalogPath)
 	if err != nil {
 		logf("catalog.json 없음 - 빈 목록으로 시작")
 		return
 	}
-	if err := json.Unmarshal(b, &cat); err != nil {
-		msgBox("catalog.json 형식 오류\n"+err.Error(), MB_ICONERROR)
+	var raw struct {
+		Version    int    `json:"version"`
+		Lisps      []Lisp `json:"lisps"`
+		Categories []struct {
+			Name  string   `json:"name"`
+			Items []Item   `json:"items"`
+			Lisps []v1Lisp `json:"lisps"`
+		} `json:"categories"`
 	}
-	n := 0
-	for _, ct := range cat.Categories {
-		for _, l := range ct.Lisps {
-			n += len(l.Commands)
+	if err := json.Unmarshal(b, &raw); err != nil {
+		msgBox("catalog.json 형식 오류\n"+err.Error(), MB_ICONERROR)
+		return
+	}
+	cat.Lisps = raw.Lisps
+	for _, rc := range raw.Categories {
+		ct := Category{Name: rc.Name, Items: rc.Items}
+		for _, l := range rc.Lisps { // v1 → v2 변환
+			cat.Lisps = append(cat.Lisps, Lisp{ID: l.Name, Desc: l.Desc, File: l.File, Manual: l.Manual, Tools: l.Tools})
+			for _, m := range l.Commands {
+				name := m.Desc
+				if name == "" {
+					name = cmdID(m.Command)
+				}
+				ct.Items = append(ct.Items, Item{Name: name, Lisp: l.Name, Command: m.Command, Manual: m.Manual, Options: m.Options})
+			}
 		}
+		cat.Categories = append(cat.Categories, ct)
 	}
 	applyOrder()
-	logf("리습 목록 불러옴 (명령 %d개)", n)
+	n := 0
+	for _, ct := range cat.Categories {
+		n += len(ct.Items)
+	}
+	logf("리습 목록 불러옴 (기능 %d개)", n)
 }
 
 func saveCatalog() {
@@ -86,15 +116,33 @@ func cmdID(command string) string {
 	return strings.ToUpper(strings.TrimLeft(strings.TrimSpace(strings.SplitN(command, "\n", 2)[0]), "_."))
 }
 
+func lispByID(id string) *Lisp {
+	for i := range cat.Lisps {
+		if cat.Lisps[i].ID == id {
+			return &cat.Lisps[i]
+		}
+	}
+	return nil
+}
+
+func itemKey(it *Item) string { return it.Lisp + "|" + cmdID(it.Command) }
+
+// "(GGv2 · GGD)" 처럼 리습·명령어 표시
+func itemTag(it *Item) string {
+	if it.Lisp == "" {
+		return "(" + cmdID(it.Command) + ")"
+	}
+	return "(" + it.Lisp + " · " + cmdID(it.Command) + ")"
+}
+
 // ───────────── 트리 ─────────────
 const (
 	nkNone = iota
 	nkCat
-	nkLisp
-	nkCmd
+	nkItem
 )
 
-type nodeRef struct{ kind, ci, li, mi int }
+type nodeRef struct{ kind, ci, ii int }
 
 var (
 	itemNode = map[uintptr]nodeRef{}
@@ -109,27 +157,17 @@ func (n nodeRef) category() *Category {
 	}
 	return nil
 }
+func (n nodeRef) item() *Item {
+	if ct := n.category(); ct != nil && n.kind == nkItem && n.ii < len(ct.Items) {
+		return &ct.Items[n.ii]
+	}
+	return nil
+}
 func (n nodeRef) lisp() *Lisp {
-	if ct := n.category(); ct != nil && n.kind >= nkLisp && n.li < len(ct.Lisps) {
-		return &ct.Lisps[n.li]
+	if it := n.item(); it != nil {
+		return lispByID(it.Lisp)
 	}
 	return nil
-}
-func (n nodeRef) cmd() *Cmd {
-	if l := n.lisp(); l != nil && n.kind == nkCmd && n.mi < len(l.Commands) {
-		return &l.Commands[n.mi]
-	}
-	return nil
-}
-
-func collapseKey(n nodeRef) string {
-	switch n.kind {
-	case nkCat:
-		return "c:" + n.category().Name
-	case nkLisp:
-		return "l:" + n.category().Name + "/" + n.lisp().Name
-	}
-	return ""
 }
 
 func isCollapsed(k string) bool {
@@ -163,40 +201,23 @@ func tvInsertItem(parent uintptr, text string, state uint32) uintptr {
 	return c(pSendMessageW, hList, TVM_INSERTITEMW, 0, uintptr(unsafe.Pointer(&ins)))
 }
 
-func withDesc(name, desc string) string {
-	if desc == "" {
-		return name
-	}
-	return name + "  —  " + desc
-}
-
 func refreshTree(sel nodeRef) {
 	building = true
 	c(pSendMessageW, hList, TVM_DELETEITEM, 0, tviRoot)
 	itemNode, nodeItem = map[uintptr]nodeRef{}, map[nodeRef]uintptr{}
-	exp := func(n nodeRef, bold bool) uint32 {
-		s := uint32(0)
-		if bold {
-			s |= TVIS_BOLD
-		}
-		if !isCollapsed(collapseKey(n)) {
-			s |= TVIS_EXPANDED
-		}
-		return s
-	}
 	for ci, ct := range cat.Categories {
-		cn := nodeRef{nkCat, ci, 0, 0}
-		hc := tvInsertItem(tviRoot, ct.Name, exp(cn, true))
+		cn := nodeRef{nkCat, ci, 0}
+		state := uint32(TVIS_BOLD)
+		if !isCollapsed("c:" + ct.Name) {
+			state |= TVIS_EXPANDED
+		}
+		hc := tvInsertItem(tviRoot, ct.Name, state)
 		itemNode[hc], nodeItem[cn] = cn, hc
-		for li, l := range ct.Lisps {
-			ln := nodeRef{nkLisp, ci, li, 0}
-			hl := tvInsertItem(hc, withDesc(l.Name, l.Desc), exp(ln, false))
-			itemNode[hl], nodeItem[ln] = ln, hl
-			for mi, m := range l.Commands {
-				mn := nodeRef{nkCmd, ci, li, mi}
-				hm := tvInsertItem(hl, withDesc(cmdID(m.Command), m.Desc), 0)
-				itemNode[hm], nodeItem[mn] = mn, hm
-			}
+		for ii := range ct.Items {
+			in := nodeRef{nkItem, ci, ii}
+			it := &cat.Categories[ci].Items[ii]
+			hi := tvInsertItem(hc, it.Name+"   "+itemTag(it), 0)
+			itemNode[hi], nodeItem[in] = in, hi
 		}
 	}
 	building = false
@@ -220,20 +241,16 @@ func onNotify(lp uintptr) uintptr {
 		}
 	case tvnItemExpanded:
 		nm := (*nmTreeView)(unsafe.Pointer(lp))
-		if n, ok := itemNode[nm.itemNew.hItem]; ok && !building {
-			setCollapsed(collapseKey(n), nm.action == TVE_COLLAPSE)
+		if n, ok := itemNode[nm.itemNew.hItem]; ok && !building && n.kind == nkCat {
+			setCollapsed("c:"+n.category().Name, nm.action == TVE_COLLAPSE)
 		}
 	case nmDblClk:
-		if cur.kind == nkCmd {
+		if cur.kind == nkItem {
 			runCurrent()
 			return 1
 		}
 	}
 	return 0
-}
-
-func valuesKey(n nodeRef) string {
-	return n.lisp().Name + "|" + cmdID(n.cmd().Command)
 }
 
 func showNode(n nodeRef) {
@@ -244,52 +261,45 @@ func showNode(n nodeRef) {
 	case nkCat:
 		ct := n.category()
 		setText(hTitle, ct.Name)
-		setText(hDesc, "기능 분류 · 리습 "+itoa(len(ct.Lisps))+"개")
+		setText(hDesc, "기능 "+itoa(len(ct.Items))+"개")
 		var sb strings.Builder
-		for _, l := range ct.Lisps {
-			sb.WriteString("■ " + withDesc(l.Name, l.Desc) + "\n")
-			for _, m := range l.Commands {
-				sb.WriteString("    " + withDesc(cmdID(m.Command), m.Desc) + "\n")
+		for i := range ct.Items {
+			it := &ct.Items[i]
+			sb.WriteString("■ " + it.Name + "   " + itemTag(it) + "\n")
+			if it.Desc != "" {
+				sb.WriteString("    " + it.Desc + "\n")
 			}
-			sb.WriteString("\n")
 		}
 		setManual(sb.String())
-	case nkLisp:
-		l := n.lisp()
-		setText(hTitle, l.Name)
-		info := l.Desc
-		if l.File != "" {
-			info += "   (" + l.File + ")"
-		}
-		setText(hDesc, info)
-		var sb strings.Builder
-		if l.Manual != "" {
-			sb.WriteString(l.Manual + "\n\n")
-		}
-		sb.WriteString("[명령어]\n")
-		for _, m := range l.Commands {
-			sb.WriteString("  " + withDesc(cmdID(m.Command), m.Desc) + "\n")
-		}
-		sb.WriteString(toolsSummary(l))
-		setManual(sb.String())
-	case nkCmd:
-		l, m := n.lisp(), n.cmd()
-		setText(hTitle, cmdID(m.Command)+"   ("+l.Name+")")
-		setText(hDesc, m.Desc)
-		man := m.Manual
+	case nkItem:
+		it := n.item()
+		setText(hTitle, it.Name)
+		setText(hDesc, strings.TrimSpace(it.Desc+"   "+itemTag(it)))
+		man := it.Manual
 		if man == "" {
-			man = m.Desc
+			man = it.Desc
 		}
-		setManual(man + "\n" + toolsSummary(l))
-		buildOptions(m.Options, st.Values[valuesKey(n)])
+		if l := n.lisp(); l != nil {
+			man += "\n\n────────────────────\n[" + l.ID + " 공통 안내]"
+			if l.Desc != "" {
+				man += "  " + l.Desc
+			}
+			if l.Manual != "" {
+				man += "\n" + l.Manual
+			}
+			man += "\n" + toolsSummary(l)
+		}
+		setManual(man)
+		buildOptions(it.Options, st.Values[itemKey(it)])
 		run = 1
 	default:
-		setText(hTitle, "리습을 선택하세요")
+		setText(hTitle, "기능을 선택하세요")
 		setText(hDesc, "")
-		setManual("왼쪽 목록에서 기능 분류 › 리습 › 명령어를 선택하면 설명이 여기에 표시됩니다.\n\n명령어를 더블클릭하거나 ▶ 실행을 누르면 AutoCAD LT에서 실행됩니다.")
+		setManual("왼쪽 목록에서 기능을 선택하면 설명이 여기에 표시됩니다.\n\n더블클릭하거나 ▶ 실행을 누르면 AutoCAD LT에서 실행됩니다.\n괄호 안은 (리습 · 명령어) 입니다.")
 	}
 	c(pEnableWindow, hRun, run)
-	show(hTools, n.lisp() != nil && len(n.lisp().Tools) > 0)
+	l := n.lisp()
+	show(hTools, l != nil && len(l.Tools) > 0)
 	reset := uintptr(0)
 	if len(optCtls) > 0 {
 		reset = 1
@@ -299,18 +309,23 @@ func showNode(n nodeRef) {
 }
 
 func resetOptions() {
-	if cur.kind == nkCmd {
-		delete(st.Values, valuesKey(cur))
+	if it := cur.item(); it != nil {
+		delete(st.Values, itemKey(it))
 		showNode(cur)
 	}
 }
 
 func runCurrent() {
-	if cur.kind != nkCmd {
+	it := cur.item()
+	if it == nil {
 		return
 	}
-	l, m := cur.lisp(), cur.cmd()
-	if !ensureTools(l) {
+	l := cur.lisp()
+	if it.Lisp != "" && l == nil {
+		msgBox("목록에 리습 '"+it.Lisp+"' 정보가 없습니다.", MB_ICONWARNING)
+		return
+	}
+	if l != nil && !ensureTools(l) {
 		return
 	}
 	readSettings()
@@ -319,23 +334,23 @@ func runCurrent() {
 		return
 	}
 	if len(keep) > 0 {
-		st.Values[valuesKey(cur)] = keep
+		st.Values[itemKey(it)] = keep
 	}
 	var sb strings.Builder
 	needHelper := false
-	for _, o := range m.Options {
+	for _, o := range it.Options {
 		if o.Var == "" {
 			needHelper = true
 		}
 	}
 	if needHelper {
-		if err := writeOptFile(cmdID(m.Command), vals); err != nil {
+		if err := writeOptFile(cmdID(it.Command), vals); err != nil {
 			msgBox("옵션 파일 저장 실패\n"+err.Error(), MB_ICONERROR)
 			return
 		}
 		sb.WriteString(`(load "` + lispPath("lsp/launcher_opt.lsp") + `")` + "\n")
 	}
-	if l.File != "" {
+	if l != nil && l.File != "" {
 		if _, err := os.Stat(absPath(l.File)); err != nil {
 			msgBox("리습 파일을 찾을 수 없습니다.\n"+absPath(l.File), MB_ICONWARNING)
 			return
@@ -344,7 +359,7 @@ func runCurrent() {
 		// (FORMSETAREA 처럼 세션 중 바꾼 설정값이 매번 초기화되지 않도록)
 		lp := lispPath(l.File)
 		sha := gitBlobSha(absPath(l.File))
-		id := cmdID(m.Command)
+		id := cmdID(it.Command)
 		isFunc := false
 		for _, f := range lispFuncs(l.File) {
 			if f == id {
@@ -358,14 +373,16 @@ func runCurrent() {
 			sb.WriteString(`(if (not c:` + id + `) (load "` + lp + `"))` + "\n")
 		}
 	}
-	sb.WriteString(toolVarLines(l))
+	if l != nil {
+		sb.WriteString(toolVarLines(l))
+	}
 	// LISP 변수에 연결된 옵션: 로드 직후 (setq 변수 값) 으로 덮어쓰기
-	for i, o := range m.Options {
+	for i, o := range it.Options {
 		if o.Var != "" && i < len(vals) {
 			sb.WriteString("(setq " + o.Var + " " + lispValue(o, vals[i].v) + ")\n")
 		}
 	}
-	body := m.Command
+	body := it.Command
 	for _, p := range vals {
 		body = strings.ReplaceAll(body, "{"+p.k+"}", p.v)
 	}
@@ -373,183 +390,11 @@ func runCurrent() {
 		body += "\n"
 	}
 	sb.WriteString(body)
+	logf("실행: %s %s", it.Name, itemTag(it))
 	send(sb.String())
 }
 
-// ───────────── 목록 편집 ─────────────
-func uniqueName(list []string, name, self string) bool {
-	for _, x := range list {
-		if x == name && x != self {
-			return false
-		}
-	}
-	return true
-}
-
-func catNames() []string {
-	var out []string
-	for _, ct := range cat.Categories {
-		out = append(out, ct.Name)
-	}
-	return out
-}
-
-func nameDialog(title, label, value string) (string, bool) {
-	d := newDialog(title, 420, 110)
-	d.label(label, 14, 18, 90)
-	h := d.edit(value, 110, 14, 290)
-	d.button("확인", IDOK, 200, 66, 95, true)
-	d.button("취소", IDCANCEL, 305, 66, 95, false)
-	var out string
-	d.onCmd = func(id, code int) {
-		if id == IDOK {
-			out = strings.TrimSpace(getText(h))
-			if out == "" {
-				msgBox(label+"을(를) 입력하세요.", MB_ICONWARNING)
-				return
-			}
-			d.ok, d.done = true, true
-		}
-	}
-	return out, d.run(h)
-}
-
-func addCategory() {
-	name, ok := nameDialog("분류 추가", "분류 이름", "")
-	if !ok {
-		return
-	}
-	if !uniqueName(catNames(), name, "") {
-		msgBox("같은 이름의 분류가 있습니다.", MB_ICONWARNING)
-		return
-	}
-	cat.Categories = append(cat.Categories, Category{Name: name})
-	saveCatalog()
-	refreshTree(nodeRef{nkCat, len(cat.Categories) - 1, 0, 0})
-}
-
-func addLisp() {
-	if len(cat.Categories) == 0 {
-		msgBox("먼저 '분류 추가'로 기능 분류를 만드세요.", MB_ICONWARNING)
-		return
-	}
-	ci := 0
-	if cur.kind >= nkCat {
-		ci = cur.ci
-	}
-	l := Lisp{}
-	if !lispDialog(&l, &ci, true) {
-		return
-	}
-	// 머리말에 적힌 분류가 아직 없으면 새로 만들어 넣음
-	if h := parseLispHeader(l.File); h != nil && h.Category != "" && !contains(catNames(), h.Category) &&
-		ask("리습 머리말의 분류 '"+h.Category+"' 가 없습니다. 새로 만들어 넣을까요?\n(아니오 = 선택한 분류에 넣음)") {
-		cat.Categories = append(cat.Categories, Category{Name: h.Category})
-		ci = len(cat.Categories) - 1
-	}
-	cat.Categories[ci].Lisps = append(cat.Categories[ci].Lisps, l)
-	saveCatalog()
-	refreshTree(nodeRef{nkLisp, ci, len(cat.Categories[ci].Lisps) - 1, 0})
-	logf("리습 추가: %s (명령 %d개)", l.Name, len(l.Commands))
-}
-
-func addCmd() {
-	if cur.kind < nkLisp {
-		msgBox("명령을 넣을 리습을 목록에서 선택하세요.", MB_ICONWARNING)
-		return
-	}
-	l := cur.lisp()
-	m := Cmd{}
-	if !cmdDialog(&m, l, -1) {
-		return
-	}
-	l.Commands = append(l.Commands, m)
-	saveCatalog()
-	refreshTree(nodeRef{nkCmd, cur.ci, cur.li, len(l.Commands) - 1})
-}
-
-func editNode() {
-	switch cur.kind {
-	case nkCat:
-		ct := cur.category()
-		name, ok := nameDialog("분류 이름 바꾸기", "분류 이름", ct.Name)
-		if !ok || name == ct.Name {
-			return
-		}
-		if !uniqueName(catNames(), name, ct.Name) {
-			msgBox("같은 이름의 분류가 있습니다.", MB_ICONWARNING)
-			return
-		}
-		ct.Name = name
-		saveCatalog()
-		refreshTree(cur)
-	case nkLisp:
-		l := *cur.lisp()
-		ci := cur.ci
-		if !lispDialog(&l, &ci, false) {
-			return
-		}
-		if ci == cur.ci {
-			*cur.lisp() = l
-			saveCatalog()
-			refreshTree(cur)
-			return
-		}
-		// 다른 분류로 이동
-		src := &cat.Categories[cur.ci]
-		src.Lisps = append(src.Lisps[:cur.li], src.Lisps[cur.li+1:]...)
-		cat.Categories[ci].Lisps = append(cat.Categories[ci].Lisps, l)
-		saveCatalog()
-		refreshTree(nodeRef{nkLisp, ci, len(cat.Categories[ci].Lisps) - 1, 0})
-	case nkCmd:
-		m := *cur.cmd()
-		oldKey := valuesKey(cur)
-		if !cmdDialog(&m, cur.lisp(), cur.mi) {
-			return
-		}
-		*cur.cmd() = m
-		if nk := valuesKey(cur); nk != oldKey {
-			if v, ok := st.Values[oldKey]; ok {
-				st.Values[nk] = v
-				delete(st.Values, oldKey)
-			}
-		}
-		saveCatalog()
-		refreshTree(cur)
-	default:
-		msgBox("편집할 분류·리습·명령을 선택하세요.", MB_ICONWARNING)
-	}
-}
-
-func deleteNode() {
-	switch cur.kind {
-	case nkCat:
-		ct := cur.category()
-		if !ask("분류 '" + ct.Name + "' 와 그 안의 리습 " + itoa(len(ct.Lisps)) + "개를 목록에서 삭제할까요?\n(리습 파일은 지우지 않습니다)") {
-			return
-		}
-		cat.Categories = append(cat.Categories[:cur.ci], cat.Categories[cur.ci+1:]...)
-		saveCatalog()
-		refreshTree(nodeRef{nkCat, max(cur.ci-1, 0), 0, 0})
-	case nkLisp:
-		ct := cur.category()
-		if !ask("리습 '" + cur.lisp().Name + "' 을(를) 목록에서 삭제할까요?\n(리습 파일은 지우지 않습니다)") {
-			return
-		}
-		ct.Lisps = append(ct.Lisps[:cur.li], ct.Lisps[cur.li+1:]...)
-		saveCatalog()
-		refreshTree(nodeRef{nkCat, cur.ci, 0, 0})
-	case nkCmd:
-		l := cur.lisp()
-		if !ask("명령 '" + cmdID(cur.cmd().Command) + "' 을(를) 목록에서 삭제할까요?") {
-			return
-		}
-		l.Commands = append(l.Commands[:cur.mi], l.Commands[cur.mi+1:]...)
-		saveCatalog()
-		refreshTree(nodeRef{nkLisp, cur.ci, cur.li, 0})
-	}
-}
-
+// ───────────── 순서 변경 (이 PC에만 저장) ─────────────
 func moveNode(dir int) {
 	n := cur
 	switch n.kind {
@@ -560,22 +405,14 @@ func moveNode(dir int) {
 		}
 		cat.Categories[n.ci], cat.Categories[j] = cat.Categories[j], cat.Categories[n.ci]
 		n.ci = j
-	case nkLisp:
-		ls := n.category().Lisps
-		j := n.li + dir
-		if j < 0 || j >= len(ls) {
+	case nkItem:
+		its := n.category().Items
+		j := n.ii + dir
+		if j < 0 || j >= len(its) {
 			return
 		}
-		ls[n.li], ls[j] = ls[j], ls[n.li]
-		n.li = j
-	case nkCmd:
-		ms := n.lisp().Commands
-		j := n.mi + dir
-		if j < 0 || j >= len(ms) {
-			return
-		}
-		ms[n.mi], ms[j] = ms[j], ms[n.mi]
-		n.mi = j
+		its[n.ii], its[j] = its[j], its[n.ii]
+		n.ii = j
 	default:
 		return
 	}
@@ -583,7 +420,6 @@ func moveNode(dir int) {
 	refreshTree(n)
 }
 
-// ───────────── 이 PC 전용 순서 ─────────────
 func rankBy(order []string) func(string, int) int {
 	pos := map[string]int{}
 	for i, x := range order {
@@ -611,26 +447,15 @@ func applyOrder() {
 	})
 	for ci := range cat.Categories {
 		ct := &cat.Categories[ci]
-		rl := rankBy(st.Order["c:"+ct.Name])
-		li := map[string]int{}
-		for i, l := range ct.Lisps {
-			li[l.Name] = i
+		ri := rankBy(st.Order["c:"+ct.Name])
+		pos := map[string]int{}
+		for i := range ct.Items {
+			pos[itemKey(&ct.Items[i])] = i
 		}
-		sort.SliceStable(ct.Lisps, func(a, b int) bool {
-			return rl(ct.Lisps[a].Name, li[ct.Lisps[a].Name]) < rl(ct.Lisps[b].Name, li[ct.Lisps[b].Name])
+		sort.SliceStable(ct.Items, func(a, b int) bool {
+			ka, kb := itemKey(&ct.Items[a]), itemKey(&ct.Items[b])
+			return ri(ka, pos[ka]) < ri(kb, pos[kb])
 		})
-		for k := range ct.Lisps {
-			l := &ct.Lisps[k]
-			rc := rankBy(st.Order["l:"+ct.Name+"/"+l.Name])
-			mi := map[string]int{}
-			for i, m := range l.Commands {
-				mi[cmdID(m.Command)] = i
-			}
-			sort.SliceStable(l.Commands, func(a, b int) bool {
-				ia, ib := cmdID(l.Commands[a].Command), cmdID(l.Commands[b].Command)
-				return rc(ia, mi[ia]) < rc(ib, mi[ib])
-			})
-		}
 	}
 }
 
@@ -638,276 +463,10 @@ func saveOrder() {
 	o := map[string][]string{}
 	for _, ct := range cat.Categories {
 		o[""] = append(o[""], ct.Name)
-		for _, l := range ct.Lisps {
-			o["c:"+ct.Name] = append(o["c:"+ct.Name], l.Name)
-			for _, m := range l.Commands {
-				o["l:"+ct.Name+"/"+l.Name] = append(o["l:"+ct.Name+"/"+l.Name], cmdID(m.Command))
-			}
+		for i := range ct.Items {
+			o["c:"+ct.Name] = append(o["c:"+ct.Name], itemKey(&ct.Items[i]))
 		}
 	}
 	st.Order = o
 	saveState()
-}
-
-// ───────────── 리습 편집 창 ─────────────
-func multiEdit(d *dialog, text string, x, y, w, h int) uintptr {
-	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\n", "\r\n")
-	e := d.mk("EDIT", text, ES_MULTILINE|ES_AUTOVSCROLL|ES_WANTRETURN|WS_VSCROLL|WS_TABSTOP, WS_EX_CLIENTEDGE, 0)
-	mv(e, x, y, w, h)
-	return e
-}
-
-func multiText(h uintptr) string {
-	return strings.TrimSpace(strings.ReplaceAll(getText(h), "\r\n", "\n"))
-}
-
-func lispDialog(l *Lisp, ci *int, isNew bool) bool {
-	title := "리습 편집"
-	if isNew {
-		title = "리습 추가"
-	}
-	d := newDialog(title, 620, 600)
-	const lx, ex, ew = 14, 110, 490
-	d.label("기능 분류", lx, 16, 90)
-	hCat := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP, 0, 601)
-	mv(hCat, ex, 12, 250, 260)
-	comboFill(hCat, catNames(), *ci)
-	d.label("리습 이름", lx, 48, 90)
-	hName := d.edit(l.Name, ex, 44, 250)
-	d.label("간단한 설명", lx, 80, 90)
-	hDesc := d.edit(l.Desc, ex, 76, ew)
-	d.label("리습 파일", lx, 112, 90)
-	hFile := d.edit(l.File, ex, 108, ew-40)
-	d.button("…", 602, ex+ew-34, 106, 34, false)
-	hAuto := d.mk("BUTTON", "파일 안의 명령어 (defun c:이름) 을 목록에 자동 추가", BS_AUTOCHECKBOX|WS_TABSTOP, 0, 603)
-	mv(hAuto, ex, 138, ew, 22)
-	setCheck(hAuto, isNew)
-	d.label("설명서", lx, 168, 90)
-	hMan := multiEdit(d, l.Manual, ex, 166, ew, 230)
-	d.note("리습 전체 설명 (사용 전 준비사항, 주의점 등). 명령어 목록은 자동으로 붙습니다.", ex, 398, ew, 20)
-
-	tools := append([]Tool(nil), l.Tools...)
-	d.label("외부 프로그램", lx, 428, 95)
-	hTl := d.mk("LISTBOX", "", LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|WS_VSCROLL|WS_TABSTOP, WS_EX_CLIENTEDGE, 610)
-	mv(hTl, ex, 424, ew-100, 100)
-	bx := ex + ew - 94
-	d.button("추가", 611, bx, 424, 94, false)
-	d.button("편집", 612, bx, 456, 94, false)
-	d.button("삭제", 613, bx, 488, 94, false)
-	refreshTools := func(sel int) {
-		c(pSendMessageW, hTl, LB_RESETCONTENT, 0, 0)
-		for _, t := range tools {
-			line := t.Name
-			if t.Version != "" {
-				line += " v" + t.Version
-			}
-			line += "  ·  " + t.Kind + "  ·  " + t.Source
-			c(pSendMessageW, hTl, LB_ADDSTRING, 0, uintptr(P(ws(line))))
-		}
-		if sel >= 0 && sel < len(tools) {
-			c(pSendMessageW, hTl, LB_SETCURSEL, uintptr(sel), 0)
-		}
-	}
-	refreshTools(-1)
-	tlSel := func() int { return int(int32(c(pSendMessageW, hTl, LB_GETCURSEL, 0, 0))) }
-
-	d.button("확인", IDOK, 410, 562, 95, true)
-	d.button("취소", IDCANCEL, 510, 562, 95, false)
-
-	// 리습 머리말(@launcher)이 있으면 비어 있는 칸을 채움
-	applyHeader := func(f string) {
-		h := parseLispHeader(f)
-		if h == nil {
-			return
-		}
-		if strings.TrimSpace(getText(hName)) == "" && h.Name != "" {
-			setText(hName, h.Name)
-		}
-		if strings.TrimSpace(getText(hDesc)) == "" {
-			setText(hDesc, h.Desc)
-		}
-		if multiText(hMan) == "" && h.Manual != "" {
-			setText(hMan, strings.ReplaceAll(h.Manual, "\n", "\r\n"))
-		}
-		if h.Category != "" && contains(catNames(), h.Category) {
-			c(pSendMessageW, hCat, CB_SETCURSEL, uintptr(indexOf(catNames(), h.Category)), 0)
-		}
-		if len(tools) == 0 && len(h.Tools) > 0 {
-			tools = append(tools, h.Tools...)
-			refreshTools(-1)
-		}
-	}
-
-	d.onCmd = func(id, code int) {
-		switch {
-		case id == 602 && code == BN_CLICKED:
-			if p := openLispFile(d.h); p != "" {
-				p = adoptLisp(p)
-				setText(hFile, p)
-				applyHeader(p)
-				if strings.TrimSpace(getText(hName)) == "" {
-					base := filepath.Base(filepath.FromSlash(p))
-					setText(hName, strings.TrimSuffix(base, filepath.Ext(base)))
-				}
-			}
-		case id == 611 && code == BN_CLICKED:
-			t := Tool{Kind: "zip"}
-			if toolDialog(&t) {
-				tools = append(tools, t)
-				refreshTools(len(tools) - 1)
-			}
-		case (id == 612 && code == BN_CLICKED) || (id == 610 && code == LBN_DBLCLK):
-			if i := tlSel(); i >= 0 {
-				t := tools[i]
-				if toolDialog(&t) {
-					tools[i] = t
-					refreshTools(i)
-				}
-			}
-		case id == 613 && code == BN_CLICKED:
-			if i := tlSel(); i >= 0 && ask("외부 프로그램 '"+tools[i].Name+"' 을(를) 목록에서 뺄까요?") {
-				tools = append(tools[:i], tools[i+1:]...)
-				refreshTools(i - 1)
-			}
-		case id == IDOK:
-			name := strings.TrimSpace(getText(hName))
-			f := filepath.ToSlash(strings.TrimSpace(getText(hFile)))
-			if name == "" {
-				msgBox("리습 이름을 입력하세요.", MB_ICONWARNING)
-				return
-			}
-			if f != "" {
-				if _, err := os.Stat(absPath(f)); err != nil {
-					msgBox("리습 파일을 찾을 수 없습니다.\n"+f, MB_ICONWARNING)
-					return
-				}
-			}
-			if i := comboSel(hCat); i >= 0 {
-				*ci = i
-			}
-			l.Name, l.Desc, l.File, l.Manual, l.Tools = name, strings.TrimSpace(getText(hDesc)), f, multiText(hMan), tools
-			if isChecked(hAuto) && f != "" {
-				have := map[string]bool{}
-				for _, m := range l.Commands {
-					have[cmdID(m.Command)] = true
-				}
-				// 머리말(@launcher)에 적힌 명령(설명·설명서·옵션 포함)을 먼저, 그다음 나머지 c: 함수
-				if h := parseLispHeader(f); h != nil {
-					for _, m := range h.Cmds {
-						if !have[cmdID(m.Command)] {
-							l.Commands = append(l.Commands, m)
-							have[cmdID(m.Command)] = true
-						}
-					}
-				}
-				for _, fn := range lispFuncs(f) {
-					if !have[fn] {
-						l.Commands = append(l.Commands, Cmd{Command: fn})
-					}
-				}
-			}
-			d.ok, d.done = true, true
-		}
-	}
-	return d.run(hName)
-}
-
-// ───────────── 명령 편집 창 ─────────────
-func cmdDialog(m *Cmd, l *Lisp, self int) bool {
-	d := newDialog("명령어 편집 — "+l.Name, 620, 560)
-	const lx, ex, ew = 14, 110, 490
-	d.label("명령어", lx, 16, 90)
-	hCmd := d.mk("COMBOBOX", "", CBS_DROPDOWN|WS_VSCROLL|WS_TABSTOP, 0, 701)
-	mv(hCmd, ex, 12, 250, 240)
-	comboFill(hCmd, lispFuncs(l.File), -1)
-	setText(hCmd, escNL(m.Command))
-	d.note(`리습의 c: 함수 / 기본 명령은 Enter 자리에 \n`, ex+258, 16, ew-258, 20)
-	d.label("간단한 설명", lx, 48, 90)
-	hDesc := d.edit(m.Desc, ex, 44, ew)
-	d.label("설명서", lx, 80, 90)
-	hMan := multiEdit(d, m.Manual, ex, 78, ew, 200)
-
-	opts := append([]Option(nil), m.Options...)
-	d.label("옵션", lx, 292, 90)
-	hOpts := d.mk("LISTBOX", "", LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|WS_VSCROLL|WS_TABSTOP, WS_EX_CLIENTEDGE, 710)
-	mv(hOpts, ex, 288, ew-100, 150)
-	bx := ex + ew - 94
-	d.button("추가", 711, bx, 288, 94, false)
-	d.button("편집", 712, bx, 320, 94, false)
-	d.button("삭제", 713, bx, 352, 94, false)
-	d.button("▲", 714, bx, 384, 45, false)
-	d.button("▼", 715, bx+49, 384, 45, false)
-	d.note("옵션이 없으면 실행 화면의 옵션 칸은 비워집니다. 'LISP 변수'를 지정하면 리습을 고치지 않고 (setq 변수 값) 으로 전달합니다.", ex, 444, ew, 36)
-	d.button("확인", IDOK, 410, 522, 95, true)
-	d.button("취소", IDCANCEL, 510, 522, 95, false)
-
-	refresh := func(sel int) {
-		c(pSendMessageW, hOpts, LB_RESETCONTENT, 0, 0)
-		for _, o := range opts {
-			line := o.Label + "  ·  " + typeName(o.Type)
-			if o.Var != "" {
-				line += "  ·  " + o.Var
-			} else {
-				line += "  ·  키=" + o.Key
-			}
-			if dv := toStr(o.Default); dv != "" {
-				line += "  ·  기본=" + dv
-			}
-			c(pSendMessageW, hOpts, LB_ADDSTRING, 0, uintptr(P(ws(line))))
-		}
-		if sel >= 0 && sel < len(opts) {
-			c(pSendMessageW, hOpts, LB_SETCURSEL, uintptr(sel), 0)
-		}
-	}
-	refresh(-1)
-	selIdx := func() int { return int(int32(c(pSendMessageW, hOpts, LB_GETCURSEL, 0, 0))) }
-
-	d.onCmd = func(id, code int) {
-		switch {
-		case id == 711 && code == BN_CLICKED:
-			o := Option{Type: "text"}
-			if editOptionDialog(&o, opts, -1) {
-				opts = append(opts, o)
-				refresh(len(opts) - 1)
-			}
-		case (id == 712 && code == BN_CLICKED) || (id == 710 && code == LBN_DBLCLK):
-			if i := selIdx(); i >= 0 {
-				o := opts[i]
-				if editOptionDialog(&o, opts, i) {
-					opts[i] = o
-					refresh(i)
-				}
-			}
-		case id == 713 && code == BN_CLICKED:
-			if i := selIdx(); i >= 0 && ask("옵션 '"+opts[i].Label+"' 을(를) 삭제할까요?") {
-				opts = append(opts[:i], opts[i+1:]...)
-				refresh(i - 1)
-			}
-		case (id == 714 || id == 715) && code == BN_CLICKED:
-			i := selIdx()
-			j := i - 1
-			if id == 715 {
-				j = i + 1
-			}
-			if i >= 0 && j >= 0 && j < len(opts) {
-				opts[i], opts[j] = opts[j], opts[i]
-				refresh(j)
-			}
-		case id == IDOK:
-			command := unescNL(strings.TrimSpace(getText(hCmd)))
-			if command == "" {
-				msgBox("명령어를 입력하세요.", MB_ICONWARNING)
-				return
-			}
-			for i, x := range l.Commands {
-				if i != self && cmdID(x.Command) == cmdID(command) {
-					msgBox("이 리습에 같은 명령어가 이미 있습니다: "+cmdID(command), MB_ICONWARNING)
-					return
-				}
-			}
-			m.Command, m.Desc, m.Manual, m.Options = command, strings.TrimSpace(getText(hDesc)), multiText(hMan), opts
-			d.ok, d.done = true, true
-		}
-	}
-	return d.run(hCmd)
 }

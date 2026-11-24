@@ -590,16 +590,6 @@ func onCommand(id, code int) {
 		startUpdateCheck(true)
 	case id == idGitHub:
 		githubDialog()
-	case id == idAddCat:
-		addCategory()
-	case id == idAddLisp:
-		addLisp()
-	case id == idAddCmd:
-		addCmd()
-	case id == idEdit:
-		editNode()
-	case id == idDel:
-		deleteNode()
 	case id == idUp:
 		moveNode(-1)
 	case id == idDown:
