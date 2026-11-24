@@ -194,12 +194,12 @@ const (
 // Win32 COLORREF는 0x00bbggrr 순서(리틀엔디안 BGR)라서 직접 조합하지 않고 이 함수로 만든다.
 func RGB(r, g, b byte) uintptr { return uintptr(r) | uintptr(g)<<8 | uintptr(b)<<16 }
 
-// ───────────── 배색 (어두운 네이비 톤) ─────────────
+// ───────────── 배색 (Claude 데스크톱 앱 느낌의 따뜻한 톤) ─────────────
 var (
-	clrBg        = RGB(0x17, 0x21, 0x2B) // 창 배경 (어두운 네이비)
-	clrText      = RGB(0xE8, 0xEC, 0xF1) // 기본 글자색 (어두운 배경이라 밝게)
-	clrSubText   = RGB(0x8B, 0x9A, 0xAD) // 회색 처리된(grey[]) 보조 글자색
-	clrPanelBg   = RGB(0x1E, 0x2A, 0x37) // 로그·설명서 칸 배경 (배경보다 살짝 밝은 톤)
+	clrBg        = RGB(0xF7, 0xF4, 0xEC) // 창 배경 (크림색)
+	clrText      = RGB(0x2D, 0x29, 0x24) // 기본 글자색
+	clrSubText   = RGB(0x8C, 0x85, 0x7A) // 회색 처리된(grey[]) 보조 글자색
+	clrPanelBg   = RGB(0xFF, 0xFF, 0xFF) // 로그·설명서 칸 배경
 	clrAccent    = RGB(0xCC, 0x78, 0x5C) // 강조색(테라코타) - '▶ 실행' 버튼
 	clrAccentDk  = RGB(0xAD, 0x5F, 0x46) // 강조색 테두리/눌렸을 때
 	clrAccentTxt = RGB(0xFF, 0xFF, 0xFF)
