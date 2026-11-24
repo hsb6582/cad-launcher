@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unicode/utf16"
@@ -46,11 +47,17 @@ func ws(s string) *uint16 {
 	return p
 }
 
+// SendMessageTimeoutW(WM_GETTEXT)로 제목을 읽는다. 대상 창이 멈춰있어도(응답 없음)
+// 전체 창 찾기가 오래 걸리지 않도록 창 하나당 기다리는 시간을 짧게 둔다.
 func getWindowText(h uintptr) string {
-	n := c(pGetWindowTextLengthW, h)
-	buf := make([]uint16, n+1)
-	c(pGetWindowTextW, h, uintptr(unsafe.Pointer(&buf[0])), n+1)
-	return syscall.UTF16ToString(buf)
+	buf := make([]uint16, 512)
+	var res uintptr
+	r := c(pSendMessageTimeoutW, h, WM_GETTEXT, uintptr(len(buf)), uintptr(unsafe.Pointer(&buf[0])),
+		SMTO_ABORTIFHUNG, 200, uintptr(unsafe.Pointer(&res)))
+	if r == 0 {
+		return ""
+	}
+	return syscall.UTF16ToString(buf[:res])
 }
 
 type cadWin struct {
@@ -60,6 +67,7 @@ type cadWin struct {
 
 const (
 	WM_COPYDATA       = 0x004A
+	WM_GETTEXT        = 0x000D
 	SMTO_ABORTIFHUNG  = 0x0002
 	SW_RESTORE        = 9
 	VK_RETURN         = 0x0D
@@ -94,23 +102,35 @@ type inputT struct {
 // 창 목록에서 제외할 이 프로그램 자신의 창 핸들 (main에서 설정)
 var selfHwnd uintptr
 
-func findWindows(keyword string) []cadWin {
-	kw := strings.ToLower(strings.TrimSpace(keyword))
-	if kw == "" {
-		kw = "autocad"
-	}
-	var found []cadWin
-	cb := syscall.NewCallback(func(h, lp uintptr) uintptr {
+// EnumWindows 콜백은 한 번만 만들어서 재사용한다 (매번 새로 만들면 콜백 자원이 줄어듦).
+// enumMu 는 한 번에 한 번씩만(순서대로) 창을 찾도록 막아서, 백그라운드에서 여러 번
+// 동시에 호출돼도 enumKeyword/enumFound 를 서로 덮어쓰지 않게 한다.
+var (
+	enumMu      sync.Mutex
+	enumKeyword string
+	enumFound   []cadWin
+	enumCB      = syscall.NewCallback(func(h, lp uintptr) uintptr {
 		if h != selfHwnd && c(pIsWindowVisible, h) != 0 {
 			t := getWindowText(h)
-			if t != "" && strings.Contains(strings.ToLower(t), kw) {
-				found = append(found, cadWin{h, t})
+			if t != "" && strings.Contains(strings.ToLower(t), enumKeyword) {
+				enumFound = append(enumFound, cadWin{h, t})
 			}
 		}
 		return 1
 	})
-	c(pEnumWindows, cb, 0)
-	return found
+)
+
+func findWindows(keyword string) []cadWin {
+	enumMu.Lock()
+	defer enumMu.Unlock()
+	kw := strings.ToLower(strings.TrimSpace(keyword))
+	if kw == "" {
+		kw = "autocad"
+	}
+	enumKeyword = kw
+	enumFound = nil
+	c(pEnumWindows, enumCB, 0)
+	return append([]cadWin(nil), enumFound...)
 }
 
 func sendCopyData(h uintptr, text string, cancel bool) error {

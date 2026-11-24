@@ -228,15 +228,8 @@ function log(msg){
 
 // 업데이트 확인·외부 프로그램 설치처럼 시간이 걸리는 작업의 결과가 나중에 여기로 들어온다.
 window.onBackendEvent = function(kind, payload){
-  if(payload && payload.error){ log((kind==='updateResult'?'업데이트 확인 실패: ':'외부 프로그램 설치 실패: ') + payload.error); return; }
-  if(payload && payload.message){ payload.message.split('\n').forEach(line => log(line)); }
-};
-
-function findWindows(){
-  const kw = document.getElementById('kw').value;
-  window.setKeyword(kw);
-  log('CAD 창 찾는 중... (' + kw + ')');
-  window.findWindows(kw).then(titles => {
+  if(kind === 'windowList'){
+    const titles = (payload && payload.titles) || [];
     winSel.innerHTML = '';
     if(!titles.length){
       winSel.innerHTML = '<option>(찾은 창 없음)</option>';
@@ -251,7 +244,18 @@ function findWindows(){
     });
     selectedWindow = 0;
     log('CAD 창 ' + titles.length + '개 찾음');
-  }).catch(err => log('창 찾기 오류: ' + err));
+    return;
+  }
+  if(payload && payload.error){ log((kind==='updateResult'?'업데이트 확인 실패: ':'외부 프로그램 설치 실패: ') + payload.error); return; }
+  if(payload && payload.message){ payload.message.split('\n').forEach(line => log(line)); }
+};
+
+function findWindows(){
+  const kw = document.getElementById('kw').value;
+  window.setKeyword(kw);
+  winSel.innerHTML = '<option>(찾는 중...)</option>';
+  log('CAD 창 찾는 중... (' + kw + ')');
+  window.findWindows(kw).catch(err => log('창 찾기 오류: ' + err));
 }
 winSel.addEventListener('change', () => { selectedWindow = parseInt(winSel.value, 10); });
 

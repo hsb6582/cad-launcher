@@ -24,8 +24,15 @@ func pushEvent(kind string, payload interface{}) {
 func setupBindings(w webview2.WebView) {
 	wv = w
 
-	_ = w.Bind("findWindows", func(keyword string) []string {
-		return refreshWindows(keyword)
+	// 비동기 처리: EnumWindows 자체는 빠르지만, 화면에 떠 있는 다른 프로그램이
+	// 멈춰있으면 제목을 읽어오는 동안 잠깐씩 걸릴 수 있어서, 메인 화면이 멈춘
+	// 것처럼 보이지 않도록 백그라운드에서 돌리고 결과만 나중에 밀어넣는다.
+	_ = w.Bind("findWindows", func(keyword string) error {
+		go func() {
+			titles := refreshWindows(keyword)
+			pushEvent("windowList", map[string]interface{}{"titles": titles})
+		}()
+		return nil
 	})
 
 	_ = w.Bind("getSettings", func() map[string]interface{} {

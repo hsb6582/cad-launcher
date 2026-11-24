@@ -8,20 +8,29 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 )
 
-var windows []cadWin
+var (
+	windowsMu sync.Mutex
+	windows   []cadWin
+)
 
 func refreshWindows(keyword string) []string {
-	windows = findWindows(keyword)
-	titles := make([]string, len(windows))
-	for i, w := range windows {
+	found := findWindows(keyword)
+	windowsMu.Lock()
+	windows = found
+	windowsMu.Unlock()
+	titles := make([]string, len(found))
+	for i, w := range found {
 		titles[i] = w.title
 	}
 	return titles
 }
 
 func targetHwnd(index int) (uintptr, error) {
+	windowsMu.Lock()
+	defer windowsMu.Unlock()
 	if index < 0 || index >= len(windows) {
 		return 0, fmt.Errorf("대상 CAD 창이 없습니다. '창 찾기'를 다시 눌러 주세요.")
 	}
