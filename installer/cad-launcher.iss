@@ -2,9 +2,10 @@
 ;
 ; 하는 일: CAD런처.exe · catalog.json · lsp/ · tools/ · README.md 를
 ; 사용자가 고른 폴더에 설치하고, 시작 메뉴(+선택 시 바탕화면) 바로가기를 만든다.
-; "외부 프로그램 미리 설치"를 선택하면 tools/의 zip(MATX-Tools, PAVQ-Tools)을
-; C:\MATX-Tools 에 미리 풀어둔다 (안 풀리면 설치 뒤 런처 안의 '외부 프로그램 설치'
-; 버튼으로도 똑같이 설치할 수 있으니, 이 옵션은 선택 사항으로 둔다).
+; "외부 프로그램 미리 설치"를 선택하면 tools/PAVQ-Tools.zip 을 C:\MATX-Tools 에
+; 미리 풀어둔다 (MATX는 이제 런처에 통합되어 별도 프로그램이 필요 없음).
+; 안 풀리면 설치 뒤 런처 안의 '외부 프로그램 설치' 버튼으로도 똑같이 설치할 수
+; 있으니, 이 옵션은 선택 사항으로 둔다.
 ;
 ; 빌드: 보통은 .github/workflows/build-installer.yml 이 GitHub Actions(Windows)에서
 ; 자동으로 컴파일해서 CAD런처-설치.exe 를 만들어준다.
@@ -38,7 +39,7 @@ Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "바탕화면에 바로가기 만들기"; GroupDescription: "추가 아이콘:"
-Name: "exttools"; Description: "외부 프로그램(MATX·PAVQ 보조 프로그램)도 지금 같이 설치 (C:\MATX-Tools) - 나중에 런처 안에서도 설치할 수 있음"; GroupDescription: "추가 구성요소:"; Flags: unchecked
+Name: "exttools"; Description: "외부 프로그램(PAVQ 보조 프로그램)도 지금 같이 설치 (C:\MATX-Tools) - 나중에 런처 안에서도 설치할 수 있음"; GroupDescription: "추가 구성요소:"; Flags: unchecked
 
 [Files]
 Source: "{#RepoRoot}CAD런처.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -46,7 +47,6 @@ Source: "{#RepoRoot}catalog.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}lsp\*"; DestDir: "{app}\lsp"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#RepoRoot}tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#RepoRoot}tools\MATX-Tools.zip"; DestDir: "{tmp}"; Flags: deleteafterinstall; Tasks: exttools
 Source: "{#RepoRoot}tools\PAVQ-Tools.zip"; DestDir: "{tmp}"; Flags: deleteafterinstall; Tasks: exttools
 
 [Icons]
@@ -83,7 +83,6 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if (CurStep = ssPostInstall) and WizardIsTaskSelected('exttools') then
   begin
-    ExtractZip(ExpandConstant('{tmp}\MATX-Tools.zip'), 'C:\MATX-Tools');
     ExtractZip(ExpandConstant('{tmp}\PAVQ-Tools.zip'), 'C:\MATX-Tools');
   end;
 end;
