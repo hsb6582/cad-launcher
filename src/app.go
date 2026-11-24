@@ -31,6 +31,7 @@ type State struct {
 	Token      string                            `json:"token,omitempty"`
 	Synced     map[string]string                 `json:"synced,omitempty"`
 	Installed  map[string]string                 `json:"installed,omitempty"` // 외부 프로그램 이름 → 설치한 버전
+	LeftW      int                               `json:"leftW,omitempty"`     // 목록 칸 폭
 }
 
 var (
@@ -211,8 +212,41 @@ func createControls() {
 	hLog = mk("EDIT", "", ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL, WS_EX_CLIENTEDGE, idLog)
 }
 
-const leftW = 300
-const rightX = 8 + leftW + 10
+// 목록 칸 폭 (경계를 끌어서 조절, 96DPI 기준)
+var leftW = 300
+var rightX = 8 + leftW + 10
+
+const minLeftW = 220
+
+var (
+	splitDrag       bool
+	pGetCursorPos   = user32.NewProc("GetCursorPos")
+	pScreenToClient = user32.NewProc("ScreenToClient")
+	pSetCursor      = user32.NewProc("SetCursor")
+	pSetCaptureM    = user32.NewProc("SetCapture")
+	pReleaseCaptM   = user32.NewProc("ReleaseCapture")
+)
+
+func setLeftW(w int) {
+	W, _ := clientSize()
+	if mx := W - 420; w > mx {
+		w = mx
+	}
+	if w < minLeftW {
+		w = minLeftW
+	}
+	leftW, rightX = w, 8+w+10
+}
+
+// 마우스 위치(클라이언트, 96DPI 기준)가 목록·설명 사이 경계 위인지
+func onSplitter(x, y int) bool {
+	_, H := clientSize()
+	return x >= 8+leftW-1 && x <= rightX+1 && y >= 78 && y <= H-168
+}
+
+func mouseXY(lp uintptr) (int, int) {
+	return int(float64(int16(lp&0xFFFF)) / scale), int(float64(int16((lp>>16)&0xFFFF)) / scale)
+}
 
 func clientSize() (int, int) {
 	var r rectT
@@ -249,13 +283,14 @@ func layout() {
 	mainBottom := H - bottomH - 8
 	mv(hList, 8, top, leftW, max(mainBottom-top-64, 60))
 	bw := (leftW - 8) / 3
+	ew := (leftW - 8 - 96 - 8) / 2 // 편집·삭제 버튼 폭
 	mv(hAddCat, 8, mainBottom-60, bw, 28)
 	mv(hAddLisp, 12+bw, mainBottom-60, bw, 28)
 	mv(hAddCmd, 16+2*bw, mainBottom-60, leftW-8-2*bw, 28)
-	mv(hEdit, 8, mainBottom-28, 96, 28)
-	mv(hDel, 108, mainBottom-28, 96, 28)
-	mv(hUp, 208, mainBottom-28, 46, 28)
-	mv(hDown, 258, mainBottom-28, 50, 28)
+	mv(hEdit, 8, mainBottom-28, ew, 28)
+	mv(hDel, 12+ew, mainBottom-28, ew, 28)
+	mv(hUp, 16+2*ew, mainBottom-28, 46, 28)
+	mv(hDown, 66+2*ew, mainBottom-28, leftW-58-2*ew, 28)
 
 	rw := max(W-rightX-8, 200)
 	mv(hTitle, rightX, top, rw, 26)
@@ -604,8 +639,42 @@ func wndProc(h, msg, wp, lp uintptr) uintptr {
 		return 0
 	case WM_SIZE:
 		if hLog != 0 {
+			setLeftW(leftW)
 			layout()
 		}
+		return 0
+	case 0x0020: // WM_SETCURSOR
+		if h == wp && lp&0xFFFF == 1 { // HTCLIENT
+			var pt [2]int32
+			c(pGetCursorPos, uintptr(P(&pt)))
+			c(pScreenToClient, hMain, uintptr(P(&pt)))
+			if splitDrag || onSplitter(int(float64(pt[0])/scale), int(float64(pt[1])/scale)) {
+				c(pSetCursor, c(pLoadCursorW, 0, 32644)) // IDC_SIZEWE
+				return 1
+			}
+		}
+	case 0x0201: // WM_LBUTTONDOWN
+		if x, y := mouseXY(lp); onSplitter(x, y) {
+			splitDrag = true
+			c(pSetCaptureM, hMain)
+		}
+		return 0
+	case WM_MOUSEMOVE:
+		if splitDrag {
+			x, _ := mouseXY(lp)
+			setLeftW(x - 8 - 5)
+			layout()
+		}
+		return 0
+	case WM_LBUTTONUP:
+		if splitDrag {
+			splitDrag = false
+			c(pReleaseCaptM)
+			st.LeftW = leftW
+		}
+		return 0
+	case WM_CAPTURECHANGED:
+		splitDrag = false
 		return 0
 	case WM_GETMINMAXINFO:
 		pt := (*[2]int32)(P(lp + 24)) // ptMinTrackSize
@@ -682,6 +751,9 @@ func main() {
 	cw := uintptr(0x80000000)
 	hMain = c(pCreateWindowExW, 0, uintptr(P(cls)), uintptr(P(ws(appTitle))),
 		WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN, cw, cw, s(1000), s(720), 0, 0, hInst, 0)
+	if st.LeftW > 0 {
+		leftW, rightX = st.LeftW, 8+st.LeftW+10
+	}
 	createControls()
 	loadCatalog()
 	layout()
