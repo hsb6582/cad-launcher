@@ -38,6 +38,7 @@ func main() {
 	html := `<script>window.__CATALOG__ = ` + catalogJSON + `; window.__STATE__ = ` + stateJSON + `;</script>` + uiHTML
 
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
+		Debug: true, // 흰 화면만 뜰 때 우클릭 → 검사(DevTools)로 원인을 볼 수 있게 (문제 없으면 나중에 끔)
 		WindowOptions: webview2.WindowOptions{
 			Title:  "CAD 런처",
 			Width:  1180,
@@ -45,6 +46,12 @@ func main() {
 			Center: true,
 		},
 	})
+	if w == nil {
+		fatalBox("WebView2 창을 만들지 못했습니다.\n\n" +
+			"Microsoft Edge WebView2 런타임이 설치되어 있는지 확인해 주세요:\n" +
+			"https://developer.microsoft.com/microsoft-edge/webview2/")
+		return
+	}
 	defer w.Destroy()
 
 	selfHwnd = uintptr(w.Window())

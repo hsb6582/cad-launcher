@@ -30,9 +30,14 @@ var (
 	pSendInput            = user32.NewProc("SendInput")
 	pSetWindowPos         = user32.NewProc("SetWindowPos")
 	pShellExecuteW        = shell32.NewProc("ShellExecuteW")
+	pMessageBoxW          = user32.NewProc("MessageBoxW")
 
 	pWideCharToMultiByte = kernel32.NewProc("WideCharToMultiByte")
 )
+
+func fatalBox(text string) {
+	c(pMessageBoxW, 0, uintptr(unsafe.Pointer(ws(text))), uintptr(unsafe.Pointer(ws("CAD 런처"))), 0x10)
+}
 
 func c(p *syscall.LazyProc, a ...uintptr) uintptr { r, _, _ := p.Call(a...); return r }
 
