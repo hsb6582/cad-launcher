@@ -29,7 +29,10 @@ AppId={{F3C1E6A2-6E6B-4B2C-9B7A-2B7C7E6B9C10}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher=hsb6582
-DefaultDirName={autopf}\CADLauncher
+; 사용자 폴더에 설치: 런처가 실행 때마다 lsp/·catalog.json 을 받아 덮어쓰고 설정을 저장하므로
+; 관리자 권한 없이 쓸 수 있는 곳이어야 한다 (Program Files 에 두면 업데이트가 조용히 실패함).
+DefaultDirName={localappdata}\CADLauncher
+PrivilegesRequired=lowest
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 AllowNoIcons=yes
