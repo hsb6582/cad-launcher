@@ -6,15 +6,14 @@
 ;;; 기능: [개발 중] 칼라아스콘 경계 확인 | PAVQMMA | PAVQ 없이 칼라아스콘(MMA) 경계만 도면별로 확인
 ;;; 기능: [개발 중] 밴드 문자 레이어 지정 | PAVQCAL | (선택) 관경/포장 밴드 문자가 있는 레이어 지정
 ;;; 기능: [개발 중] 검토 표시 지우기 | PAVQDEL | PAVQ 가 그린 빨간 원·번호 표시 삭제
-;;; 외부프로그램: PAVQ 산출서 작성기 | tools/PAVQ-Tools.zip | zip | PAVQ_FORM.exe | | 0.9 | | C:\MATX-Tools
 ;;; 설명서:
 ;;;   ※ 개발 중인 기능입니다. 결과를 반드시 직접 확인하세요.
 ;;;
 ;;;   종단면도의 관경 밴드와 포장 밴드 문자를 읽어, 관경별 포장구분 길이(복구수량 기초자료)를 계산합니다.
-;;;   계산이 끝나면 보조 프로그램(PAVQ_FORM)이 복구수량산출서 양식을 채워 엑셀을 엽니다.
+;;;   계산이 끝나면 CAD런처.exe 가 바로 복구수량산출서 양식을 채워 엑셀을 엽니다.
+;;;   (외부 프로그램·파이썬 설치가 필요 없습니다 - CAD런처.exe 안에 매핑 엔진이 들어 있습니다.)
 ;;;
 ;;;   [사용 전 확인]
-;;;   • 처음 한 번 '외부 프로그램 설치'로 보조 프로그램을 설치하세요. C:\MATX-Tools 에 PAVQ_FORM.exe, 복구수량산출서_양식.xlsx 가 들어갑니다.
 ;;;   • 도곽(FORM) 안의 종단면도 밴드 문자 예: LP 110mm PE (187.0M), A.S.P (67.0M), CON'C (69.0M)
 ;;;
 ;;;   [결과 (도면 폴더\MATX\)]
@@ -157,9 +156,8 @@
 ;; 자재내역 63mm 관 행에서 제외할 품명 (이음관/부속)
 (setq *PQ-63-EXCL* '("보호관" "슬리브" "소켓" "엘보" "캡" "TEE" "레듀" "리듀" "밸브" "새들" "T/F" "E/F" "전자" "이경"))
 
-;; PAVQ 끝나면 복구수량산출서 엑셀 자동 작성 (PAVQ_FORM.exe 에 집계 CSV 전달)
-(setq *PQ-FORM-AUTO* T
-      *PQ-FORM-EXE*  "C:\\MATX-Tools\\PAVQ_FORM.exe")
+;; PAVQ 끝나면 복구수량산출서 엑셀 자동 작성 (CAD런처.exe 에 집계 CSV 전달)
+(setq *PQ-FORM-AUTO* T)
 
 ;; 연결관 포장 : 종단 인출선 측점이 들어 있는 포장 구간 (63mm 제외)
 (setq *PQ-BAND-LAYER* "Q-종단그래프"   ; 관경 밴드 가로선 (밴드 시작/끝 X)
@@ -4999,13 +4997,14 @@
       (if (and f1 f2 f3 f4)
         (progn
           (princ (strcat "\n\n저장 : " dir "PAVQ_*_" base))
-          ;; 복구수량산출서 자동 작성 (경로에 공백/한글이 있어 따옴표로 감쌈)
+          ;; 복구수량산출서 자동 작성 : CAD런처.exe 자신을 불러서 집계 CSV를 넘김
+          ;; (경로에 공백/한글이 있어 따옴표로 감쌈. LT 제한으로 실패해도 CSV 결과엔 영향 없음)
           (if *PQ-FORM-AUTO*
-            (if (findfile *PQ-FORM-EXE*)
+            (if (and (boundp '*CADLAUNCHER-EXE*) *CADLAUNCHER-EXE* (findfile *CADLAUNCHER-EXE*))
               (progn
-                (startapp (strcat "\"" *PQ-FORM-EXE* "\"") (strcat "\"" f2 "\""))
+                (startapp *CADLAUNCHER-EXE* (strcat "--pavq-fill " (strcat "\"" f2 "\"")))
                 (princ "\n복구수량산출서 작성 중... (완료되면 엑셀이 열립니다)"))
-              (princ (strcat "\n[알림] " *PQ-FORM-EXE* " 이 없어 복구수량산출서는 만들지 않았습니다.")))))
+              (princ "\n[알림] CAD런처.exe 경로를 몰라 복구수량산출서는 만들지 않았습니다. (CAD런처에서 아무 기능이나 한 번 실행한 뒤 다시 시도하세요)"))))
         (progn
           (princ (strcat "\n\n[주의] 일부 파일 저장 실패 - 폴더 : " dir))
           (cond

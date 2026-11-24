@@ -712,6 +712,9 @@ func main() {
 	if len(os.Args) >= 3 && os.Args[1] == "--matx-fill" {
 		os.Exit(runMatxFill(os.Args[2]))
 	}
+	if len(os.Args) >= 3 && os.Args[1] == "--pavq-fill" {
+		os.Exit(runPavqFill(os.Args[2]))
+	}
 	catalogPath = filepath.Join(appDir, "catalog.json")
 	statePath = filepath.Join(appDir, "launcher_state.json")
 	lspDir = filepath.Join(appDir, "lsp")
