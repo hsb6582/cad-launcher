@@ -709,6 +709,9 @@ func main() {
 
 	exePath, _ = os.Executable()
 	appDir = filepath.Dir(exePath)
+	if len(os.Args) >= 3 && os.Args[1] == "--matx-fill" {
+		os.Exit(runMatxFill(os.Args[2]))
+	}
 	catalogPath = filepath.Join(appDir, "catalog.json")
 	statePath = filepath.Join(appDir, "launcher_state.json")
 	lspDir = filepath.Join(appDir, "lsp")

@@ -395,6 +395,7 @@ func runCurrent() {
 			sb.WriteString(`(if (not c:` + id + `) (load "` + lp + `"))` + "\n")
 		}
 	}
+	sb.WriteString("(setq *CADLAUNCHER-EXE* " + lispValue(Option{Type: "file"}, exePath) + ")\n")
 	if l != nil {
 		sb.WriteString(toolVarLines(l))
 	}

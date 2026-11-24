@@ -6,24 +6,24 @@
 ;;; 기능: 자재내역 표 위치 보정 | MATCAL | 프로젝트마다 처음 1회, 도곽 하나에서 표 위치 지정
 ;;; 기능: 도면번호 위치만 다시 보정 | MATCAL-DRWNO | 다른 보정값은 두고 도면번호 위치만 다시 지정
 ;;; 기능: 보정 위치 미리보기 | MATX-VERIFY | 보정한 좌표를 현재 도곽에 표시해 확인
-;;; 외부프로그램: MATX 보조 프로그램 | tools/MATX-Tools.zip | zip | mapping_engine.exe | | 1.0 | | C:\MATX-Tools
 ;;; 설명서:
-;;;   도면의 자재내역 표를 도곽별로 읽어 CSV로 모은 뒤, 보조 프로그램이 자재내역 엑셀 양식을 채워 줍니다.
+;;;   도면의 자재내역 표를 도곽별로 읽어 CSV로 모은 뒤, CAD런처.exe 가 바로 자재내역 엑셀 양식을 채워 줍니다.
+;;;   (외부 프로그램·파이썬 설치가 필요 없습니다 - CAD런처.exe 안에 매핑 엔진이 들어 있습니다.)
 ;;;
 ;;;   [사용 전 확인]
-;;;   • 처음 한 번 '외부 프로그램 설치'로 보조 프로그램을 설치하세요. C:\MATX-Tools 에 mapping_engine.exe, run_after_matx.bat, 자재내역.xlsx 가 들어갑니다.
 ;;;   • 도곽은 FORM 블록 또는 FORM_ 레이어 사각형이어야 합니다.
 ;;;   • 자재내역 표는 모든 도곽에서 같은 상대 위치에 있어야 합니다 (번호/품명/규격/단위/수량/비고, 최대 20행).
 ;;;
 ;;;   [순서]
 ;;;   1) 새 프로젝트면 '자재내역 표 위치 보정'(MATCAL)을 먼저 1회 실행합니다. 보정값은 도면 폴더의 matx-config.txt 에 저장됩니다.
 ;;;   2) '자재내역 엑셀 자동 작성'(MATX)을 실행합니다.
-;;;   3) 결과는 도면 폴더 안 MATX 폴더에 저장됩니다: material_export.csv → 자재내역_결과.xlsx
+;;;   3) 결과는 도면 폴더 안 MATX 폴더에 저장됩니다: material_export.csv, excel_matched.csv → 자재내역_결과.xlsx (생성되면 자동으로 열립니다)
 ;;;
-;;;   ※ 엑셀이 자동으로 안 만들어지면 C:\MATX-Tools\run_after_matx.bat 을 직접 실행하고, MATX 폴더의 auto_matx_log.txt 를 확인하세요.
+;;;   ※ 엑셀이 자동으로 안 만들어지면 MATX 폴더의 auto_matx_log.txt 를 확인하세요. (CAD런처가 옛 버전이면 CAD런처 '업데이트 확인'을 먼저 눌러 주세요)
+;;;   ※ 도면이 40개 기준 양식(MP-001~011, LP-001~029)보다 많아 새 도면번호가 생기면, 그 열만 자동 반영에서 빠집니다 - excel_matched.csv 를 열어 해당 칸만 수동으로 옮겨 붙이세요.
 ;;; 기능설명서: MATX
 ;;;   모든 도곽을 좌측 상단부터 차례로 돌며 자재내역 표를 읽어 CSV 로 모읍니다.
-;;;   끝나면 보조 프로그램이 자동으로 실행되어 자재내역 양식을 채운 '자재내역_결과.xlsx' 를 만듭니다.
+;;;   끝나면 CAD런처.exe 가 자재내역 양식을 채운 '자재내역_결과.xlsx' 를 만들고 자동으로 엽니다.
 ;;;   • 매핑 규칙: MP/LP 구분, LP 63mm → PE 전자류, S.TEE 부속 자동 계산, 관 수량은 엑셀 수식으로 기록
 ;;;   • 결과 위치: 도면 폴더\MATX\
 ;;; 기능설명서: MATCAL
@@ -106,21 +106,6 @@
     (vl-mkdir d)
   )
   d
-)
-
-;; 배치파일/파이썬 스크립트를 매 도면 폴더마다 복사해두지 않아도 되도록,
-;; 여기 지정된 "공용 도구 폴더"도 함께 찾아봄. 필요시 이 경로만 바꾸면 됨.
-(setq *matx-tools-dir* "C:\\MATX-Tools\\")
-
-(defun matx-find-tool (filename / p1 p2)
-  ;; 도면 폴더 -> 공용 도구 폴더 순으로 찾아서 (경로 . 어느폴더에서찾았는지) 반환. 없으면 nil.
-  (setq p1 (strcat (matx-dwg-dir) filename))
-  (setq p2 (strcat *matx-tools-dir* filename))
-  (cond
-    ((findfile p1) (cons p1 "dwg"))
-    ((findfile p2) (cons p2 "tools"))
-    (T nil)
-  )
 )
 
 (defun matx-quote-arg (path / p)
@@ -775,8 +760,7 @@
                  row rowno colnames vals cell-txt csv-path csv-primary
                  csv-fallback csv-mode open-result f
                  has-any-value tol strict-tol tol-left-list tol-right-list tol-y-list colidx
-                 drawing-rows-acc matx-mc-err
-                 bat-found)
+                 drawing-rows-acc matx-mc-err)
   (if (not (matx-load-config))
     (progn (princ "\n[MATX] 캘리브레이션 정보가 없습니다. 먼저 MATCAL을 실행하세요.") (exit))
   )
@@ -910,21 +894,21 @@
     )
   )
 
-  ;; CSV 추출이 끝나면, 도면 폴더 -> 공용 도구 폴더 순으로 run_after_matx.bat을 찾아 자동 실행 시도.
-  ;; (엑셀 매칭 로직은 그 배치파일이 호출하는 mapping_engine.py에 그대로 있음 - 여기선 손대지 않음)
+  ;; excel_matched.csv 가 준비되면 CAD런처.exe 자신을 불러서 자재내역.xlsx 양식에 채워 넣고
+  ;; 바로 엑셀로 연다 (CAD런처 실행 때마다 (setq *CADLAUNCHER-EXE* ...) 로 경로를 받아둠).
   ;; LT 버전에 따라 startapp이 제한될 수 있어, 실패해도 CSV 추출 결과에는 영향 없도록 안전하게 처리.
-  (setq bat-found (matx-find-tool "run_after_matx.bat"))
-  (if bat-found
+  (if (and (boundp '*CADLAUNCHER-EXE*) *CADLAUNCHER-EXE* (findfile *CADLAUNCHER-EXE*))
     (progn
-      (princ (strcat "\n[MATX] run_after_matx.bat 발견(" (cdr bat-found) ") - 엑셀 자동 생성을 시도합니다..."))
+      (princ "\n[MATX] CAD런처.exe 로 엑셀 자동 생성을 시도합니다...")
       (if (vl-catch-all-error-p
-            (vl-catch-all-apply 'startapp (list (car bat-found) (matx-quote-arg (matx-output-dir))))
+            (vl-catch-all-apply 'startapp
+              (list *CADLAUNCHER-EXE* (strcat "--matx-fill " (matx-quote-arg (matx-output-dir)))))
           )
-        (princ "\n[MATX] 자동 실행에 실패했습니다(LT 제한 가능성). run_after_matx.bat을 직접 더블클릭하세요.")
-        (princ "\n[MATX] 자동 실행을 시도했습니다. 완료되면 도면 폴더의 auto_matx_log.txt를 확인하세요.")
+        (princ "\n[MATX] 자동 실행에 실패했습니다(LT 제한 가능성). CAD런처를 열고 아무 기능이나 한 번 실행한 뒤 MATX를 다시 실행해 보세요.")
+        (princ "\n[MATX] 자동 실행을 시도했습니다. 완료되면 MATX 폴더의 auto_matx_log.txt를 확인하세요.")
       )
     )
-    (princ "\n[MATX] run_after_matx.bat을 도면 폴더/공용 도구 폴더 어디에서도 못 찾아 건너뜁니다.")
+    (princ "\n[MATX] CAD런처.exe 경로를 몰라 엑셀 자동 생성을 건너뜁니다. (CAD런처에서 아무 기능이나 한 번 실행한 뒤 다시 시도하거나, excel_matched.csv 를 자재내역.xlsx 의 G8 셀에 직접 붙여넣으세요)")
   )
   (princ)
 )
