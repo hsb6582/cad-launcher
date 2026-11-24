@@ -135,6 +135,28 @@ func itemTag(it *Item) string {
 	return "(" + it.Lisp + " · " + cmdID(it.Command) + ")"
 }
 
+// "(GGD)" 처럼 명령어만 표시 (리습 이름은 상위 분류에 표시)
+func cmdTag(it *Item) string {
+	return "(" + cmdID(it.Command) + ")"
+}
+
+// 분류 아래 기능들이 쓰는 리습 이름을 모아 "(GGv2)" 처럼 표시 (여러 개면 "(GGv2 · BPDF)")
+func catLispTag(ct *Category) string {
+	var ids []string
+	seen := map[string]bool{}
+	for i := range ct.Items {
+		id := ct.Items[i].Lisp
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return ""
+	}
+	return "  (" + strings.Join(ids, " · ") + ")"
+}
+
 // ───────────── 트리 ─────────────
 const (
 	nkNone = iota
@@ -211,12 +233,12 @@ func refreshTree(sel nodeRef) {
 		if !isCollapsed("c:" + ct.Name) {
 			state |= TVIS_EXPANDED
 		}
-		hc := tvInsertItem(tviRoot, ct.Name, state)
+		hc := tvInsertItem(tviRoot, ct.Name+catLispTag(&ct), state)
 		itemNode[hc], nodeItem[cn] = cn, hc
 		for ii := range ct.Items {
 			in := nodeRef{nkItem, ci, ii}
 			it := &cat.Categories[ci].Items[ii]
-			hi := tvInsertItem(hc, it.Name+"   "+itemTag(it), 0)
+			hi := tvInsertItem(hc, it.Name+"   "+cmdTag(it), 0)
 			itemNode[hi], nodeItem[in] = in, hi
 		}
 	}
@@ -260,12 +282,12 @@ func showNode(n nodeRef) {
 	switch n.kind {
 	case nkCat:
 		ct := n.category()
-		setText(hTitle, ct.Name)
+		setText(hTitle, ct.Name+catLispTag(ct))
 		setText(hDesc, "기능 "+itoa(len(ct.Items))+"개")
 		var sb strings.Builder
 		for i := range ct.Items {
 			it := &ct.Items[i]
-			sb.WriteString("■ " + it.Name + "   " + itemTag(it) + "\n")
+			sb.WriteString("■ " + it.Name + "   " + cmdTag(it) + "\n")
 			if it.Desc != "" {
 				sb.WriteString("    " + it.Desc + "\n")
 			}
@@ -274,7 +296,7 @@ func showNode(n nodeRef) {
 	case nkItem:
 		it := n.item()
 		setText(hTitle, it.Name)
-		setText(hDesc, strings.TrimSpace(it.Desc+"   "+itemTag(it)))
+		setText(hDesc, strings.TrimSpace(it.Desc+"   "+cmdTag(it)))
 		man := it.Manual
 		if man == "" {
 			man = it.Desc
