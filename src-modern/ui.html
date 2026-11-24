@@ -54,6 +54,32 @@
   }
   button.primary:hover{background:var(--accent-dk);}
   button.primary.big{padding:10px 22px; border-radius:999px; font-size:14px;}
+  button.icon-btn{
+    width:34px; height:34px; padding:0; border-radius:999px;
+    display:flex; align-items:center; justify-content:center; font-size:17px; line-height:1;
+  }
+
+  /* ───── 고급 설정 오버레이 ───── */
+  .overlay{
+    position:fixed; inset:0; background:rgba(45,41,36,.35);
+    display:none; align-items:center; justify-content:center; z-index:50;
+  }
+  .overlay.show{display:flex;}
+  .overlay .panel{
+    width:420px; max-width:90vw; background:var(--panel); border-radius:var(--radius-lg);
+    padding:20px 22px; box-shadow:0 12px 32px rgba(0,0,0,.18);
+  }
+  .overlay .panel h2{font-size:15px; margin:0 0 14px 0;}
+  .overlay .opt-row label{width:120px; flex:0 0 120px; font-size:13px;}
+  .overlay .opt-row select, .overlay .opt-row input[type=text]{
+    padding:6px 9px; border:1px solid var(--border); border-radius:8px; background:#fff; font-size:13px; outline:none;
+  }
+  .check-row{display:flex; align-items:center; gap:8px; padding:7px 0; font-size:13px; cursor:pointer;}
+  .check-row input{width:16px; height:16px;}
+  .hr{height:1px; background:var(--border); margin:12px 0;}
+  .panel-actions{display:flex; justify-content:flex-end; gap:10px; margin-top:16px;}
+  .row-send{display:flex; gap:8px; align-items:center;}
+  .row-send input{flex:1 1 auto;}
 
   /* ───── 본문 레이아웃 ───── */
   .main{flex:1 1 auto; display:flex; min-height:0;}
@@ -143,9 +169,37 @@
       <select><option>(연결된 AutoCAD 창 없음 - 미리보기)</option></select>
     </div>
     <div class="spacer"></div>
+    <button id="btnUpdCfg" class="icon-btn" title="업데이트 설정">↻</button>
     <button id="btnAdv">고급 설정</button>
-    <button id="btnUpdCfg">업데이트 설정</button>
-    <button id="btnUpd">업데이트 확인</button>
+  </div>
+
+  <div class="overlay" id="advOverlay">
+    <div class="panel">
+      <h2>고급 설정</h2>
+
+      <div class="opt-row">
+        <label>전송 방식</label>
+        <select id="advMethod"><option>WM_COPYDATA</option><option>키입력</option></select>
+      </div>
+      <label class="check-row"><input type="checkbox" id="advCancel" checked> 실행 전 진행 중 명령 취소</label>
+      <label class="check-row"><input type="checkbox" id="advTop"> 항상 위 (런처 창을 다른 창 위에 고정)</label>
+      <div class="opt-row">
+        <label>옵션파일 인코딩</label>
+        <select id="advEnc"><option>cp949</option><option>utf-8</option></select>
+      </div>
+      <div class="opt-row row-send">
+        <label>직접 명령</label>
+        <input type="text" id="advFree" placeholder="예: GGA">
+        <button id="advSend">보내기</button>
+      </div>
+
+      <div class="hr"></div>
+      <button id="advCheckUpdate" class="ghost">업데이트 확인</button>
+
+      <div class="panel-actions">
+        <button id="advClose" class="primary">닫기</button>
+      </div>
+    </div>
   </div>
 
   <div class="main">
@@ -289,11 +343,36 @@ function selectItem(ci, ii, rowEl){
 }
 
 document.getElementById('btnFind').onclick = () => log('CAD 창 찾는 중... (미리보기에서는 실제로 찾지 않음)');
-document.getElementById('btnAdv').onclick = () => log('(미리보기) 고급 설정 창 열기');
 document.getElementById('btnUpdCfg').onclick = () => log('(미리보기) 업데이트 설정 창 열기');
-document.getElementById('btnUpd').onclick = () => log('(미리보기) 업데이트 확인 중...');
+
+const advOverlay = document.getElementById('advOverlay');
+document.getElementById('btnAdv').onclick = () => advOverlay.classList.add('show');
+document.getElementById('advClose').onclick = () => advOverlay.classList.remove('show');
+advOverlay.addEventListener('click', e => { if(e.target === advOverlay) advOverlay.classList.remove('show'); });
+document.getElementById('advCheckUpdate').onclick = () => { log('(미리보기) 업데이트 확인 중...'); };
+function sendFreeCmd(){
+  const el = document.getElementById('advFree');
+  const t = el.value.trim();
+  if(!t) return;
+  log('(미리보기) 직접 명령 전송: ' + t);
+  el.value = '';
+}
+document.getElementById('advSend').onclick = sendFreeCmd;
+document.getElementById('advFree').addEventListener('keydown', e => { if(e.key === 'Enter') sendFreeCmd(); });
 
 renderSidebar();
+
+// 처음 열었을 때 바로 '실행' 화면이 보이도록 첫 분류의 첫 기능을 미리 선택해둔다.
+(function selectFirst(){
+  const cats = catalog.categories || [];
+  for(let ci=0; ci<cats.length; ci++){
+    if(cats[ci].items && cats[ci].items.length){
+      const row = sidebar.querySelector('.item[data-ci="'+ci+'"][data-ii="0"]');
+      selectItem(ci, 0, row);
+      return;
+    }
+  }
+})();
 </script>
 </body>
 </html>
