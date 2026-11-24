@@ -255,6 +255,62 @@ func adoptLisp(p string) string {
 	return relPath(dst)
 }
 
+// ───────────────────────── 고급 설정 창 ─────────────────────────
+// 평소에는 거의 건드릴 일이 없는 설정(전송 방식·취소·항상 위·인코딩)과
+// 직접 명령 입력을 메인 화면에서 빼서 여기에 모아둔다.
+func advancedDialog() {
+	d := newDialog("고급 설정", 480, 300)
+	const lx, ex, ew = 14, 150, 310
+
+	d.label("전송 방식", lx, 18, 100)
+	hMethod := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvMethod)
+	mv(hMethod, ex, 14, 150, 200)
+	comboFill(hMethod, methods, indexOf(methods, st.Method))
+	d.note("WM_COPYDATA가 안 먹히면 '키입력'으로 바꿔보세요", ex+158, 18, ew-158, 36)
+
+	hCancel := d.mk("BUTTON", "실행 전 진행 중 명령 취소", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvCancel)
+	mv(hCancel, lx, 56, 300, 22)
+	setCheck(hCancel, st.Cancel)
+
+	hTop := d.mk("BUTTON", "항상 위 (런처 창을 다른 창 위에 고정)", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvTop)
+	mv(hTop, lx, 84, 320, 22)
+	setCheck(hTop, st.Topmost)
+
+	d.label("옵션파일 인코딩", lx, 120, 105)
+	hEnc := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvEnc)
+	mv(hEnc, ex, 116, 100, 200)
+	comboFill(hEnc, encodings, indexOf(encodings, st.Encoding))
+	d.note("보통 cp949 그대로 두세요 (한글이 깨질 때만 utf-8)", ex+108, 120, ew-108, 20)
+
+	d.label("직접 명령", lx, 166, 100)
+	hFree := d.edit("", ex, 162, 230)
+	d.button("보내기", idAdvSend, ex+238, 161, 90, true)
+	d.note("목록에 없는 명령어를 바로 AutoCAD로 보냅니다", ex, 190, ew, 20)
+
+	d.button("닫기", IDCANCEL, 370, 254, 95, false)
+
+	d.onCmd = func(id, code int) {
+		switch {
+		case id == idAdvMethod && code == CBN_SELCHANGE:
+			if i := comboSel(hMethod); i >= 0 {
+				st.Method = methods[i]
+			}
+		case id == idAdvEnc && code == CBN_SELCHANGE:
+			if i := comboSel(hEnc); i >= 0 {
+				st.Encoding = encodings[i]
+			}
+		case id == idAdvCancel && code == BN_CLICKED:
+			st.Cancel = isChecked(hCancel)
+		case id == idAdvTop && code == BN_CLICKED:
+			st.Topmost = isChecked(hTop)
+			applyTopmost()
+		case id == idAdvSend && code == BN_CLICKED:
+			sendFreeFrom(hFree)
+		}
+	}
+	d.run(hFree)
+}
+
 var typeCodes = []string{"text", "number", "int", "check", "choice", "file", "folder"}
 var typeNames = []string{"문자", "실수", "정수", "체크", "선택목록", "파일 경로", "폴더 경로"}
 

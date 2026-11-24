@@ -94,12 +94,9 @@ const (
 	idKeyword = 100 + iota
 	idFind
 	idWinCombo
-	idMethod
-	idCancel
-	idTop
-	idEnc
 	idUpdate
 	idGitHub
+	idAdvanced
 	idList
 	idAddCat
 	idAddLisp
@@ -110,13 +107,20 @@ const (
 	idDown
 	idRun
 	idReset
-	idFree
-	idSend
 	idLog
 	idManual
 	idTools
 	idOptBase    = 1000
 	idBrowseBase = 2000
+)
+
+// 고급 설정 창(dialogs.go의 advancedDialog) 안에서만 쓰는 컨트롤 id
+const (
+	idAdvMethod = 500 + iota
+	idAdvCancel
+	idAdvTop
+	idAdvEnc
+	idAdvSend
 )
 
 const WM_APP_UPDATE = 0x8001
@@ -131,11 +135,10 @@ var (
 	grey                           = map[uintptr]bool{}
 
 	hLblKw, hKeyword, hFind, hWinCombo                          uintptr
-	hLblMethod, hMethod, hCancel, hTop, hLblEnc, hEnc           uintptr
-	hUpdate, hGitHub                                            uintptr
+	hUpdate, hGitHub, hAdvanced                                 uintptr
 	hList, hAddCat, hAddLisp, hAddCmd, hEdit, hDel, hUp, hDown  uintptr
 	hTitle, hDesc, hOptGroup, hLblManual, hManual, hRun, hReset uintptr
-	hLblFree, hFree, hSend, hLog                                uintptr
+	hLog                                                        uintptr
 	hTools                                                      uintptr
 
 	pPostMessageW = user32.NewProc("PostMessageW")
@@ -174,18 +177,9 @@ func createControls() {
 	hFind = mk("BUTTON", "창 찾기", WS_TABSTOP, 0, idFind)
 	hWinCombo = mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP, 0, idWinCombo)
 
-	hLblMethod = mk("STATIC", "전송 방식", SS_LEFT, 0, 0)
-	hMethod = mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idMethod)
-	comboFill(hMethod, methods, indexOf(methods, st.Method))
-	hCancel = mk("BUTTON", "실행 전 진행 중 명령 취소", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idCancel)
-	setCheck(hCancel, st.Cancel)
-	hTop = mk("BUTTON", "항상 위", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idTop)
-	setCheck(hTop, st.Topmost)
-	hLblEnc = mk("STATIC", "옵션파일 인코딩", SS_LEFT, 0, 0)
-	hEnc = mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idEnc)
-	comboFill(hEnc, encodings, indexOf(encodings, st.Encoding))
 	hUpdate = mk("BUTTON", "업데이트 확인", WS_TABSTOP, 0, idUpdate)
 	hGitHub = mk("BUTTON", "업데이트 설정", WS_TABSTOP, 0, idGitHub)
+	hAdvanced = mk("BUTTON", "고급 설정", WS_TABSTOP, 0, idAdvanced)
 
 	hList = mk("SysTreeView32", "", TVS_HASBUTTONS|TVS_HASLINES|TVS_LINESATROOT|TVS_SHOWSELALWAYS|0x0010 /*TVS_DISABLEDRAGDROP*/ |WS_TABSTOP, WS_EX_CLIENTEDGE, idList)
 	// 목록 편집은 엑셀(dev/catalog.xlsx) → 저장소에서 하고, 런처에서는 순서만 바꿈
@@ -205,9 +199,6 @@ func createControls() {
 	hReset = mk("BUTTON", "옵션 기본값", WS_TABSTOP, 0, idReset)
 	hTools = mk("BUTTON", "외부 프로그램 설치", WS_TABSTOP, 0, idTools)
 
-	hLblFree = mk("STATIC", "직접 명령", SS_LEFT, 0, 0)
-	hFree = mk("EDIT", "", ES_AUTOHSCROLL|WS_TABSTOP, WS_EX_CLIENTEDGE, idFree)
-	hSend = mk("BUTTON", "보내기", WS_TABSTOP, 0, idSend)
 	hLog = mk("EDIT", "", ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL, WS_EX_CLIENTEDGE, idLog)
 }
 
@@ -268,17 +259,12 @@ func layout() {
 	mv(hFind, 241, 7, 75, 26)
 	mv(hWinCombo, 322, 8, max(W-330, 100), 300)
 
-	mv(hLblMethod, 8, 46, 95, 20)
-	mv(hMethod, 105, 42, 130, 200)
-	mv(hCancel, 245, 43, 190, 24)
-	mv(hTop, 440, 43, 80, 24)
-	mv(hLblEnc, 525, 46, 105, 20)
-	mv(hEnc, 630, 42, 80, 200)
 	mv(hGitHub, W-108, 41, 100, 26)
 	mv(hUpdate, W-214, 41, 102, 26)
+	mv(hAdvanced, W-320, 41, 100, 26)
 
 	top := 78
-	bottomH := 160
+	bottomH := 120
 	mainBottom := H - bottomH - 8
 	mv(hList, 8, top, leftW, max(mainBottom-top-32, 60))
 	mv(hUp, 8, mainBottom-28, 80, 28)
@@ -326,15 +312,12 @@ func layout() {
 	mv(hTools, rightX+rw-150, mainBottom-28, 150, 30)
 
 	by := mainBottom + 10
-	mv(hLblFree, 8, by+4, 70, 20)
-	mv(hFree, 80, by, max(W-80-90, 100), 24)
-	mv(hSend, W-86, by-1, 78, 26)
-	mv(hLog, 8, by+32, W-16, max(H-by-40, 40))
+	mv(hLog, 8, by, W-16, max(H-by-16, 40))
 }
 
 func applyTopmost() {
 	after := ^uintptr(1) // HWND_NOTOPMOST
-	if isChecked(hTop) {
+	if st.Topmost {
 		after = ^uintptr(0) // HWND_TOPMOST
 	}
 	c(pSetWindowPos, hMain, after, 0, 0, 0, 0, 0x0003)
@@ -498,16 +481,10 @@ func browse(i int) {
 }
 
 // ───────────── CAD 창 / 실행 ─────────────
+// 전송 방식 · 인코딩 · 취소 · 항상 위는 '고급 설정' 창에서 바꿀 때 바로 st에 반영되므로
+// (advancedDialog 참고) 여기서는 메인 창에 남아있는 값만 거둬들인다.
 func readSettings() {
 	st.Keyword = getText(hKeyword)
-	if i := comboSel(hMethod); i >= 0 {
-		st.Method = methods[i]
-	}
-	if i := comboSel(hEnc); i >= 0 {
-		st.Encoding = encodings[i]
-	}
-	st.Cancel = isChecked(hCancel)
-	st.Topmost = isChecked(hTop)
 }
 
 func refreshWindows() {
@@ -566,13 +543,14 @@ func send(text string) bool {
 	return true
 }
 
-func sendFree() {
-	t := strings.TrimRight(getText(hFree), "\r\n")
+// '고급 설정' 창의 직접 명령 입력칸에서 호출 (dialogs.go의 advancedDialog 참고)
+func sendFreeFrom(hEdit uintptr) {
+	t := strings.TrimRight(getText(hEdit), "\r\n")
 	if strings.TrimSpace(t) == "" {
 		return
 	}
 	if send(t + "\n") {
-		setText(hFree, "")
+		setText(hEdit, "")
 	}
 }
 
@@ -584,12 +562,12 @@ func onCommand(id, code int) {
 	switch {
 	case id == idFind:
 		refreshWindows()
-	case id == idTop:
-		applyTopmost()
 	case id == idUpdate:
 		startUpdateCheck(true)
 	case id == idGitHub:
 		githubDialog()
+	case id == idAdvanced:
+		advancedDialog()
 	case id == idUp:
 		moveNode(-1)
 	case id == idDown:
@@ -600,8 +578,6 @@ func onCommand(id, code int) {
 		installCurrentTools()
 	case id == idReset:
 		resetOptions()
-	case id == idSend:
-		sendFree()
 	case id >= idBrowseBase && id < idBrowseBase+500:
 		browse(id - idBrowseBase)
 	}
@@ -756,10 +732,6 @@ func main() {
 		r := int32(c(pGetMessageW, uintptr(P(&m)), 0, 0, 0))
 		if r <= 0 {
 			break
-		}
-		if m.message == WM_KEYDOWN && m.wParam == VK_RETURN && m.hwnd == hFree {
-			sendFree()
-			continue
 		}
 		if c(pIsDialogMessageW, hMain, uintptr(P(&m))) != 0 {
 			continue
