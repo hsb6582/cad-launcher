@@ -94,20 +94,17 @@ func ghGet(rawURL string, accept string) ([]byte, error) {
 	return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 }
 
-func branch() string {
-	if cat.Update.Branch == "" {
-		return "main"
-	}
-	return cat.Update.Branch
-}
+// 업데이트 저장소는 프로그램에 고정 (목록 파일이나 설정으로 바뀌지 않음)
+const (
+	fixedRepo   = "hsb6582/cad-launcher"
+	fixedBranch = "main"
+)
+
+func branch() string { return fixedBranch }
 
 func fetchPlan(interactive bool) *updatePlan {
 	plan := &updatePlan{interactive: interactive}
-	repo := strings.TrimSpace(cat.Update.Repo)
-	if repo == "" {
-		plan.err = fmt.Errorf("GitHub 저장소가 설정되지 않았습니다 ('GitHub 설정' 버튼)")
-		return plan
-	}
+	repo := fixedRepo
 	body, err := ghGet("https://api.github.com/repos/"+repo+"/git/trees/"+url.PathEscape(branch())+"?recursive=1",
 		"application/vnd.github+json")
 	if err != nil {
@@ -143,15 +140,9 @@ func startUpdateCheck(interactive bool) {
 	if updating {
 		return
 	}
-	if cat.Update.Repo == "" {
-		if interactive {
-			githubDialog()
-		}
-		return
-	}
 	updating = true
 	c(pEnableWindow, hUpdate, 0)
-	logf("업데이트 확인 중… (%s, %s)", cat.Update.Repo, branch())
+	logf("업데이트 확인 중… (%s, %s)", fixedRepo, branch())
 	go func() {
 		p := fetchPlan(interactive)
 		pendingPlan = p
@@ -225,7 +216,7 @@ func applyUpdates(files []remoteFile) {
 		for i := range segs {
 			segs[i] = url.PathEscape(segs[i])
 		}
-		data, err := ghGet("https://raw.githubusercontent.com/"+cat.Update.Repo+"/"+url.PathEscape(branch())+"/"+strings.Join(segs, "/"), "")
+		data, err := ghGet("https://raw.githubusercontent.com/"+fixedRepo+"/"+url.PathEscape(branch())+"/"+strings.Join(segs, "/"), "")
 		if err != nil {
 			logf("받기 실패 %s: %v", f.Path, err)
 			continue
@@ -299,46 +290,27 @@ func localCatalogChanged() bool {
 }
 
 func githubDialog() {
-	d := newDialog("GitHub 자동 업데이트 설정", 520, 300)
-	const lx, ex = 14, 130
-	d.label("저장소", lx, 18, 110)
-	hRepo := d.edit(cat.Update.Repo, ex, 14, 250)
-	d.note("예: 계정이름/cad-launcher", ex+258, 18, 120, 20)
-	d.label("브랜치", lx, 50, 110)
-	hBranch := d.edit(branch(), ex, 46, 120)
-	d.label("토큰 (선택)", lx, 82, 110)
-	hTok := d.mk("EDIT", st.Token, ES_AUTOHSCROLL|0x0020 /*ES_PASSWORD*/ |WS_TABSTOP, WS_EX_CLIENTEDGE, 0)
-	mv(hTok, ex, 78, 370, 24)
-	d.note("공개 저장소면 비워 두세요. 비공개 저장소는 읽기 권한(Contents: Read) 토큰 필요 — 이 PC의 launcher_state.json 에만 저장됩니다.", ex, 106, 370, 36)
+	d := newDialog("업데이트 설정", 480, 210)
+	const lx, ex = 14, 110
+	d.label("저장소", lx, 18, 90)
+	d.note("github.com/"+fixedRepo+"  ("+fixedBranch+")", ex, 18, 350, 20)
 	hAuto := d.mk("BUTTON", "런처를 켤 때 자동으로 업데이트 확인", BS_AUTOCHECKBOX|WS_TABSTOP, 0, 0)
-	mv(hAuto, ex, 150, 370, 22)
+	mv(hAuto, ex, 48, 350, 22)
 	setCheck(hAuto, st.AutoUpdate)
 	msg := "업데이트 대상: lsp 폴더, catalog.json(리습 목록), " + exeRepoName + ", README.md"
 	if localCatalogChanged() {
-		msg += "\n※ 이 PC에서 리습 목록을 수정했습니다. 다른 PC에도 쓰려면 catalog.json 을 저장소에 올리세요."
+		msg += "\n※ 이 PC에서 리습 목록을 수정했습니다. 다음 업데이트 때 저장소 목록으로 덮어쓸지 물어봅니다."
 	}
-	d.note(msg, ex, 180, 370, 50)
-	d.button("확인", IDOK, 310, 258, 95, true)
-	d.button("취소", IDCANCEL, 410, 258, 95, false)
+	d.note(msg, ex, 80, 350, 60)
+	d.button("확인", IDOK, 270, 166, 95, true)
+	d.button("취소", IDCANCEL, 370, 166, 95, false)
 	d.onCmd = func(id, code int) {
-		if id != IDOK {
-			return
+		if id == IDOK {
+			st.AutoUpdate = isChecked(hAuto)
+			d.ok, d.done = true, true
 		}
-		repo := strings.Trim(strings.TrimSpace(getText(hRepo)), "/")
-		repo = strings.TrimPrefix(strings.TrimPrefix(repo, "https://github.com/"), "github.com/")
-		if repo != "" && strings.Count(repo, "/") != 1 {
-			msgBox("저장소는 '계정/저장소이름' 형식으로 입력하세요.", MB_ICONWARNING)
-			return
-		}
-		cat.Update.Repo = repo
-		cat.Update.Branch = strings.TrimSpace(getText(hBranch))
-		st.Token = strings.TrimSpace(getText(hTok))
-		st.AutoUpdate = isChecked(hAuto)
-		d.ok, d.done = true, true
 	}
-	if d.run(hRepo) {
-		saveCatalog()
+	if d.run(hAuto) {
 		saveState()
-		logf("GitHub 설정 저장: %s (%s)", cat.Update.Repo, branch())
 	}
 }

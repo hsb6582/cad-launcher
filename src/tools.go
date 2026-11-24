@@ -138,19 +138,17 @@ func fetchToolSource(t Tool) (string, error) {
 	switch {
 	case strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://"):
 		data, err = ghGet(src, "")
-	case cat.Update.Repo != "":
+	default:
 		segs := strings.Split(strings.TrimPrefix(filepath.ToSlash(src), "/"), "/")
 		for i := range segs {
 			segs[i] = url.PathEscape(segs[i])
 		}
-		data, err = ghGet("https://raw.githubusercontent.com/"+cat.Update.Repo+"/"+url.PathEscape(branch())+"/"+strings.Join(segs, "/"), "")
+		data, err = ghGet("https://raw.githubusercontent.com/"+fixedRepo+"/"+url.PathEscape(branch())+"/"+strings.Join(segs, "/"), "")
 		if err != nil { // 저장소에 없으면 로컬 파일로
 			if b, e2 := os.ReadFile(absPath(src)); e2 == nil {
 				data, err = b, nil
 			}
 		}
-	default:
-		data, err = os.ReadFile(absPath(src))
 	}
 	if err != nil {
 		return "", err

@@ -184,7 +184,7 @@ func createControls() {
 	hEnc = mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idEnc)
 	comboFill(hEnc, encodings, indexOf(encodings, st.Encoding))
 	hUpdate = mk("BUTTON", "업데이트 확인", WS_TABSTOP, 0, idUpdate)
-	hGitHub = mk("BUTTON", "GitHub 설정", WS_TABSTOP, 0, idGitHub)
+	hGitHub = mk("BUTTON", "업데이트 설정", WS_TABSTOP, 0, idGitHub)
 
 	hList = mk("SysTreeView32", "", TVS_HASBUTTONS|TVS_HASLINES|TVS_LINESATROOT|TVS_SHOWSELALWAYS|0x0010 /*TVS_DISABLEDRAGDROP*/ |WS_TABSTOP, WS_EX_CLIENTEDGE, idList)
 	hAddCat = mk("BUTTON", "분류 추가", WS_TABSTOP, 0, idAddCat)
@@ -764,7 +764,7 @@ func main() {
 	}
 	c(pShowWindow, hMain, SW_SHOWNORMAL)
 	c(pUpdateWindow, hMain)
-	if st.AutoUpdate && cat.Update.Repo != "" {
+	if st.AutoUpdate {
 		startUpdateCheck(false)
 	}
 

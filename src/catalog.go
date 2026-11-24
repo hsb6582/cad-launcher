@@ -40,7 +40,7 @@ type Category struct {
 
 type Catalog struct {
 	Version    int        `json:"version"`
-	Update     UpdateCfg  `json:"update"`
+	Update     *UpdateCfg `json:"update,omitempty"` // (사용 안 함: 저장소는 프로그램에 고정)
 	Categories []Category `json:"categories"`
 }
 

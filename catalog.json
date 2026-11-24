@@ -1,9 +1,5 @@
 {
   "version": 1,
-  "update": {
-    "repo": "hsb6582/cad-launcher",
-    "branch": "main"
-  },
   "categories": [
     {
       "name": "도면 기술검토",
