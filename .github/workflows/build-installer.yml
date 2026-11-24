@@ -8,7 +8,7 @@ on:
       - "catalog.json"
       - "lsp/**"
       - "tools/**"
-      - "CAD런처.exe"
+      - "src-modern/**"
       - "README.md"
       - ".github/workflows/build-installer.yml"
   workflow_dispatch: {}
@@ -19,6 +19,17 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Build CAD 런처 (요즘 스타일, src-modern)
+        shell: cmd
+        run: |
+          cd src-modern
+          go build -ldflags "-H windowsgui -s -w" -o build\CAD런처.exe .
 
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
