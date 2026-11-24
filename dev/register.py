@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""리습 머리말(@launcher)을 읽어 catalog.json 에 등록/갱신 (catalog v2: 분류 → 기능)
+r"""리습 머리말(@launcher)을 읽어 catalog.json 에 등록/갱신 (catalog v2: 분류 → 기능)
 
 사용:  python dev/register.py lsp/새리습.lsp [...]   (등록 후 dev/catalog_xlsx.py export 로 엑셀도 갱신)
 
@@ -10,12 +10,13 @@
 ;;; 설명: 리습 한 줄 설명
 ;;; 기능: 수량 대조 | MATX | 평면도·종단·자재내역 수량 비교 [| 분류]
 ;;; 옵션: MATX | *MATX-TOL* | 허용오차 | number | 0.5 | 도움말
-;;; 외부프로그램: MATX뷰어 | tools/MATXView.zip | zip | MATXView.exe | *MATX-EXE* | 1.0
+;;; 외부프로그램: MATX뷰어 | tools/MATXView.zip | zip | MATXView.exe | *MATX-EXE* | 1.0 | | C:\MATX-Tools
 ;;; 설명서:
 ;;;   리습 공통 안내 (두 칸 들여쓰기, 여러 줄)
 ;;; 기능설명서: MATX
 ;;;   기능별 설명서
 ;;; @end
+설치폴더를 비우면 %LOCALAPPDATA%\CADLauncher\tools\이름 (리습이 고정 경로를 쓰면 그 경로를 적음, 덮어쓰기 설치)
 같은 리습·명령어가 이미 목록에 있으면 머리말에 적힌 항목만 갱신하고 나머지는 그대로 둔다.
 """
 import json, re, sys
@@ -99,11 +100,11 @@ def parse(path: Path):
                 if len(p) > 5 and p[5]:
                     o["hint"] = p[5]
                 item(p[0]).setdefault("options", []).append(o)
-        elif k == "외부프로그램":  # 이름 | 설치파일 | 종류 | 실행파일 | LISP변수 | 버전 | 설치옵션
-            p = bar(v) + [""] * 7
+        elif k == "외부프로그램":  # 이름 | 설치파일 | 종류 | 실행파일 | LISP변수 | 버전 | 설치옵션 | 설치폴더
+            p = bar(v) + [""] * 8
             if p[0] and p[1]:
                 t2 = {"name": p[0], "source": p[1], "kind": p[2] or Path(p[1]).suffix.lstrip(".").lower()}
-                for f, val in (("exe", p[3]), ("var", p[4]), ("version", p[5]), ("args", p[6])):
+                for f, val in (("exe", p[3]), ("var", p[4]), ("version", p[5]), ("args", p[6]), ("dir", p[7])):
                     if val:
                         t2[f] = val
                 h["tools"].append(t2)

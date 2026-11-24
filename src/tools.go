@@ -25,6 +25,7 @@ type Tool struct {
 	Exe     string `json:"exe,omitempty"`  // zip/file: 설치 폴더 안 실행파일 / exe·msi: 설치 후 확인할 경로(%ProgramFiles% 등 사용 가능)
 	Args    string `json:"args,omitempty"` // exe·msi 설치 옵션 (예: /S)
 	Var     string `json:"var,omitempty"`  // 실행파일 경로를 받을 LISP 변수 (예: *MATX-EXE*)
+	Dir     string `json:"dir,omitempty"`  // zip/file 설치 폴더 (예: C:\MATX-Tools). 비우면 %LOCALAPPDATA%\CADLauncher\tools\이름
 }
 
 var toolKinds = []string{"zip", "exe", "msi", "file"}
@@ -49,7 +50,12 @@ func toolsRoot() string {
 	return filepath.Join(base, "CADLauncher", "tools")
 }
 
-func toolDir(t Tool) string { return filepath.Join(toolsRoot(), sanitize(t.Name)) }
+func toolDir(t Tool) string {
+	if strings.TrimSpace(t.Dir) != "" {
+		return filepath.Clean(expandEnv(t.Dir))
+	}
+	return filepath.Join(toolsRoot(), sanitize(t.Name))
+}
 
 func sanitize(s string) string {
 	return strings.Map(func(r rune) rune {
@@ -118,6 +124,9 @@ func toolsSummary(l *Lisp) string {
 	sb.WriteString("\n[외부 프로그램]  ('외부 프로그램' 버튼으로 설치)\n")
 	for _, t := range l.Tools {
 		sb.WriteString("  • " + toolStatusText(t) + "\n")
+		if t.Kind == "zip" || t.Kind == "file" {
+			sb.WriteString("      설치 위치: " + toolDir(t) + "\n")
+		}
 		if t.Desc != "" {
 			sb.WriteString("      " + t.Desc + "\n")
 		}
@@ -224,16 +233,16 @@ func installTools(ts []Tool) {
 			}
 			switch t.Kind {
 			case "zip":
+				// 덮어쓰기 설치: 압축 안의 파일만 바꾸고 폴더의 다른 파일(보정값·설정 등)은 그대로 둠
 				dir := toolDir(t)
-				_ = os.RemoveAll(dir + ".old")
-				_ = os.Rename(dir, dir+".old")
-				if err := unzipTo(dl, dir); err != nil {
-					_ = os.RemoveAll(dir)
-					_ = os.Rename(dir+".old", dir)
-					job.err = append(job.err, t.Name+": "+err.Error())
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					job.err = append(job.err, t.Name+": 폴더를 만들 수 없음 "+dir+" ("+err.Error()+")")
 					continue
 				}
-				_ = os.RemoveAll(dir + ".old")
+				if err := unzipTo(dl, dir); err != nil {
+					job.err = append(job.err, t.Name+": "+err.Error()+" (프로그램이 실행 중이면 닫고 다시 시도)")
+					continue
+				}
 				job.done = append(job.done, t.Name)
 			case "file":
 				dir := toolDir(t)

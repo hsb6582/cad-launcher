@@ -11,7 +11,8 @@ AutoCAD LT 2026 리습 런처. 각 PC의 CAD런처.exe 가 실행 때마다 이 
 ## 새 리습 추가 (토큰 절약: catalog.json 을 직접 읽거나 손으로 고치지 말 것)
 1. 리습 맨 위에 @launcher 머리말 작성 (형식은 dev/register.py 맨 위 설명). 기능 이름은 짧은 한국어.
 2. `lsp/파일.lsp` 저장 → `python dev/register.py lsp/파일.lsp` → `python dev/catalog_xlsx.py export`
-3. 외부 프로그램 설치 파일은 `tools/` (50MB 이상은 GitHub Release 주소)
+3. 외부 프로그램 설치 파일은 `tools/이름.zip` (50MB 이상은 GitHub Release 주소). 리습이 고정 경로(예: C:\MATX-Tools)를 쓰면 머리말 8번째 칸 '설치폴더'에 그 경로를 적는다.
+   엑셀 양식 등을 올리기 전에는 작성자(docProps)·외부 연결·공사명 등 회사/개인 정보를 반드시 지운다 (공개 저장소).
 4. 커밋(한국어 짧게) → `git -c push.negotiate=true push origin main`
 
 ## 사용자가 엑셀을 올렸을 때

@@ -67,7 +67,7 @@ CAD런처/
 ;;; 설명: 평면도·종단·자재내역 수량 대조
 ;;; 기능: 수량 대조 | MATX | 평면도·종단·자재 수량 비교
 ;;; 옵션: MATX | *MATX-TOL* | 허용오차 | number | 0.5
-;;; 외부프로그램: MATX뷰어 | tools/MATXView.zip | zip | MATXView.exe | *MATX-EXE* | 1.0
+;;; 외부프로그램: MATX 보조 프로그램 | tools/MATX-Tools.zip | zip | mapping_engine.exe | | 1.0 | | C:\MATX-Tools
 ;;; 설명서:
 ;;;   리습 공통 안내 (두 칸 들여쓰기)
 ;;; 기능설명서: MATX
