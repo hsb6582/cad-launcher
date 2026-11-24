@@ -11,6 +11,8 @@ package main
 import (
 	_ "embed"
 	"encoding/json"
+	"os"
+	"path/filepath"
 
 	webview2 "github.com/jchv/go-webview2"
 )
@@ -37,8 +39,20 @@ func main() {
 
 	html := `<script>window.__CATALOG__ = ` + catalogJSON + `; window.__STATE__ = ` + stateJSON + `;</script>` + uiHTML
 
+	// WebView2는 기본적으로 '실행파일이 있는 폴더'에 자기 작업 폴더를 만들려고 한다.
+	// C:\Program Files\... 처럼 일반 사용자가 쓸 수 없는 폴더에 설치되면 그게 실패해서
+	// 창은 뜨는데 화면만 흰색으로 남는다 - 그래서 항상 쓸 수 있는 폴더(LOCALAPPDATA)를
+	// 명시적으로 지정한다.
+	localAppData := os.Getenv("LOCALAPPDATA")
+	if localAppData == "" {
+		localAppData = os.TempDir()
+	}
+	dataPath := filepath.Join(localAppData, "CADLauncher", "WebView2")
+	_ = os.MkdirAll(dataPath, 0755)
+
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
-		Debug: true, // 흰 화면만 뜰 때 우클릭 → 검사(DevTools)로 원인을 볼 수 있게 (문제 없으면 나중에 끔)
+		Debug:    true, // 흰 화면만 뜰 때 우클릭 → 검사(DevTools)로 원인을 볼 수 있게 (문제 없으면 나중에 끔)
+		DataPath: dataPath,
 		WindowOptions: webview2.WindowOptions{
 			Title:  "CAD 런처",
 			Width:  1180,
