@@ -18,7 +18,7 @@
 ;;;   [순서]
 ;;;   1) 새 프로젝트면 '자재내역 표 위치 보정'(MATCAL)을 먼저 1회 실행합니다. 보정값은 도면 폴더의 matx-config.txt 에 저장됩니다.
 ;;;   2) '자재내역 엑셀 자동 작성'(MATX)을 실행합니다.
-;;;   3) 결과는 도면 폴더 안 MATX 폴더에 저장됩니다: material_export.csv → 자재내역_결과.xlsx
+;;;   3) 결과는 도면 폴더 안 MATX 폴더에 저장됩니다: material_export.csv → 자재내역_결과.xlsx (생성되면 자동으로 열립니다)
 ;;;
 ;;;   ※ 엑셀이 자동으로 안 만들어지면 C:\MATX-Tools\run_after_matx.bat 을 직접 실행하고, MATX 폴더의 auto_matx_log.txt 를 확인하세요.
 ;;; 기능설명서: MATX
