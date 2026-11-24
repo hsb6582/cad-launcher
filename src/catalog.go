@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode/utf16"
 	"unsafe"
@@ -66,6 +67,7 @@ func loadCatalog() {
 			n += len(l.Commands)
 		}
 	}
+	applyOrder()
 	logf("리습 목록 불러옴 (명령 %d개)", n)
 }
 
@@ -577,8 +579,74 @@ func moveNode(dir int) {
 	default:
 		return
 	}
-	saveCatalog()
+	saveOrder() // 목록 파일(catalog.json)은 건드리지 않음 → 업데이트와 충돌 없음
 	refreshTree(n)
+}
+
+// ───────────── 이 PC 전용 순서 ─────────────
+func rankBy(order []string) func(string, int) int {
+	pos := map[string]int{}
+	for i, x := range order {
+		pos[x] = i
+	}
+	return func(name string, orig int) int {
+		if p, ok := pos[name]; ok {
+			return p
+		}
+		return len(order) + orig // 새로 생긴 항목은 원래 순서대로 뒤에
+	}
+}
+
+func applyOrder() {
+	if len(st.Order) == 0 {
+		return
+	}
+	rk := rankBy(st.Order[""])
+	idx := map[string]int{}
+	for i, ct := range cat.Categories {
+		idx[ct.Name] = i
+	}
+	sort.SliceStable(cat.Categories, func(a, b int) bool {
+		return rk(cat.Categories[a].Name, idx[cat.Categories[a].Name]) < rk(cat.Categories[b].Name, idx[cat.Categories[b].Name])
+	})
+	for ci := range cat.Categories {
+		ct := &cat.Categories[ci]
+		rl := rankBy(st.Order["c:"+ct.Name])
+		li := map[string]int{}
+		for i, l := range ct.Lisps {
+			li[l.Name] = i
+		}
+		sort.SliceStable(ct.Lisps, func(a, b int) bool {
+			return rl(ct.Lisps[a].Name, li[ct.Lisps[a].Name]) < rl(ct.Lisps[b].Name, li[ct.Lisps[b].Name])
+		})
+		for k := range ct.Lisps {
+			l := &ct.Lisps[k]
+			rc := rankBy(st.Order["l:"+ct.Name+"/"+l.Name])
+			mi := map[string]int{}
+			for i, m := range l.Commands {
+				mi[cmdID(m.Command)] = i
+			}
+			sort.SliceStable(l.Commands, func(a, b int) bool {
+				ia, ib := cmdID(l.Commands[a].Command), cmdID(l.Commands[b].Command)
+				return rc(ia, mi[ia]) < rc(ib, mi[ib])
+			})
+		}
+	}
+}
+
+func saveOrder() {
+	o := map[string][]string{}
+	for _, ct := range cat.Categories {
+		o[""] = append(o[""], ct.Name)
+		for _, l := range ct.Lisps {
+			o["c:"+ct.Name] = append(o["c:"+ct.Name], l.Name)
+			for _, m := range l.Commands {
+				o["l:"+ct.Name+"/"+l.Name] = append(o["l:"+ct.Name+"/"+l.Name], cmdID(m.Command))
+			}
+		}
+	}
+	st.Order = o
+	saveState()
 }
 
 // ───────────── 리습 편집 창 ─────────────

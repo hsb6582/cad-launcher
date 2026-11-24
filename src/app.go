@@ -32,6 +32,7 @@ type State struct {
 	Synced     map[string]string                 `json:"synced,omitempty"`
 	Installed  map[string]string                 `json:"installed,omitempty"` // 외부 프로그램 이름 → 설치한 버전
 	LeftW      int                               `json:"leftW,omitempty"`     // 목록 칸 폭
+	Order      map[string][]string               `json:"order,omitempty"`     // 이 PC에서 바꾼 목록 순서
 }
 
 var (
@@ -187,13 +188,11 @@ func createControls() {
 	hGitHub = mk("BUTTON", "업데이트 설정", WS_TABSTOP, 0, idGitHub)
 
 	hList = mk("SysTreeView32", "", TVS_HASBUTTONS|TVS_HASLINES|TVS_LINESATROOT|TVS_SHOWSELALWAYS|0x0010 /*TVS_DISABLEDRAGDROP*/ |WS_TABSTOP, WS_EX_CLIENTEDGE, idList)
-	hAddCat = mk("BUTTON", "분류 추가", WS_TABSTOP, 0, idAddCat)
-	hAddLisp = mk("BUTTON", "리습 추가", WS_TABSTOP, 0, idAddLisp)
-	hAddCmd = mk("BUTTON", "명령 추가", WS_TABSTOP, 0, idAddCmd)
-	hEdit = mk("BUTTON", "편집", WS_TABSTOP, 0, idEdit)
-	hDel = mk("BUTTON", "삭제", WS_TABSTOP, 0, idDel)
-	hUp = mk("BUTTON", "▲", WS_TABSTOP, 0, idUp)
-	hDown = mk("BUTTON", "▼", WS_TABSTOP, 0, idDown)
+	// 목록 편집은 엑셀(dev/catalog.xlsx) → 저장소에서 하고, 런처에서는 순서만 바꿈
+	hUp = mk("BUTTON", "▲ 위로", WS_TABSTOP, 0, idUp)
+	hDown = mk("BUTTON", "▼ 아래로", WS_TABSTOP, 0, idDown)
+	hAddCat = mk("STATIC", "순서는 이 PC에만 저장", SS_LEFT, 0, 0)
+	grey[hAddCat] = true
 
 	hTitle = mk("STATIC", "", SS_LEFT, 0, 0)
 	c(pSendMessageW, hTitle, WM_SETFONT, hFontBold, 1)
@@ -281,16 +280,10 @@ func layout() {
 	top := 78
 	bottomH := 160
 	mainBottom := H - bottomH - 8
-	mv(hList, 8, top, leftW, max(mainBottom-top-64, 60))
-	bw := (leftW - 8) / 3
-	ew := (leftW - 8 - 96 - 8) / 2 // 편집·삭제 버튼 폭
-	mv(hAddCat, 8, mainBottom-60, bw, 28)
-	mv(hAddLisp, 12+bw, mainBottom-60, bw, 28)
-	mv(hAddCmd, 16+2*bw, mainBottom-60, leftW-8-2*bw, 28)
-	mv(hEdit, 8, mainBottom-28, ew, 28)
-	mv(hDel, 12+ew, mainBottom-28, ew, 28)
-	mv(hUp, 16+2*ew, mainBottom-28, 46, 28)
-	mv(hDown, 66+2*ew, mainBottom-28, leftW-58-2*ew, 28)
+	mv(hList, 8, top, leftW, max(mainBottom-top-32, 60))
+	mv(hUp, 8, mainBottom-28, 80, 28)
+	mv(hDown, 92, mainBottom-28, 80, 28)
+	mv(hAddCat, 180, mainBottom-22, max(leftW-172, 10), 20)
 
 	rw := max(W-rightX-8, 200)
 	mv(hTitle, rightX, top, rw, 26)
