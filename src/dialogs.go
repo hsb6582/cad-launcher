@@ -126,7 +126,7 @@ func registerDialogClass() {
 		lpfnWndProc:   syscall.NewCallback(dlgProc),
 		hInstance:     hInst,
 		hCursor:       c(pLoadCursorW, 0, 32512),
-		hbrBackground: COLOR_BTNFACE + 1,
+		hbrBackground: hBgBrush,
 		lpszClassName: dlgClass,
 	}
 	wc.cbSize = uint32(unsafe.Sizeof(wc))

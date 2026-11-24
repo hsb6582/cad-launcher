@@ -25,6 +25,8 @@ var (
 	comdlg32 = syscall.NewLazyDLL("comdlg32.dll")
 	shell32  = syscall.NewLazyDLL("shell32.dll")
 	ole32    = syscall.NewLazyDLL("ole32.dll")
+	dwmapi   = syscall.NewLazyDLL("dwmapi.dll")
+	uxtheme  = syscall.NewLazyDLL("uxtheme.dll")
 
 	pRegisterClassExW     = user32.NewProc("RegisterClassExW")
 	pCreateWindowExW      = user32.NewProc("CreateWindowExW")
@@ -66,11 +68,22 @@ var (
 	pReleaseCapture       = user32.NewProc("ReleaseCapture")
 	pMapWindowPoints      = user32.NewProc("MapWindowPoints")
 	pReleaseDC            = user32.NewProc("ReleaseDC")
+	pFillRect             = user32.NewProc("FillRect")
+	pDrawTextW            = user32.NewProc("DrawTextW")
 
-	pCreateFontW   = gdi32.NewProc("CreateFontW")
-	pGetDeviceCaps = gdi32.NewProc("GetDeviceCaps")
-	pSetBkColor    = gdi32.NewProc("SetBkColor")
-	pSetTextColor  = gdi32.NewProc("SetTextColor")
+	pCreateFontW      = gdi32.NewProc("CreateFontW")
+	pGetDeviceCaps    = gdi32.NewProc("GetDeviceCaps")
+	pSetBkColor       = gdi32.NewProc("SetBkColor")
+	pSetTextColor     = gdi32.NewProc("SetTextColor")
+	pCreateSolidBrush = gdi32.NewProc("CreateSolidBrush")
+	pDeleteObject     = gdi32.NewProc("DeleteObject")
+	pSelectObject     = gdi32.NewProc("SelectObject")
+	pRoundRect        = gdi32.NewProc("RoundRect")
+	pCreatePen        = gdi32.NewProc("CreatePen")
+	pSetBkMode        = gdi32.NewProc("SetBkMode")
+
+	pDwmSetWindowAttribute = dwmapi.NewProc("DwmSetWindowAttribute")
+	pSetWindowTheme        = uxtheme.NewProc("SetWindowTheme")
 
 	pGetModuleHandleW    = kernel32.NewProc("GetModuleHandleW")
 	pCreateActCtxW       = kernel32.NewProc("CreateActCtxW")
@@ -157,7 +170,53 @@ const (
 	CBS_DROPDOWN        = 0x0002
 	ES_WANTRETURN       = 0x1000
 	LB_SETCURSEL        = 0x0186
+
+	BS_OWNERDRAW = 0x000B
+	WM_DRAWITEM  = 0x002B
+	ODS_SELECTED = 0x0001
+
+	DT_CENTER     = 0x0001
+	DT_VCENTER    = 0x0004
+	DT_SINGLELINE = 0x0020
+	TRANSPARENT   = 1
+	PS_SOLID      = 0
+
+	DWMWA_WINDOW_CORNER_PREFERENCE = 33
+	DWMWC_ROUND                    = 2
+
+	TVM_SETEXTENDEDSTYLE = 0x112C
+	TVS_EX_DOUBLEBUFFER  = 0x0004
 )
+
+// Win32 COLORREF는 0x00bbggrr 순서(리틀엔디안 BGR)라서 직접 조합하지 않고 이 함수로 만든다.
+func RGB(r, g, b byte) uintptr { return uintptr(r) | uintptr(g)<<8 | uintptr(b)<<16 }
+
+// ───────────── 배색 (Claude 데스크톱 앱 느낌의 따뜻한 톤) ─────────────
+var (
+	clrBg        = RGB(0xF7, 0xF4, 0xEC) // 창 배경 (크림색)
+	clrText      = RGB(0x2D, 0x29, 0x24) // 기본 글자색
+	clrSubText   = RGB(0x8C, 0x85, 0x7A) // 회색 처리된(grey[]) 보조 글자색
+	clrPanelBg   = RGB(0xFF, 0xFF, 0xFF) // 로그·설명서 칸 배경
+	clrAccent    = RGB(0xCC, 0x78, 0x5C) // 강조색(테라코타) - '▶ 실행' 버튼
+	clrAccentDk  = RGB(0xAD, 0x5F, 0x46) // 강조색 테두리/눌렸을 때
+	clrAccentTxt = RGB(0xFF, 0xFF, 0xFF)
+
+	hBgBrush    uintptr // 창 배경 브러시 (main()에서 생성)
+	hPanelBrush uintptr // 로그·설명서 칸 배경 브러시 (main()에서 생성)
+)
+
+type drawItemStruct struct {
+	ctlType    uint32
+	ctlID      uint32
+	itemID     uint32
+	itemAction uint32
+	itemState  uint32
+	_          uint32 // hwndItem(8바이트 정렬) 맞춤 패딩
+	hwndItem   uintptr
+	hDC        uintptr
+	rcItem     rectT
+	itemData   uintptr
+}
 
 type wndClassEx struct {
 	cbSize        uint32
