@@ -146,11 +146,6 @@
   }
   .log div{padding:1px 0;}
 
-  .badge{
-    position:fixed; right:14px; bottom:130px; background:var(--accent); color:#fff;
-    font-size:11px; padding:4px 10px; border-radius:999px; opacity:.9; pointer-events:none;
-  }
-
   ::-webkit-scrollbar{width:10px; height:10px;}
   ::-webkit-scrollbar-thumb{background:var(--border); border-radius:6px;}
   ::-webkit-scrollbar-track{background:transparent;}
@@ -166,7 +161,7 @@
     </div>
     <button id="btnFind">창 찾기</button>
     <div class="field grow" style="max-width:260px">
-      <select><option>(연결된 AutoCAD 창 없음 - 미리보기)</option></select>
+      <select id="winSel"><option>(창 찾기를 눌러주세요)</option></select>
     </div>
     <div class="spacer"></div>
     <button id="btnUpdCfg" class="icon-btn" title="업데이트 설정">↻</button>
@@ -210,20 +205,18 @@
   </div>
 
   <div class="logwrap">
-    <div class="loghead"><span>로그</span><span>미리보기 화면 - 실제 실행/업데이트는 동작하지 않습니다</span></div>
-    <div class="log" id="log">
-      <div>[09:14:02] 리습 목록 불러옴</div>
-      <div>[09:14:02] CAD 창을 찾지 못함 - LT 실행 여부와 키워드를 확인하세요</div>
-    </div>
+    <div class="loghead"><span>로그</span></div>
+    <div class="log" id="log"></div>
   </div>
-
-  <div class="badge">미리보기 (스타일 확인용)</div>
 
 <script>
 const catalog = window.__CATALOG__ || {lisps:[], categories:[]};
+const state = window.__STATE__ || {keyword:'AutoCAD LT', method:'WM_COPYDATA', encoding:'cp949', cancel:true, topmost:false, values:{}};
 const sidebar = document.getElementById('sidebar');
 const content = document.getElementById('content');
 const logEl = document.getElementById('log');
+const winSel = document.getElementById('winSel');
+let selectedWindow = -1;
 
 function log(msg){
   const t = new Date().toTimeString().slice(0,8);
@@ -232,6 +225,35 @@ function log(msg){
   logEl.appendChild(d);
   logEl.scrollTop = logEl.scrollHeight;
 }
+
+// 업데이트 확인·외부 프로그램 설치처럼 시간이 걸리는 작업의 결과가 나중에 여기로 들어온다.
+window.onBackendEvent = function(kind, payload){
+  if(payload && payload.error){ log((kind==='updateResult'?'업데이트 확인 실패: ':'외부 프로그램 설치 실패: ') + payload.error); return; }
+  if(payload && payload.message){ payload.message.split('\n').forEach(line => log(line)); }
+};
+
+function findWindows(){
+  const kw = document.getElementById('kw').value;
+  window.setKeyword(kw);
+  log('CAD 창 찾는 중... (' + kw + ')');
+  window.findWindows(kw).then(titles => {
+    winSel.innerHTML = '';
+    if(!titles.length){
+      winSel.innerHTML = '<option>(찾은 창 없음)</option>';
+      selectedWindow = -1;
+      log('CAD 창을 찾지 못함 - LT 실행 여부와 키워드를 확인하세요');
+      return;
+    }
+    titles.forEach((t, i) => {
+      const opt = document.createElement('option');
+      opt.value = i; opt.textContent = t;
+      winSel.appendChild(opt);
+    });
+    selectedWindow = 0;
+    log('CAD 창 ' + titles.length + '개 찾음');
+  }).catch(err => log('창 찾기 오류: ' + err));
+}
+winSel.addEventListener('change', () => { selectedWindow = parseInt(winSel.value, 10); });
 
 function lispTagFor(items){
   const seen = [];
@@ -272,31 +294,50 @@ function renderSidebar(){
   });
 }
 
-function optRow(o){
+function optRow(o, saved){
   const row = document.createElement('div');
   row.className = 'opt-row';
   const label = document.createElement('label');
   label.textContent = o.label || o.key;
   row.appendChild(label);
+  const has = saved && Object.prototype.hasOwnProperty.call(saved, o.key);
+  const val = has ? saved[o.key] : o.default;
   let input;
   if(o.type === 'check'){
-    input = document.createElement('input'); input.type = 'checkbox'; input.checked = !!o.default;
+    input = document.createElement('input'); input.type = 'checkbox';
+    input.checked = has ? (val === true || val === '1' || val === 'true') : !!o.default;
   } else if(o.type === 'choice'){
     input = document.createElement('select');
     (o.values||[]).forEach(v=>{
       const opt = document.createElement('option');
-      const val = typeof v === 'string' ? v : v.value;
+      const ov = typeof v === 'string' ? v : v.value;
       const lab = typeof v === 'string' ? v : (v.label||v.value);
-      opt.value = val; opt.textContent = lab;
+      opt.value = ov; opt.textContent = lab;
       input.appendChild(opt);
     });
+    if(val!==undefined && val!==null) input.value = val;
   } else {
     input = document.createElement('input');
     input.type = (o.type === 'number' || o.type === 'int') ? 'number' : 'text';
-    input.value = o.default!==undefined && o.default!==null ? o.default : '';
+    input.value = val!==undefined && val!==null ? val : '';
   }
+  input.dataset.optKey = o.key;
+  input.dataset.optType = o.type;
   row.appendChild(input);
   return row;
+}
+
+// 오른쪽 화면(옵션 카드)에 그려진 입력칸에서 현재 값을 모은다. check 는 "1"/"0" 문자열로 보낸다.
+function collectOptionValues(){
+  const values = {};
+  content.querySelectorAll('[data-opt-key]').forEach(el => {
+    if(el.dataset.optType === 'check'){
+      values[el.dataset.optKey] = el.checked ? '1' : '0';
+    } else {
+      values[el.dataset.optKey] = el.value;
+    }
+  });
+  return values;
 }
 
 function selectItem(ci, ii, rowEl){
@@ -315,7 +356,8 @@ function selectItem(ci, ii, rowEl){
   if(it.options && it.options.length){
     const card = document.createElement('div'); card.className='card';
     const h2 = document.createElement('h2'); h2.textContent='옵션'; card.appendChild(h2);
-    it.options.forEach(o=>card.appendChild(optRow(o)));
+    const saved = (state.values && state.values[it.lisp + '|' + it.command.toUpperCase()]) || null;
+    it.options.forEach(o=>card.appendChild(optRow(o, saved)));
     content.appendChild(card);
   }
 
@@ -328,39 +370,82 @@ function selectItem(ci, ii, rowEl){
 
   const actions = document.createElement('div'); actions.className='actions';
   const run = document.createElement('button'); run.className='primary big'; run.textContent='▶ 실행';
-  run.onclick = () => log('(미리보기) 실행: ' + it.name);
+  run.onclick = () => {
+    if(selectedWindow < 0){ log('대상 CAD 창이 없습니다. "창 찾기"를 먼저 눌러 주세요.'); return; }
+    const values = collectOptionValues();
+    window.runItem(it.lisp||'', it.command, selectedWindow, values)
+      .then(msg => log(msg))
+      .catch(err => log('실행 오류: ' + err));
+  };
   const reset = document.createElement('button'); reset.textContent='옵션 기본값';
-  reset.onclick = () => log('(미리보기) 옵션을 기본값으로 되돌림');
+  reset.onclick = () => {
+    content.querySelectorAll('[data-opt-key]').forEach(el => {
+      const o = (it.options||[]).find(x => x.key === el.dataset.optKey);
+      if(!o) return;
+      if(o.type === 'check') el.checked = !!o.default;
+      else el.value = o.default!==undefined && o.default!==null ? o.default : '';
+    });
+    log('옵션을 기본값으로 되돌림');
+  };
   actions.appendChild(run); actions.appendChild(reset);
 
   const lisp = (catalog.lisps||[]).find(l=>l.id===it.lisp);
   if(lisp && lisp.tools && lisp.tools.length){
     const tools = document.createElement('button'); tools.textContent='외부 프로그램 설치';
-    tools.onclick = () => log('(미리보기) 외부 프로그램 설치 대화상자 열기');
+    tools.onclick = () => {
+      log('외부 프로그램 설치 시작: ' + lisp.tools.map(t=>t.name).join(', '));
+      window.installTools(it.lisp).catch(err => log('외부 프로그램 설치 오류: ' + err));
+    };
     actions.appendChild(tools);
   }
   content.appendChild(actions);
 }
 
-document.getElementById('btnFind').onclick = () => log('CAD 창 찾는 중... (미리보기에서는 실제로 찾지 않음)');
-document.getElementById('btnUpdCfg').onclick = () => log('(미리보기) 업데이트 설정 창 열기');
+document.getElementById('btnFind').onclick = findWindows;
+document.getElementById('btnUpdCfg').onclick = () => {
+  log('업데이트 확인 중... (완료되면 아래 로그에 결과가 표시됩니다)');
+  window.checkForUpdates().catch(err => log('업데이트 확인 오류: ' + err));
+};
 
 const advOverlay = document.getElementById('advOverlay');
+const advMethod = document.getElementById('advMethod');
+const advCancel = document.getElementById('advCancel');
+const advTop = document.getElementById('advTop');
+const advEnc = document.getElementById('advEnc');
+advMethod.value = state.method || 'WM_COPYDATA';
+advCancel.checked = !!state.cancel;
+advTop.checked = !!state.topmost;
+advEnc.value = state.encoding || 'cp949';
+
 document.getElementById('btnAdv').onclick = () => advOverlay.classList.add('show');
 document.getElementById('advClose').onclick = () => advOverlay.classList.remove('show');
 advOverlay.addEventListener('click', e => { if(e.target === advOverlay) advOverlay.classList.remove('show'); });
-document.getElementById('advCheckUpdate').onclick = () => { log('(미리보기) 업데이트 확인 중...'); };
+
+advMethod.addEventListener('change', () => window.setMethod(advMethod.value));
+advEnc.addEventListener('change', () => window.setEncoding(advEnc.value));
+advCancel.addEventListener('change', () => window.setCancel(advCancel.checked));
+advTop.addEventListener('change', () => window.setTopmost(advTop.checked));
+
+document.getElementById('advCheckUpdate').onclick = () => {
+  log('업데이트 확인 중... (완료되면 아래 로그에 결과가 표시됩니다)');
+  window.checkForUpdates().catch(err => log('업데이트 확인 오류: ' + err));
+};
 function sendFreeCmd(){
   const el = document.getElementById('advFree');
   const t = el.value.trim();
   if(!t) return;
-  log('(미리보기) 직접 명령 전송: ' + t);
+  if(selectedWindow < 0){ log('대상 CAD 창이 없습니다. "창 찾기"를 먼저 눌러 주세요.'); return; }
+  window.sendFree(selectedWindow, t + '\n').then(msg => log(msg)).catch(err => log('전송 오류: ' + err));
   el.value = '';
 }
 document.getElementById('advSend').onclick = sendFreeCmd;
 document.getElementById('advFree').addEventListener('keydown', e => { if(e.key === 'Enter') sendFreeCmd(); });
 
 renderSidebar();
+log('리습 목록 불러옴 (기능 ' + (catalog.categories||[]).reduce((n,c)=>n+(c.items?c.items.length:0),0) + '개)');
+// window.findWindows 등 Go쪽 바인딩이 페이지 스크립트보다 먼저 준비되지만,
+// 혹시 몰라 한 틱 늦춰서 호출해 초기 렌더링에 영향이 없게 한다.
+setTimeout(findWindows, 0);
 
 // 처음 열었을 때 바로 '실행' 화면이 보이도록 첫 분류의 첫 기능을 미리 선택해둔다.
 (function selectFirst(){
