@@ -50,7 +50,7 @@ CAD런처/
 
 | 종류 | 설치 방법 |
 |---|---|
-| zip | `%LOCALAPPDATA%\CADLauncher\tools\이름\`에 압축을 풉니다 (관리자 권한 필요 없음, 권장) |
+| zip | 설치 폴더에 압축을 풉니다. 기본은 `%LOCALAPPDATA%\CADLauncher\tools\이름\`, 리습이 고정 경로를 쓰면 그 경로(예: `C:\MATX-Tools`). 덮어쓰기 방식이라 폴더의 다른 파일은 그대로 둡니다 |
 | file | 파일 하나를 같은 폴더에 복사합니다 |
 | exe / msi | 설치 프로그램을 실행합니다 (설치 옵션 예: `/S`, `/quiet`) |
 
