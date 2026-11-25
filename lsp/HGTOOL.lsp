@@ -968,6 +968,7 @@
 (setq *QC:LAY-QTXT*  "Q-종단TEXT")       ; 종단 문자 (밴드의 관경 글자 예: LP 160mm PE)
 (setq *QC:BAND-MINL* 10.0)               ; 종단면도 밴드로 볼 가로선 최소 길이
 (setq *QC:ARW-TOL*   1.0)                ; 밴드 가로선 끝 - 화살표 객체 허용 거리 (검증용)
+(setq *QC:LDR-SLOPES* '(0.5 0.75 1.0 0.3 1.5)) ; 지시선 사선 가로/세로 비 후보 (0.5=약63도, 1.0=45도, 1.5=약34도)
 (setq *QC:HIDDEN*    "*HIDDEN*")         ; 제외할 선종류
 (setq *QC:STA-INT*   20.0)               ; 측점 간격(m)
 (setq *QC:STA-TXTD*  10.0)               ; 평면 측점 글자 - 주관로 최대 거리
@@ -1459,9 +1460,10 @@
 ;;  1) 긴 구간부터 기본 위치(선 위/아래 가운데)에 놓고, 이미 놓인 새 문구와 겹치는 구간만 옮길 대상으로 뺌
 ;;  2) 옮길 구간끼리 붙어 있으면 한 무리로 보고 계단식 배치 :
 ;;     오른쪽 구간이 가장 낮은 줄, 왼쪽으로 갈수록 한 줄씩 위.
-;;     지시선은 한 번 꺾인 모양 : 구간 가운데에서 45도로 오른쪽 위로 올라가 가로 받침선으로 꺾임.
+;;     지시선은 한 번 꺾인 모양 : 구간 가운데에서 사선으로 올라가 가로 받침선으로 꺾임.
 ;;     윗문구는 받침선 위, 아랫문구는 받침선 아래 (밴드와 같은 모양)
-;;     (사선이 모두 평행이라 서로 교차하지 않고, 다른 문구도 지나지 않음)
+;;     사선 각도는 고정하지 않음 : 아래 줄부터, 각 줄에서 *QC:LDR-SLOPES* 순서(가파른 쪽 우선)로
+;;     오른쪽 -> 왼쪽 꺾임을 시도해 문구·지시선과 겹치지 않는 첫 자리 (구간 가까이에 모이도록)
 ;;  3) 그래도 이미 놓인 문구·지시선과 겹치면 그 구간만 한 줄씩 더 올림
 (defun qc:bandtexts (items h sty / g defs placed ldrs bad it xm y up dn bw r ys sx2 xc blk
                                   lp lq ok clus cur cx k xl)
@@ -1499,17 +1501,21 @@
             bw (max (if up (qc:txtw up h sty) 0.0) (if dn (qc:txtw dn h sty) 0.0))
             r k ok nil)
       (while (and (not ok) (<= r (+ k 20)))
-        (setq ys  (+ y (* 0.6 h) (* r 3.6 h))                       ; 받침선 높이 (줄 간격 = 글자 묶음 높이 3.3h + 여유)
-              lp  (list xm y)                                       ; 지시선 시작 (밴드선 위)
-              lq  (list (+ xm (- ys y)) ys)                         ; 꺾이는 점 (45도)
-              sx2 (+ (car lq) bw (* 0.6 h))                         ; 받침선 끝
-              blk (list (car lq) (- ys (* 1.61 h)) sx2 (+ ys (* 1.69 h))))
-        (if (not (or (vl-some '(lambda (o) (or (qc:tboxhit blk o g) (qc:segbox lp lq o))) placed)
-                     (vl-some '(lambda (l) (or (qc:segbox (car l) (cadr l) blk)
-                                               (inters lp lq (car l) (cadr l) T)))
-                              ldrs)))
-          (setq ok T)
-          (setq r (1+ r))))
+        (setq ys (+ y (* 0.6 h) (* r 3.6 h)))                       ; 받침선 높이 (줄 간격 = 글자 묶음 높이 3.3h + 여유)
+        (foreach sd '(1.0 -1.0)                                     ; 오른쪽 꺾임 우선, 안 되면 왼쪽
+          (foreach f *QC:LDR-SLOPES*
+            (if (not ok)
+              (progn
+                (setq lp  (list xm y)                               ; 지시선 시작 (밴드선 위)
+                      lq  (list (+ xm (* sd f (- ys y))) ys)        ; 꺾이는 점
+                      sx2 (+ (car lq) (* sd (+ bw (* 0.6 h))))      ; 받침선 끝
+                      blk (list (min (car lq) sx2) (- ys (* 1.61 h)) (max (car lq) sx2) (+ ys (* 1.69 h))))
+                (if (not (or (vl-some '(lambda (o) (or (qc:tboxhit blk o g) (qc:segbox lp lq o))) placed)
+                             (vl-some '(lambda (l) (or (qc:segbox (car l) (cadr l) blk)
+                                                       (inters lp lq (car l) (cadr l) T)))
+                                      ldrs)))
+                  (setq ok T))))))
+        (if (not ok) (setq r (1+ r))))
       ;; 지시선 : 사선 + 받침선 (폴리선 1개)
       (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") (cons 8 *QC:LAY-NEW*) (cons 62 *QC:NEW-COL-G*)
                      '(100 . "AcDbPolyline") '(90 . 3) '(70 . 0)
