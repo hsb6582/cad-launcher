@@ -148,6 +148,18 @@ func itemTag(it *Item) string {
 }
 
 // "(GGD)" 처럼 명령어만 표시 (리습 이름은 상위 분류에 표시)
+// 오른쪽 제목 옆 꼬리표: "BPDF · BPDF_S" (리습 · 명령어)
+func itemChip(it *Item) string {
+	id := cmdID(it.Command)
+	if it.Lisp != "" && it.Lisp != id {
+		return it.Lisp + " · " + id
+	}
+	if it.Lisp != "" {
+		return it.Lisp
+	}
+	return id
+}
+
 func cmdTag(it *Item) string {
 	return "(" + cmdID(it.Command) + ")"
 }
@@ -242,7 +254,7 @@ func refreshTree(sel nodeRef) {
 		if !isCollapsed("c:" + ct.Name) {
 			state |= TVIS_EXPANDED
 		}
-		hc := tvInsertItem(tviRoot, ct.Name+catLispTag(&ct), state)
+		hc := tvInsertItem(tviRoot, ct.Name, state)
 		itemNode[hc], nodeItem[cn] = cn, hc
 		for ii := range ct.Items {
 			in := nodeRef{nkItem, ci, ii}
@@ -251,11 +263,16 @@ func refreshTree(sel nodeRef) {
 			if it.Recommend {
 				rs = stateRecommend
 			}
-			hi := tvInsertItem(hc, it.Name+"   "+cmdTag(it), rs)
+			hi := tvInsertItem(hc, it.Name, rs)
 			itemNode[hi], nodeItem[in] = in, hi
 		}
 	}
 	building = false
+	n := 0
+	for _, ct := range cat.Categories {
+		n += len(ct.Items)
+	}
+	setText(hListCnt, itoa(n)+"개")
 	if h := nodeItem[sel]; h != 0 {
 		c(pSendMessageW, hList, TVM_SELECTITEM, TVGN_CARET, h)
 		c(pSendMessageW, hList, TVM_ENSUREVISIBLE, 0, h)
@@ -298,7 +315,8 @@ func showNode(n nodeRef) {
 	switch n.kind {
 	case nkCat:
 		ct := n.category()
-		setText(hTitle, ct.Name+catLispTag(ct))
+		setText(hTitle, ct.Name)
+		setText(hChip, strings.Trim(strings.TrimSpace(catLispTag(ct)), "()"))
 		setText(hDesc, "기능 "+itoa(len(ct.Items))+"개")
 		var sb strings.Builder
 		for i := range ct.Items {
@@ -312,7 +330,8 @@ func showNode(n nodeRef) {
 	case nkItem:
 		it := n.item()
 		setText(hTitle, it.Name)
-		setText(hDesc, strings.TrimSpace(it.Desc+"   "+cmdTag(it)))
+		setText(hChip, itemChip(it))
+		setText(hDesc, it.Desc)
 		man := it.Manual
 		if man == "" {
 			man = it.Desc
@@ -335,8 +354,9 @@ func showNode(n nodeRef) {
 		run = 1
 	default:
 		setText(hTitle, "기능을 선택하세요")
+		setText(hChip, "")
 		setText(hDesc, "")
-		setManual("왼쪽 목록에서 기능을 선택하면 설명이 여기에 표시됩니다.\n\n더블클릭하거나 ▶ 실행을 누르면 AutoCAD LT에서 실행됩니다.\n괄호 안은 (리습 · 명령어) 입니다.")
+		setManual("왼쪽 목록에서 기능을 선택하면 설명이 여기에 표시됩니다.\n\n더블클릭하거나 ▶ 실행을 누르면 AutoCAD LT에서 실행됩니다.\n목록 이름 옆 흐린 글자는 명령어, 제목 옆 꼬리표는 (리습 · 명령어) 입니다.")
 	}
 	c(pEnableWindow, hRun, run)
 	setGuide(guide)
@@ -446,8 +466,14 @@ func runCurrent() {
 }
 
 // ───────────── 순서 변경 (이 PC에만 저장) ─────────────
+var orderNoted bool
+
 func moveNode(dir int) {
 	n := cur
+	if !orderNoted && n.kind != nkNone {
+		orderNoted = true
+		logf("목록 순서는 이 PC에만 저장됩니다")
+	}
 	switch n.kind {
 	case nkCat:
 		j := n.ci + dir

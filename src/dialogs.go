@@ -307,7 +307,7 @@ func adoptLisp(p string) string {
 // 평소에는 거의 건드릴 일이 없는 설정(전송 방식·취소·항상 위·인코딩)과
 // 직접 명령 입력을 메인 화면에서 빼서 여기에 모아둔다.
 func advancedDialog() {
-	d := newDialogStyle("설정", 640, 560, true)
+	d := newDialogStyle("설정", 640, 600, true)
 	const lx, ex = 16, 160
 	head := func(t string) uintptr {
 		h := d.label(t, lx, 0, 200)
@@ -320,6 +320,11 @@ func advancedDialog() {
 	hMethod := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvMethod)
 	comboFill(hMethod, methods, indexOf(methods, st.Method))
 	hNoteMethod := d.note("WM_COPYDATA가 안 먹히면 '키입력'으로 바꿔보세요", 0, 0, 10, 20)
+	hLblKw2 := d.label("창 제목 키워드", lx, 0, 120)
+	readSettings()
+	hKw2 := d.mk("EDIT", st.Keyword, ES_AUTOHSCROLL|WS_TABSTOP, WS_EX_CLIENTEDGE, idAdvKw)
+	kwVal := st.Keyword
+	hNoteKw := d.note("제목에 이 글자가 들어간 창을 CAD 창으로 찾습니다", 0, 0, 10, 20)
 
 	hCancel := d.mk("BUTTON", "실행 전 진행 중 명령 취소", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvCancel)
 	setCheck(hCancel, st.Cancel)
@@ -384,6 +389,10 @@ func advancedDialog() {
 		mv(hMethod, ex, y, 150, 200)
 		mv(hNoteMethod, ex+160, y+4, rw(ex+160), 20)
 		y += 34
+		mv(hLblKw2, lx, y+4, 120, 20)
+		mv(hKw2, ex, y, 150, 24)
+		mv(hNoteKw, ex+160, y+4, rw(ex+160), 20)
+		y += 34
 		mv(hCancel, lx, y, rw(lx), 22)
 		y += 28
 		mv(hTop, lx, y, rw(lx), 22)
@@ -429,6 +438,8 @@ func advancedDialog() {
 
 	d.onCmd = func(id, code int) {
 		switch {
+		case id == idAdvKw && code == 0x0300: // EN_CHANGE (창이 닫히면 글자를 못 읽으므로 바뀔 때마다 보관)
+			kwVal = getText(hKw2)
 		case id == idAdvMethod && code == CBN_SELCHANGE:
 			if i := comboSel(hMethod); i >= 0 {
 				st.Method = methods[i]
@@ -456,6 +467,13 @@ func advancedDialog() {
 		}
 	}
 	d.run(hFree)
+	// 창 제목 키워드가 바뀌었으면 CAD 창을 다시 찾음
+	if kw := strings.TrimSpace(kwVal); kw != "" && kw != st.Keyword {
+		st.Keyword = kw
+		setText(hKeyword, kw)
+		saveState()
+		refreshWindows()
+	}
 }
 
 var typeCodes = []string{"text", "number", "int", "check", "choice", "file", "folder"}
