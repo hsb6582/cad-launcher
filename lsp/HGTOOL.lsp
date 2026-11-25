@@ -1459,11 +1459,12 @@
 ;;  1) 긴 구간부터 기본 위치(선 위/아래 가운데)에 놓고, 이미 놓인 새 문구와 겹치는 구간만 옮길 대상으로 뺌
 ;;  2) 옮길 구간끼리 붙어 있으면 한 무리로 보고 계단식 배치 :
 ;;     오른쪽 구간이 가장 낮은 줄, 왼쪽으로 갈수록 한 줄씩 위.
-;;     윗문구/아랫문구를 두 줄로 묶어 구간 가운데의 세로 지시선 오른쪽에 붙임
-;;     (이렇게 하면 지시선이 다른 문구를 지나지 않음)
+;;     지시선은 한 번 꺾인 모양 : 구간 가운데에서 45도로 오른쪽 위로 올라가 가로 받침선으로 꺾임.
+;;     윗문구는 받침선 위, 아랫문구는 받침선 아래 (밴드와 같은 모양)
+;;     (사선이 모두 평행이라 서로 교차하지 않고, 다른 문구도 지나지 않음)
 ;;  3) 그래도 이미 놓인 문구·지시선과 겹치면 그 구간만 한 줄씩 더 올림
-(defun qc:bandtexts (items h sty / g defs placed ldrs bad it xm y up dn bw r yu yd blk
-                                  ldr lp lq ok clus cur cx k xl)
+(defun qc:bandtexts (items h sty / g defs placed ldrs bad it xm y up dn bw r ys sx2 xc blk
+                                  lp lq ok clus cur cx k xl)
   (setq g (* 0.3 h))
   (foreach it items
     (setq xm (/ (+ (car it) (cadr it)) 2.0) y (caddr it) up (cadddr it) dn (nth 4 it))
@@ -1498,21 +1499,24 @@
             bw (max (if up (qc:txtw up h sty) 0.0) (if dn (qc:txtw dn h sty) 0.0))
             r k ok nil)
       (while (and (not ok) (<= r (+ k 20)))
-        (setq yu  (+ y (* 1.19 h) (* r 2.8 h))
-              yd  (- yu (* 1.3 h))
-              blk (list (+ xm (* 0.3 h)) (- yd (* 0.5 h)) (+ xm (* 0.3 h) bw) (+ yu (* 0.5 h)))
-              lp  (list xm y)
-              lq  (list xm (+ yu (* 0.5 h))))
+        (setq ys  (+ y (* 0.6 h) (* r 3.6 h))                       ; 받침선 높이 (줄 간격 = 글자 묶음 높이 3.3h + 여유)
+              lp  (list xm y)                                       ; 지시선 시작 (밴드선 위)
+              lq  (list (+ xm (- ys y)) ys)                         ; 꺾이는 점 (45도)
+              sx2 (+ (car lq) bw (* 0.6 h))                         ; 받침선 끝
+              blk (list (car lq) (- ys (* 1.61 h)) sx2 (+ ys (* 1.69 h))))
         (if (not (or (vl-some '(lambda (o) (or (qc:tboxhit blk o g) (qc:segbox lp lq o))) placed)
                      (vl-some '(lambda (l) (or (qc:segbox (car l) (cadr l) blk)
                                                (inters lp lq (car l) (cadr l) T)))
                               ldrs)))
           (setq ok T)
           (setq r (1+ r))))
-      ;; 지시선 : 구간 가운데 밴드선 -> 글자 묶음 왼쪽 (묶음 높이만큼 세움)
-      (entmake (append (qc:newhdr "LINE") (list (list 10 (car lp) (cadr lp) 0.0) (list 11 (car lq) (cadr lq) 0.0))))
-      (if up (qc:mktxt up (+ (car blk) (/ bw 2.0)) yu h sty))
-      (if dn (qc:mktxt dn (+ (car blk) (/ bw 2.0)) yd h sty))
+      ;; 지시선 : 사선 + 받침선 (폴리선 1개)
+      (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") (cons 8 *QC:LAY-NEW*) (cons 62 *QC:NEW-COL-G*)
+                     '(100 . "AcDbPolyline") '(90 . 3) '(70 . 0)
+                     (list 10 (car lp) (cadr lp)) (list 10 (car lq) (cadr lq)) (list 10 sx2 ys)))
+      (setq xc (/ (+ (car lq) sx2) 2.0))
+      (if up (qc:mktxt up xc (+ ys (* 1.19 h)) h sty))
+      (if dn (qc:mktxt dn xc (- ys (* 1.11 h)) h sty))
       (setq placed (cons blk placed)
             ldrs   (cons (list lp lq) ldrs))))
 )
