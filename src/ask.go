@@ -196,20 +196,22 @@ func askDialog(r *askReq) (string, bool) {
 	return answer, ok && answer != ""
 }
 
-// 런처가 최소화돼 있으면 CAD 창 오른쪽 위에, 아니면 런처 가운데에 띄움
+// 질문 창은 CAD 도면 창 위(오른쪽 위)에 띄움. 도면 가운데의 굵게 표시한 경계를 가리지 않도록 오른쪽에 붙임.
+// CAD 창을 못 찾으면 런처 가운데 (newDialog 기본 위치)
 func placeAskDialog(d *dialog) {
-	if c(pIsIconic, hMain) == 0 && c(pIsWindowVisible, hMain) != 0 {
-		return
-	}
 	cad := targetHwnd()
-	if cad == 0 {
+	if cad == 0 || c(pIsIconic, cad) != 0 {
 		return
 	}
 	var cr, dr rectT
 	c(pGetWindowRect, cad, uintptr(P(&cr)))
 	c(pGetWindowRect, d.h, uintptr(P(&dr)))
-	x := cr.right - (dr.right - dr.left) - int32(s(40))
-	y := cr.top + int32(s(120))
+	w := dr.right - dr.left
+	x := cr.right - w - int32(s(60))
+	y := cr.top + int32(s(140)) // 리본 메뉴 아래
+	if x < cr.left {
+		x = cr.left
+	}
 	c(pSetWindowPos, d.h, 0, uintptr(x), uintptr(y), 0, 0, 0x0001|0x0004) // NOSIZE|NOZORDER
 }
 
