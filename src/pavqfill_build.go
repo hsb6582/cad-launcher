@@ -179,7 +179,6 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 		return nil, nil, err
 	}
 
-	redFill := ss.addFill(pqFillXML("FFFF0000"))
 	yellowFill := ss.addFill(pqFillXML("FFFFFF00"))
 	mmFmt, ok := pqFindNumFmt(ss, `#,##0&quot;mm&quot;`)
 	if !ok {
@@ -373,8 +372,9 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 				mismatched = true
 			}
 			if mismatched {
-				gStyle = ss.withFill(gStyle, redFill)
-				hStyle = ss.withFill(hStyle, redFill)
+				// 빨간색이면 메모 표시(빨간 삼각형)가 안 보여서 노란색으로 칠함
+				gStyle = ss.withFill(gStyle, yellowFill)
+				hStyle = ss.withFill(hStyle, yellowFill)
 			}
 			switch {
 			case hasMq:
@@ -384,12 +384,12 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 					rb.set(gIdx, pqCNum("G"+itoa(R), gStyle, mq))
 				}
 				if mismatched {
-					memos.add(gIdx, R, fmt.Sprintf("자재내역 %sm / 집계 %sm (차 %sm)\n관로 길이 확인 필요", pqNumStr(mq), pqNumStr(tot), pqNumStr(tot-mq)))
+					memos.add(hIdx, R, fmt.Sprintf("자재내역 %sm / 집계 %sm (차 %sm)\n관로 길이 확인 필요", pqNumStr(mq), pqNumStr(tot), pqNumStr(tot-mq)))
 					mism = append(mism, fmt.Sprintf("%s %s : 자재내역 %sm / 집계 %sm (차 %sm)", b.dwg, dispRow(r), pqNumStr(mq), pqNumStr(tot), pqNumStr(tot-mq)))
 				}
 			case len(csv.mats) > 0:
 				rb.set(gIdx, pqCEmpty("G"+itoa(R), gStyle))
-				memos.add(gIdx, R, fmt.Sprintf("자재내역에 이 관경 수량이 없음 (집계 %sm)\n관경·자재내역 확인 필요", pqNumStr(tot)))
+				memos.add(hIdx, R, fmt.Sprintf("자재내역에 이 관경 수량이 없음 (집계 %sm)\n관경·자재내역 확인 필요", pqNumStr(tot)))
 				mism = append(mism, fmt.Sprintf("%s %s : 자재내역 수량 없음 / 집계 %sm", b.dwg, dispRow(r), pqNumStr(tot)))
 			default:
 				rb.set(gIdx, pqCEmpty("G"+itoa(R), gStyle))
@@ -403,7 +403,7 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 			if len(rem) > 0 {
 				lastIdx := pqColIndex(pqLastCol)
 				if len(remMemo) > 0 {
-					memos.add(lastIdx, R, strings.Join(remMemo, "\n"))
+					memos.add(hIdx, R, "[비고("+pqLastCol+"열)] "+strings.Join(remMemo, "\n"))
 				}
 				rb.set(lastIdx, pqCStr(pqLastCol+itoa(R), styleMap[lastIdx], strings.Join(rem, ", ")))
 			}
@@ -440,7 +440,7 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 			blIdx := pqColIndex("BL")
 			first.set(blIdx, pqCFormula("BL"+itoa(row), firstStyle[blIdx], strings.Join(ar, "+")))
 			if m63, ok := mma63[b.dwg]; ok {
-				memos.add(blIdx, row, fmt.Sprintf("수식 끝 %s개 항목(%s㎡)은 63mm 신설관만 지나는 구간\n필요 없으면 수식에서 지우세요", m63[0], m63[1]))
+				memos.add(pqColIndex("H"), row, fmt.Sprintf("[미끄럼방지(BL열)] 수식 끝 %s개 항목(%s㎡)은 63mm 신설관만 지나는 구간\n필요 없으면 수식에서 지우세요", m63[0], m63[1]))
 			}
 		}
 		aIdx := pqColIndex("A")
@@ -523,6 +523,9 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 		headerEdits[c] = ss.withFill(row6Style[c], yellowFill)
 	}
 
+	// 메모가 달린 H 칸은 모두 노란색 (불일치가 아니어도 확인 필요 표시)
+	pqYellowMemoCells(ss, newRows, memos, yellowFill)
+
 	warnings = append(warnings, prefixEach(mism, "자재내역 불일치: ")...)
 	warnings = append(warnings, prefixEach(unknown, "양식 열 없음: ")...)
 
@@ -570,4 +573,37 @@ func pqForceFullCalcOnLoad(workbookXML string) string {
 	}
 	re := regexp.MustCompile(`<calcPr([^>]*)/>`)
 	return re.ReplaceAllString(workbookXML, `<calcPr$1 fullCalcOnLoad="1"/>`)
+}
+
+var pqCellStyleRe = regexp.MustCompile(`^<c r="[A-Z]+\d+"(?: s="(\d+)")?`)
+
+func pqYellowMemoCells(ss *pqStyleSheet, rows []*pqRowBuf, memos *pqMemos, fill int) {
+	byRow := map[int]*pqRowBuf{}
+	for _, rb := range rows {
+		byRow[rb.row] = rb
+	}
+	for _, m := range memos.list {
+		rb := byRow[m.row]
+		if rb == nil {
+			continue
+		}
+		x, ok := rb.cells[m.col]
+		if !ok {
+			continue
+		}
+		sm := pqCellStyleRe.FindStringSubmatchIndex(x)
+		if sm == nil {
+			continue
+		}
+		base := 0
+		if sm[2] >= 0 {
+			base, _ = strconv.Atoi(x[sm[2]:sm[3]])
+		}
+		if strings.Contains(ss.xfXML(base), `fillId="`+strconv.Itoa(fill)+`"`) {
+			continue // 이미 노란색
+		}
+		ns := ss.withFill(base, fill)
+		ref := pqColLetters(m.col) + itoa(m.row)
+		rb.cells[m.col] = fmt.Sprintf(`<c r="%s" s="%d"`, ref, ns) + x[sm[1]:]
+	}
 }
