@@ -257,6 +257,8 @@ func onNotify(lp uintptr) uintptr {
 		return 0
 	}
 	switch int32(hdr.code) {
+	case nmCustomDraw:
+		return treeCustomDraw(lp)
 	case tvnSelChanged:
 		if !building {
 			showNode(itemNode[(*nmTreeView)(unsafe.Pointer(lp)).itemNew.hItem])

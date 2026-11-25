@@ -444,13 +444,28 @@ func mk(class, text string, style, ex uint32, id int) uintptr {
 }
 
 func mkp(parent uintptr, class, text string, style, ex uint32, id int) uintptr {
+	style, flat, primary := ownerDrawStyle(class, style)
+	frame := ex&WS_EX_CLIENTEDGE != 0
+	ex &^= WS_EX_CLIENTEDGE // 3D 테두리 대신 부모 창이 얇은 둥근 테두리를 그림 (style2.go)
 	h := c(pCreateWindowExW, uintptr(ex), uintptr(P(ws(class))), uintptr(P(ws(text))),
 		uintptr(style|WS_CHILD|WS_VISIBLE), 0, 0, 10, 10, parent, uintptr(id), hInst, 0)
 	c(pSendMessageW, h, WM_SETFONT, hFont, 1)
+	if flat {
+		hookButton(h, primary)
+	}
+	if frame {
+		framed[h] = true
+	}
 	return h
 }
 
-func mv(h uintptr, x, y, w, hh int) { c(pMoveWindow, h, s(x), s(y), s(w), s(hh), 1) }
+// 테두리를 부모가 그리는 컨트롤은 테두리 두께만큼 안쪽에 놓는다 (바깥 크기는 그대로)
+func mv(h uintptr, x, y, w, hh int) {
+	if framed[h] {
+		x, y, w, hh = x+framePad, y+framePad, w-2*framePad, hh-2*framePad
+	}
+	c(pMoveWindow, h, s(x), s(y), s(w), s(hh), 1)
+}
 
 func isChecked(h uintptr) bool { return c(pSendMessageW, h, BM_GETCHECK, 0, 0) == 1 }
 func setCheck(h uintptr, b bool) {

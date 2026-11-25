@@ -80,6 +80,7 @@ type dialog struct {
 	h, owner uintptr
 	done, ok bool
 	onCmd    func(id, code int)
+	defID    int // Enter 키로 눌리는 기본 버튼 id
 }
 
 var (
@@ -112,6 +113,15 @@ func dlgProc(h, msg, wp, lp uintptr) uintptr {
 		return 0
 	case WM_CTLCOLORSTATIC:
 		return ctlColor(wp, lp)
+	case WM_DRAWITEM:
+		return drawButton(lp)
+	case WM_PAINT:
+		paintFrames(h)
+		return 0
+	case DM_GETDEFID: // 직접 그리는 버튼은 '기본 버튼' 표시가 없으므로 Enter 키 대상을 알려 준다
+		if d != nil && d.defID != 0 {
+			return DC_HASDEFID<<16 | uintptr(d.defID)
+		}
 	case WM_CLOSE:
 		if d != nil {
 			d.done = true
@@ -148,6 +158,7 @@ func newDialog(title string, w, h int) *dialog {
 	}
 	hwnd := c(pCreateWindowExW, WS_EX_DLGMODALFRAME, uintptr(P(dlgClass)), uintptr(P(ws(title))), uintptr(style),
 		uintptr(x), uintptr(y), uintptr(ow), uintptr(oh), owner, 0, hInst, 0)
+	styleWindow(hwnd)
 	d := &dialog{h: hwnd, owner: owner}
 	dialogs[hwnd] = d
 	return d
@@ -180,6 +191,7 @@ func (d *dialog) button(text string, id, x, y, w int, def bool) uintptr {
 	st := uint32(WS_TABSTOP)
 	if def {
 		st |= BS_DEFPUSHBUTTON
+		d.defID = id
 	}
 	h := d.mk("BUTTON", text, st, 0, id)
 	mv(h, x, y, w, 28)

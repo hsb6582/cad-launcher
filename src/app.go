@@ -186,9 +186,10 @@ func createControls() {
 	hGitHub = mk("BUTTON", "업데이트 설정", WS_TABSTOP, 0, idGitHub)
 	hAdvanced = mk("BUTTON", "고급 설정", WS_TABSTOP, 0, idAdvanced)
 
-	hList = mk("SysTreeView32", "", TVS_HASBUTTONS|TVS_HASLINES|TVS_LINESATROOT|TVS_SHOWSELALWAYS|0x0010 /*TVS_DISABLEDRAGDROP*/ |WS_TABSTOP, WS_EX_CLIENTEDGE, idList)
+	hList = mk("SysTreeView32", "", TVS_HASBUTTONS|TVS_LINESATROOT|TVS_SHOWSELALWAYS|0x0010 /*TVS_DISABLEDRAGDROP*/ |WS_TABSTOP, WS_EX_CLIENTEDGE, idList)
 	c(pSetWindowTheme, hList, uintptr(P(ws("Explorer"))), 0) // 탐색기 스타일 트리(선택 표시가 더 매끈해짐)
 	c(pSendMessageW, hList, TVM_SETEXTENDEDSTYLE, TVS_EX_DOUBLEBUFFER, TVS_EX_DOUBLEBUFFER)
+	styleTree()
 	// 목록 편집은 엑셀(dev/catalog.xlsx) → 저장소에서 하고, 런처에서는 순서만 바꿈
 	hUp = mk("BUTTON", "▲ 위로", WS_TABSTOP, 0, idUp)
 	hDown = mk("BUTTON", "▼ 아래로", WS_TABSTOP, 0, idDown)
@@ -322,6 +323,7 @@ func layout() {
 
 	by := mainBottom + 10
 	mv(hLog, 8, by, W-16, max(H-by-16, 40))
+	c(pInvalidateRect, hMain, 0, 1) // 입력칸 둘레 테두리(부모가 그림)를 새 위치에 다시 그림
 }
 
 func applyTopmost() {
@@ -653,7 +655,10 @@ func wndProc(h, msg, wp, lp uintptr) uintptr {
 	case WM_CTLCOLORSTATIC:
 		return ctlColor(wp, lp)
 	case WM_DRAWITEM:
-		return onDrawItem(lp)
+		return drawButton(lp)
+	case WM_PAINT:
+		paintFrames(h)
+		return 0
 	case WM_CLOSE:
 		readSettings()
 		saveState()
@@ -664,43 +669,6 @@ func wndProc(h, msg, wp, lp uintptr) uintptr {
 		return 0
 	}
 	return c(pDefWindowProcW, h, msg, wp, lp)
-}
-
-// '▶ 실행' 버튼(BS_OWNERDRAW)을 강조색(테라코타) 알약 모양으로 직접 그린다.
-func onDrawItem(lp uintptr) uintptr {
-	dis := (*drawItemStruct)(unsafe.Pointer(lp))
-	if dis.hwndItem != hRun {
-		return 0
-	}
-	hdc := dis.hDC
-	// 1) 버튼 네모 전체를 창 배경색으로 먼저 지워서, 둥근 테두리 바깥쪽이 주변과 자연스럽게 이어지게 한다.
-	c(pFillRect, hdc, uintptr(P(&dis.rcItem)), hBgBrush)
-
-	fill, border, txt := clrAccent, clrAccentDk, clrAccentTxt
-	if dis.itemState&ODS_DISABLED != 0 { // 상위 구분 선택 등으로 꺼져 있으면 회색
-		fill, border, txt = clrDisBg, clrDisBorder, clrSubText
-	} else if dis.itemState&ODS_SELECTED != 0 {
-		fill = clrAccentDk
-	}
-	br := c(pCreateSolidBrush, fill)
-	pen := c(pCreatePen, PS_SOLID, 1, border)
-	oldBr := c(pSelectObject, hdc, br)
-	oldPen := c(pSelectObject, hdc, pen)
-	radius := int(s(8))
-	c(pRoundRect, hdc, uintptr(dis.rcItem.left), uintptr(dis.rcItem.top),
-		uintptr(dis.rcItem.right), uintptr(dis.rcItem.bottom), uintptr(radius), uintptr(radius))
-	c(pSelectObject, hdc, oldBr)
-	c(pSelectObject, hdc, oldPen)
-	c(pDeleteObject, br)
-	c(pDeleteObject, pen)
-
-	c(pSetBkMode, hdc, TRANSPARENT)
-	c(pSetTextColor, hdc, txt)
-	oldFont := c(pSelectObject, hdc, hFontBold)
-	rc := dis.rcItem
-	c(pDrawTextW, hdc, uintptr(P(ws(getText(dis.hwndItem)))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
-	c(pSelectObject, hdc, oldFont)
-	return 1
 }
 
 func makeFont(pt int, bold bool) uintptr {
@@ -748,6 +716,7 @@ func main() {
 	}
 	hFont = makeFont(9, false)
 	hFontBold = makeFont(12, true)
+	hFontBtnBold = makeFont(9, true)
 	hBgBrush = c(pCreateSolidBrush, clrBg)
 	hPanelBrush = c(pCreateSolidBrush, clrPanelBg)
 
@@ -768,8 +737,7 @@ func main() {
 	cw := uintptr(0x80000000)
 	hMain = c(pCreateWindowExW, 0, uintptr(P(cls)), uintptr(P(ws(appTitle))),
 		WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN, cw, cw, s(1000), s(720), 0, 0, hInst, 0)
-	roundPref := int32(DWMWC_ROUND)
-	c(pDwmSetWindowAttribute, hMain, DWMWA_WINDOW_CORNER_PREFERENCE, uintptr(P(&roundPref)), 4) // Windows 11 전용, 10에서는 조용히 무시됨
+	styleWindow(hMain) // 둥근 모서리 + 제목 표시줄·테두리 색 (Windows 11)
 	if st.LeftW > 0 {
 		leftW, rightX = st.LeftW, 8+st.LeftW+10
 	}
