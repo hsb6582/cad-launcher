@@ -26,7 +26,6 @@ type State struct {
 	Cancel     bool                              `json:"cancel"`
 	Topmost    bool                              `json:"topmost"`
 	Values     map[string]map[string]interface{} `json:"values"`
-	Collapsed  []string                          `json:"collapsed,omitempty"`
 	AutoUpdate bool                              `json:"autoUpdate"`
 	Token      string                            `json:"token,omitempty"`
 	Synced     map[string]string                 `json:"synced,omitempty"`

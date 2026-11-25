@@ -204,27 +204,13 @@ func (n nodeRef) lisp() *Lisp {
 	return nil
 }
 
-func isCollapsed(k string) bool {
-	for _, x := range st.Collapsed {
-		if x == k {
-			return true
-		}
-	}
-	return false
-}
+// 목록 분류는 런처를 켤 때 모두 닫힌 상태로 시작한다.
+// 켜 둔 동안 펼친 분류는 기억해서, 업데이트로 목록을 다시 그려도 그대로 둔다 (파일에는 저장하지 않음).
+var expanded = map[string]bool{}
 
-func setCollapsed(k string, on bool) {
-	out := st.Collapsed[:0]
-	for _, x := range st.Collapsed {
-		if x != k {
-			out = append(out, x)
-		}
-	}
-	if on {
-		out = append(out, k)
-	}
-	st.Collapsed = out
-}
+func isCollapsed(k string) bool { return !expanded[k] }
+
+func setCollapsed(k string, on bool) { expanded[k] = !on }
 
 func tvInsertItem(parent uintptr, text string, state uint32) uintptr {
 	// state 에 stateRecommend 가 있으면 추천 아이콘(상태 그림 1번)을 붙임
@@ -458,6 +444,9 @@ func moveNode(dir int) {
 		if j < 0 || j >= len(cat.Categories) {
 			return
 		}
+		if isDevCategory(cat.Categories[n.ci].Name) != isDevCategory(cat.Categories[j].Name) {
+			return // 개발 중 분류는 맨 아래 고정
+		}
 		cat.Categories[n.ci], cat.Categories[j] = cat.Categories[j], cat.Categories[n.ci]
 		n.ci = j
 	case nkItem:
@@ -488,7 +477,13 @@ func rankBy(order []string) func(string, int) int {
 	}
 }
 
+// 개발 중인 분류 (이름에 '개발 중' 이 들어감) - 목록 맨 아래에 고정
+func isDevCategory(name string) bool {
+	return strings.Contains(name, "개발 중") || strings.Contains(name, "개발중")
+}
+
 func applyOrder() {
+	defer devLast()
 	if len(st.Order) == 0 {
 		return
 	}
@@ -512,6 +507,13 @@ func applyOrder() {
 			return ri(ka, pos[ka]) < ri(kb, pos[kb])
 		})
 	}
+}
+
+// 이 PC에서 순서를 바꿨더라도 개발 중 분류는 항상 맨 아래로
+func devLast() {
+	sort.SliceStable(cat.Categories, func(a, b int) bool {
+		return !isDevCategory(cat.Categories[a].Name) && isDevCategory(cat.Categories[b].Name)
+	})
 }
 
 func saveOrder() {
