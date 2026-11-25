@@ -615,6 +615,11 @@ func wndProc(h, msg, wp, lp uintptr) uintptr {
 	case WM_APP_TOOLS:
 		onToolsResult()
 		return 0
+	case WM_TIMER:
+		if wp == askTimerID {
+			onAskTimer()
+		}
+		return 0
 	case WM_SIZE:
 		if hLog != 0 {
 			setLeftW(leftW)
@@ -771,6 +776,7 @@ func main() {
 	if st.AutoUpdate {
 		startUpdateCheck(false)
 	}
+	startAskWatch() // 리습 질문을 런처 창으로 (ask.go)
 
 	var m msgT
 	for {
