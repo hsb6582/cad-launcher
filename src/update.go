@@ -95,10 +95,18 @@ func ghGet(rawURL string, accept string) ([]byte, error) {
 }
 
 // 업데이트 저장소는 프로그램에 고정 (목록 파일이나 설정으로 바뀌지 않음)
-const (
-	fixedRepo   = "hsb6582/cad-launcher"
-	fixedBranch = "main"
-)
+const fixedRepo = "hsb6582/cad-launcher"
+
+// 받을 브랜치는 빌드할 때 정한다 (기본 = 배포용 main)
+//
+//	테스트용: -ldflags "-X main.fixedBranch=dev -X main.exeRepoName=CAD런처-테스트.exe"
+var fixedBranch = "main"
+
+func init() {
+	if fixedBranch != "main" {
+		appTitle += " (테스트)" // 창 제목으로 테스트용 런처임을 구분
+	}
+}
 
 func branch() string { return fixedBranch }
 

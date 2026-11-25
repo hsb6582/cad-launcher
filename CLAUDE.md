@@ -3,6 +3,11 @@
 AutoCAD LT 2026 리습 런처. 각 PC의 CAD런처.exe 가 실행 때마다 이 저장소(main)에서
 `lsp/`, `catalog.json`, `CAD런처.exe`, `README.md` 변경분을 자동으로 받는다. 공개 저장소이므로 도면·개인정보·토큰은 올리지 않는다.
 
+## 브랜치: dev = 테스트, main = 배포 (가장 중요)
+- 평소 모든 작업은 `dev` 브랜치에 커밋하고 `git -c push.negotiate=true push origin dev` 로 올린다. 사용자의 테스트용 런처(CAD런처-테스트.exe)만 dev 를 받는다.
+- `main` 은 모든 PC가 받는 배포용이다. 사용자가 "배포해줘"처럼 분명히 지시할 때만 바꾼다. 그 전에는 main 에 push 하지 않는다.
+- 배포 절차: dev 를 main 에 merge → main 에서 배포용 exe 빌드(아래 '배포용') → 커밋·`push origin main` → main 을 다시 dev 에 merge 해서 두 브랜치를 맞춘다.
+
 ## 목록 구조 (catalog.json v2)
 - `lisps[]`: id, file(lsp/파일.lsp), desc, manual(공통 안내), tools(외부 프로그램)
 - `categories[].items[]`: name(짧은 한국어 기능 이름), desc, lisp(id), command, manual, options
@@ -16,7 +21,7 @@ AutoCAD LT 2026 리습 런처. 각 PC의 CAD런처.exe 가 실행 때마다 이 
 2. `lsp/파일.lsp` 저장 → `python dev/register.py lsp/파일.lsp` → `python dev/catalog_xlsx.py export`
 3. 외부 프로그램 설치 파일은 `tools/이름.zip` (50MB 이상은 GitHub Release 주소). 리습이 고정 경로(예: C:\MATX-Tools)를 쓰면 머리말 8번째 칸 '설치폴더'에 그 경로를 적는다.
    엑셀 양식 등을 올리기 전에는 작성자(docProps)·외부 연결·공사명 등 회사/개인 정보를 반드시 지운다 (공개 저장소).
-4. 커밋(한국어 짧게) → `git -c push.negotiate=true push origin main`
+4. 커밋(한국어 짧게) → `git -c push.negotiate=true push origin dev` (배포 지시 전까지 main 금지)
 
 ## 사용자가 엑셀을 올렸을 때
 `python dev/catalog_xlsx.py import 올린파일.xlsx` → 오류가 나오면 행 번호를 사용자에게 전달 → 성공하면 `export` 로 dev/catalog.xlsx 갱신 → 커밋·push
@@ -25,8 +30,9 @@ AutoCAD LT 2026 리습 런처. 각 PC의 CAD런처.exe 가 실행 때마다 이 
 catalog.json 에서 해당 항목만 python 한두 줄로 수정 → `export` → 커밋·push
 
 ## 런처 코드 (src/, Go 표준 라이브러리 + Win32, 외부 라이브러리 없음)
-`cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w" -o ../CAD런처.exe .`
-코드를 안 바꿨으면 exe 를 다시 빌드하지 않는다. Windows에서 실행 테스트는 못 하므로 사용자에게 확인을 부탁한다.
+- 테스트용 (dev 에서 평소): `cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w -X main.fixedBranch=dev -X main.exeRepoName=CAD런처-테스트.exe" -o ../CAD런처-테스트.exe .`
+- 배포용 (배포 지시 때 main 에서만): `cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w" -o ../CAD런처.exe .`
+- dev 에서는 CAD런처.exe(배포용)를 다시 빌드하지 않는다. 코드를 안 바꿨으면 exe 를 다시 빌드하지 않는다. Windows에서 실행 테스트는 못 하므로 사용자에게 확인을 부탁한다.
 
 ## 네이티브 우선 (src/ = CAD런처.exe)
 - 런처 코드 작업은 항상 네이티브 버전(src/)에만 한다. WebView2 버전(src-modern/, CAD런처-WebView2.exe)은 사용자가 요청할 때만 고친다.

@@ -16,7 +16,7 @@ import (
 	"unsafe"
 )
 
-const exeRepoName = "CAD런처.exe" // 저장소 안의 런처 파일 이름
+var exeRepoName = "CAD런처.exe" // 저장소 안의 런처 파일 이름 (테스트용은 빌드 때 CAD런처-테스트.exe 로 바꿈)
 
 // ───────────────────────── 상태 ─────────────────────────
 type State struct {

@@ -12,7 +12,7 @@ import (
 	"unsafe"
 )
 
-const appTitle = "CAD 런처"
+var appTitle = "CAD 런처"
 
 type P = unsafe.Pointer
 
