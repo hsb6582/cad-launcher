@@ -102,6 +102,8 @@ func onAskTimer() {
 		if askDlg != nil {
 			if _, err := os.Stat(askPath); err != nil {
 				askDlg.done = true // 캐드에서 직접 답했거나 명령이 끝남
+			} else {
+				keepAskOnTop(askDlg.h) // CAD 를 클릭해도 질문 창이 뒤로 가지 않게 계속 맨 위로
 			}
 		}
 		return
@@ -190,10 +192,17 @@ func askDialog(r *askReq) (string, bool) {
 			d.ok, d.done = true, true
 		}
 	}
-	c(pSetWindowPos, d.h, ^uintptr(0), 0, 0, 0, 0, 0x0003) // 맨 위에 (CAD 뒤에 가려지지 않게)
+	// 런처를 최소화해도 같이 숨지 않도록 런처 소속에서 빼고(독립 창), 항상 맨 위에 둠
+	c(pSetWindowLongPtrW, d.h, ^uintptr(7) /*GWLP_HWNDPARENT = -8*/, 0)
+	keepAskOnTop(d.h)
 	c(pSetForegroundWindow, d.h)
 	ok := d.run(focus)
 	return answer, ok && answer != ""
+}
+
+// 항상 위 (HWND_TOPMOST, 이동·크기·포커스는 그대로)
+func keepAskOnTop(h uintptr) {
+	c(pSetWindowPos, h, ^uintptr(0), 0, 0, 0, 0, 0x0001|0x0002|0x0010) // NOSIZE|NOMOVE|NOACTIVATE
 }
 
 // 질문 창은 CAD 도면 창 위(오른쪽 위)에 띄움. 도면 가운데의 굵게 표시한 경계를 가리지 않도록 오른쪽에 붙임.
