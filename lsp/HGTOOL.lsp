@@ -14,7 +14,8 @@
 ;;;   • 지적 레이어: 이름에 '지적' 포함 / 신설관 레이어: '신설관'으로 시작
 ;;;   • 구역선(도로구역·도시계획·하천구역) 판정은 현재 꺼져 있습니다 - 지적 안 신설관은 구역과 상관없이 모두 210 대상입니다.
 ;;;     (다시 쓰려면 리습의 *JB:USE-ZONE* 를 T 로)
-;;;   • 종단: Q-종단가스관로, Q-종단측점, Q-종단그래프 레이어 / 도곽: FORM 블록 또는 사각 테두리
+;;;   • 종단: Q-종단가스관로, Q-종단측점, Q-종단그래프, Q-종단TEXT 레이어 / 도곽: FORM 블록 또는 사각 테두리
+;;;   • 종단면도는 밴드(Q-종단그래프 가로선 + 바로 위 'LP 160mm PE' 같은 관경 글자)가 있어야 인식합니다. 상세도는 제외됩니다.
 ;;;
 ;;;   [순서]
 ;;;   1) 지적 교차 끊기(HG1BRK): 지적 선택 → 교차하는 신설관을 끊고, 지적 안 신설관을 색상 210 으로
@@ -34,6 +35,7 @@
 ;;; 기능설명서: HG2PRF
 ;;;   끊어 놓은 평면 신설관(주관로) 조각을 선택하면, 같은 측점에서 종단 관로를 잘라
 ;;;   구간 밖은 검은색으로 바꾸고, 구간 시/종점 수직선과 허가구간 밴드를 그립니다(0허가도면 레이어).
+;;;   • 종단면도는 밴드(가로선 + 관경 글자)로 찾고, 평면 측점과 번호가 맞는 종단면도에 반영합니다.
 ;;; 기능설명서: HG3CPY
 ;;;   도곽(블록/테두리 폴리선/창 지정) 안의 객체를 지정한 삽입점에 복사합니다.
 ;;;   평면도 틀 안은 보존 레이어(평면도틀·신설관·캡·지적·지번·L)만 복사하고,
@@ -61,6 +63,8 @@
 ;;;           도시가스관로(종단) 구간 밖 검은색,
 ;;;           구간 시/종점 수직선 + 허가구간 밴드 작도 (0허가도면 레이어)
 ;;;           종단 위치가 종단 관로 범위를 넘으면 시/종점으로 맞춤
+;;;           종단면도는 '밴드'(Q-종단그래프 가로선 + 바로 위 Q-종단TEXT 관경 글자)로 인식 -
+;;;           밴드가 확인되는 종단면도만 반영하고, 상세도 등 밴드가 없는 곳은 제외
 ;;;
 ;;;   HG3CPY : (3) 도곽 복사
 ;;;           도곽(블록/테두리 폴리선/창) 안의 객체를 삽입점에 복사
@@ -959,6 +963,8 @@
 (setq *QC:LAY-GAS*   "도시가스관로")     ; 종단 관로 부속 표기
 (setq *QC:LAY-GRAPH* "Q-종단그래프")     ; 종단 그래프(수직선)
 (setq *QC:LAY-QSTA*  "Q-종단측점")       ; 종단 측점 글자
+(setq *QC:LAY-QTXT*  "Q-종단TEXT")       ; 종단 문자 (밴드의 관경 글자 예: LP 160mm PE)
+(setq *QC:BAND-MINL* 10.0)               ; 종단면도 밴드로 볼 가로선 최소 길이
 (setq *QC:HIDDEN*    "*HIDDEN*")         ; 제외할 선종류
 (setq *QC:STA-INT*   20.0)               ; 측점 간격(m)
 (setq *QC:STA-TXTD*  10.0)               ; 평면 측점 글자 - 주관로 최대 거리
@@ -1260,9 +1266,68 @@
 
 ;; 측점 표기 "NO.2+12.66"
 (defun qc:stastr (s / n)
+  ;; 0.01 단위로 먼저 반올림 ("NO.33+-0.00" 처럼 아주 작은 음수가 보이는 것 방지)
+  (setq s (/ (fix (+ (* s 100.0) (if (< s 0.0) -0.5 0.5))) 100.0))
   (setq n (fix (/ (+ s 1e-6) *QC:STA-INT*)))
   (if (< s 0.0) (setq n (1- n)))
   (strcat "NO." (itoa n) "+" (rtos (- s (* n *QC:STA-INT*)) 2 2))
+)
+
+;;; ---------------- 종단면도 밴드 인식 ----------------
+;; 관경 글자인지 : "LP 160mm PE", "MP 200A PLP" 처럼 압력(LP/MP) + 관경(mm/A)
+(defun qc:pipelabel-p (s / u)
+  (setq u (strcase (qc:nospace s)))
+  (and (wcmatch u "*LP*,*MP*") (wcmatch u "*#MM*,*#A*"))
+)
+
+;; 도곽 안 종단면도 밴드 목록 ((x1 x2 y) ...)
+;;  밴드 = Q-종단그래프 가로선(길이 *QC:BAND-MINL* 이상) 중 바로 위(0~4)에 Q-종단TEXT 관경 글자가 있는 것.
+;;  화살표는 블록·폴리선·SOLID 등 그리는 방식이 제각각이라 판정에 쓰지 않음.
+;;  가로 범위가 겹치고 높이 차이가 60 이내면 같은 종단면도로 보고 가장 아래 밴드 하나만 남김.
+;;  (상세도처럼 관경 글자만 있고 밴드 가로선이 없는 곳은 종단면도로 보지 않음)
+(defun qc:findbands (box / segs labs ed pts a res g)
+  (foreach e (qc:collect (list '(0 . "LINE,LWPOLYLINE") (cons 8 *QC:LAY-GRAPH*)) box)
+    (setq pts (qc:entpts (entget e)) a nil)
+    (foreach b pts
+      (if (and a (equal (cadr a) (cadr b) 1e-4) (> (abs (- (car a) (car b))) *QC:BAND-MINL*))
+        (setq segs (cons (list (min (car a) (car b)) (max (car a) (car b)) (cadr a)) segs)))
+      (setq a b)))
+  (foreach e (qc:collect (list '(0 . "TEXT") (cons 8 *QC:LAY-QTXT*)) box)
+    (setq ed (entget e))
+    (if (and (equal (cond ((qc:dxf 50 ed)) (0.0)) 0.0 1e-3) (qc:pipelabel-p (qc:dxf 1 ed)))
+      (setq labs (cons (qc:pt (qc:txtpt ed)) labs))))
+  (foreach sg segs
+    (if (vl-some '(lambda (p) (and (>= (car p) (car sg)) (<= (car p) (cadr sg))
+                                   (> (cadr p) (caddr sg)) (<= (cadr p) (+ (caddr sg) 4.0))))
+                 labs)
+      (setq res (cons sg res))))
+  (foreach sg (vl-sort res '(lambda (a b) (< (caddr a) (caddr b))))
+    (if (not (vl-some '(lambda (o) (and (< (car sg) (cadr o)) (< (car o) (cadr sg))
+                                        (< (abs (- (caddr sg) (caddr o))) 60.0)))
+                      g))
+      (setq g (cons sg g))))
+  (reverse g)
+)
+
+;; 밴드 하나의 종단면도 영역 ((x1 y1) (x2 y2))
+;;  가로 : 밴드 범위 (+-2)
+;;  아래 : 도곽 아래 (그 아래에 가로 범위가 겹치는 다른 밴드가 있으면 그 밴드 바로 위)
+;;  위   : 그 가로 범위 안 Q-종단그래프/Q-종단가스관로/Q-종단TEXT 객체의 가장 높은 곳
+;;         (위쪽에 다른 밴드가 있으면 그 밴드 10 아래까지만)
+(defun qc:bandarea (bnd bands box / x1 x2 y lo hi top p)
+  (setq x1 (- (car bnd) 2.0) x2 (+ (cadr bnd) 2.0) y (caddr bnd)
+        lo (if box (cadr (car box)) -1e99) hi (if box (cadr (cadr box)) 1e99))
+  (foreach o bands
+    (if (and (not (equal o bnd)) (< (car o) (cadr bnd)) (< (car bnd) (cadr o)))
+      (if (< (caddr o) y)
+        (setq lo (max lo (+ (caddr o) 1.0)))
+        (setq hi (min hi (- (caddr o) 10.0))))))
+  (setq top y)
+  (foreach e (qc:collect (list (cons 8 (strcat *QC:LAY-GRAPH* "," *QC:LAY-QPIPE* "," *QC:LAY-QTXT*))) box)
+    (foreach p (qc:entpts (entget e))
+      (if (and (>= (car p) x1) (<= (car p) x2) (> (cadr p) top) (< (cadr p) hi))
+        (setq top (cadr p)))))
+  (list (list x1 lo) (list x2 (+ top 1.0)))
 )
 
 ;;; ---------------- 허가구간 밴드 ----------------
@@ -1342,7 +1407,8 @@
                  chain used s cur fwd vs len endp dir nxt nfwd bc c2 q
                  rngs bad stas k x0 nmin nmax xr cuts parea pcs np ng nv
                  vl cnt basey bv l r top ref n0 tmp b
-                 bandy th tsty nb lay dz pmin pmax pnos pnmin cs pr)
+                 bandy th tsty nb lay dz pmin pmax pnos pnmin cs pr
+                 bands areas band qstas)
   (defun *error* (m)
     (if (not (wcmatch (strcase m) "*CANCEL*,*QUIT*,*BREAK*,*취소*"))
       (princ (strcat "\n오류: " m)))
@@ -1368,38 +1434,25 @@
   (foreach b (qc:formboxes) (if (and (null box) (qc:inbox p0 b)) (setq box b)))
   (if (null box) (princ "\n※ FORM 도곽을 찾지 못해 도면 전체를 대상으로 합니다."))
 
-  ;; --- 종단 측점 -> 수평축척
-  (foreach e (qc:collect (list '(0 . "TEXT") (cons 8 *QC:LAY-QSTA*)) box)
-    (setq ed (entget e))
-    (if (setq n0 (qc:stano (qc:dxf 1 ed)))
-      (setq stas (cons (cons n0 (car (qc:txtpt ed))) stas))))
-  (if (< (length stas) 2)
-    (progn (princ "\n종단 측점(NO.n) 글자를 2개 이상 찾지 못했습니다.") (exit)))
-  (setq nmin (apply 'min (mapcar 'car stas))
-        nmax (apply 'max (mapcar 'car stas)))
-  (if (= nmin nmax)
-    (progn (princ "\n종단 측점이 하나뿐입니다.") (exit)))
-  (setq k  (/ (- (cdr (assoc nmax stas)) (cdr (assoc nmin stas)))
-              (* (- nmax nmin) *QC:STA-INT*))
-        x0 (- (cdr (assoc nmin stas)) (* nmin *QC:STA-INT* k)))
-
-  ;; --- 종단면도 영역
-  (foreach e (qc:collect (list (cons 8 (strcat *QC:LAY-GRAPH* "," *QC:LAY-QPIPE* "," *QC:LAY-QSTA*))) box)
-    (setq pts (append (qc:entpts (entget e)) pts)))
-  (setq parea (qc:grow (qc:bbox pts) 1.0))
-
-  ;; --- 평면 신설관 후보 (숨은선 제외)
-  (foreach e (qc:collect (list '(0 . "LWPOLYLINE,LINE") (cons 8 *QC:LAY-PIPE*)) box)
-    (setq ed (entget e))
-    (if (not (qc:hidden-p ed))
-      (setq cands (cons (list e (mapcar 'qc:pt (qc:verts ed)) ed) cands))))
+  ;; --- 종단면도 밴드 인식 (밴드가 확인되는 종단면도만 반영, 상세도 등은 제외)
+  (setq bands (qc:findbands box)
+        areas (mapcar '(lambda (bd) (qc:bandarea bd bands box)) bands))
+  (if (null bands)
+    (progn
+      ;; 밴드를 못 찾으면 예전 방식 : 종단 레이어 객체 전체 범위
+      (princ "\n※ 종단면도 밴드(Q-종단그래프 가로선 + 위쪽 Q-종단TEXT 관경 글자)를 못 찾아 종단 레이어 전체 범위를 씁니다.")
+      (foreach e (qc:collect (list (cons 8 (strcat *QC:LAY-GRAPH* "," *QC:LAY-QPIPE* "," *QC:LAY-QSTA*))) box)
+        (setq pts (append (qc:entpts (entget e)) pts)))
+      (if pts (setq areas (list (qc:grow (qc:bbox pts) 1.0))))))
 
   ;; --- 평면 측점 글자 (NO.n) : 가장 낮은 번호가 이 도면의 시점
+  ;;     종단 레이어(Q-종단*) 글자와 종단면도 영역 안 글자는 제외
   (setq pnos nil)
   (foreach e (qc:collect '((0 . "TEXT")) box)
     (setq ed (entget e))
     (if (and (setq n0 (qc:stano (qc:dxf 1 ed)))
-             (not (qc:inbox (qc:pt (qc:txtpt ed)) parea)))
+             (not (wcmatch (strcase (qc:dxf 8 ed)) "Q-종단*"))
+             (not (vl-some '(lambda (ar) (qc:inbox (qc:pt (qc:txtpt ed)) ar)) areas)))
       (setq pnos (cons (list n0 (qc:pt (qc:txtpt ed))) pnos))))
   (if (null pnos)
     (progn
@@ -1410,6 +1463,54 @@
   (setq pnmin (apply 'min (mapcar 'car pnos))
         no0  (mapcar 'cadr (vl-remove-if-not '(lambda (x) (= (car x) pnmin)) pnos)))
   (princ (strcat "\n평면 시점 : NO." (itoa pnmin) "  (평면 측점 글자 " (itoa (length pnos)) "개)"))
+
+  ;; --- 종단 측점 글자 (n 번호 x y)
+  (setq qstas nil)
+  (foreach e (qc:collect (list '(0 . "TEXT") (cons 8 *QC:LAY-QSTA*)) box)
+    (setq ed (entget e))
+    (if (setq n0 (qc:stano (qc:dxf 1 ed)))
+      (setq qstas (cons (list n0 (car (qc:txtpt ed)) (cadr (qc:txtpt ed))) qstas))))
+
+  ;; --- 반영할 종단면도 고르기 : 평면 측점 번호와 가장 많이 겹치는 밴드 (같으면 측점이 많은 쪽)
+  (if bands
+    (progn
+      (setq best nil)
+      (mapcar
+        '(lambda (bd ar / st sc)
+           (setq st (vl-remove-if-not
+                      '(lambda (q) (and (qc:inbox (list (cadr q) (caddr q)) ar) (< (caddr q) (caddr bd))))
+                      qstas))
+           (setq sc (+ (* 1000 (length (vl-remove-if-not '(lambda (q) (assoc (car q) pnos)) st))) (length st)))
+           (if (and st (or (null best) (> sc (car best))))
+             (setq best (list sc bd ar st))))
+        bands areas)
+      (if best
+        (setq band (cadr best) parea (caddr best)
+              stas (mapcar '(lambda (q) (cons (car q) (cadr q))) (cadddr best)))
+        (setq parea (car areas)))
+      (princ (strcat "\n종단면도 밴드 " (itoa (length bands)) "개 인식"
+                     (if band (strcat ", 반영 : X " (rtos (car band) 2 2) " ~ " (rtos (cadr band) 2 2)
+                                      " (밴드 높이 Y " (rtos (caddr band) 2 2) ")") ""))))
+    (setq parea (car areas)
+          stas (mapcar '(lambda (q) (cons (car q) (cadr q))) qstas)))
+  (setq best nil)
+
+  ;; --- 종단 측점 -> 수평축척
+  (if (< (length stas) 2)
+    (progn (princ "\n종단 측점(NO.n) 글자를 2개 이상 찾지 못했습니다.") (exit)))
+  (setq nmin (apply 'min (mapcar 'car stas))
+        nmax (apply 'max (mapcar 'car stas)))
+  (if (= nmin nmax)
+    (progn (princ "\n종단 측점이 하나뿐입니다.") (exit)))
+  (setq k  (/ (- (cdr (assoc nmax stas)) (cdr (assoc nmin stas)))
+              (* (- nmax nmin) *QC:STA-INT*))
+        x0 (- (cdr (assoc nmin stas)) (* nmin *QC:STA-INT* k)))
+
+  ;; --- 평면 신설관 후보 (숨은선 제외)
+  (foreach e (qc:collect (list '(0 . "LWPOLYLINE,LINE") (cons 8 *QC:LAY-PIPE*)) box)
+    (setq ed (entget e))
+    (if (not (qc:hidden-p ed))
+      (setq cands (cons (list e (mapcar 'qc:pt (qc:verts ed)) ed) cands))))
 
   ;; --- 시점 객체 결정
   (foreach c cands
@@ -1478,7 +1579,7 @@
   ;; --- 종단 X 구간 (종단 관로 시/종점 범위로 제한)
   (setq xr (mapcar '(lambda (r) (list (+ x0 (* k (car r))) (+ x0 (* k (cadr r))))) rngs))
   (setq tmp nil)
-  (foreach e (qc:collect (list '(0 . "LWPOLYLINE,LINE") (cons 8 *QC:LAY-QPIPE*)) box)
+  (foreach e (qc:collect (list '(0 . "LWPOLYLINE,LINE") (cons 8 *QC:LAY-QPIPE*)) parea)
     (setq tmp (append (mapcar 'car (qc:verts (entget e))) tmp)))
   (if tmp
     (progn
@@ -1509,7 +1610,7 @@
 
   ;; --- 1) Q-종단가스관로 자르기 + 구간 밖 검은색
   (setq np 0)
-  (foreach e (qc:collect (list '(0 . "LWPOLYLINE,LINE") (cons 8 *QC:LAY-QPIPE*)) box)
+  (foreach e (qc:collect (list '(0 . "LWPOLYLINE,LINE") (cons 8 *QC:LAY-QPIPE*)) parea)
     (setq ed (entget e) vs (qc:verts ed))
     (setq pcs (if (and (= (qc:dxf 0 ed) "LWPOLYLINE") (= 1 (logand 1 (qc:dxf 70 ed))))
                 (list vs)
@@ -1536,14 +1637,16 @@
                  (not (qc:xin (/ (+ (car (car tmp)) (car (cadr tmp))) 2.0) xr)))
           (progn (entmod (qc:setcol ed)) (setq ng (1+ ng)))))))
 
-  ;; --- 3) Q-종단그래프 수직선 (기준선 ~ 지반선)
-  (foreach e (qc:collect (list '(0 . "LINE") (cons 8 *QC:LAY-GRAPH*)) box)
-    (setq ed (entget e))
-    (if (and (equal (car (qc:dxf 10 ed)) (car (qc:dxf 11 ed)) 1e-4)
-             (> (abs (- (cadr (qc:dxf 10 ed)) (cadr (qc:dxf 11 ed)))) 1.0))
-      (setq vl (cons (list (car (qc:dxf 10 ed))
-                           (min (cadr (qc:dxf 10 ed)) (cadr (qc:dxf 11 ed)))
-                           (max (cadr (qc:dxf 10 ed)) (cadr (qc:dxf 11 ed)))
+  ;; --- 3) Q-종단그래프 수직선 (기준선 ~ 지반선) : 고른 종단면도 영역 안, LINE 과 2점 폴리선 모두
+  (foreach e (qc:collect (list '(0 . "LINE,LWPOLYLINE") (cons 8 *QC:LAY-GRAPH*)) parea)
+    (setq ed (entget e) pts (qc:entpts ed))
+    (if (and (= (length pts) 2)
+             (equal (car (car pts)) (car (cadr pts)) 1e-4)
+             (> (abs (- (cadr (car pts)) (cadr (cadr pts)))) 1.0)
+             (qc:inbox (cadr pts) parea))
+      (setq vl (cons (list (car (car pts))
+                           (min (cadr (car pts)) (cadr (cadr pts)))
+                           (max (cadr (car pts)) (cadr (cadr pts)))
                            ed)
                      vl))))
   ;; 기준선 Y = 가장 많은 수직선 하단
@@ -1586,9 +1689,10 @@
   (setq nb 0)
   (if basey
     (progn
-      ;; 기존 관경밴드 수평선 (기준선 위 가장 낮은 긴 수평선)
-      (setq bandy nil)
-      (foreach e (qc:collect (list '(0 . "LINE,LWPOLYLINE") (cons 8 *QC:LAY-GRAPH*)) box)
+      ;; 기존 관경밴드 수평선 : 인식한 밴드가 있으면 그 높이, 없으면 기준선 위 가장 낮은 긴 수평선
+      (setq bandy (if band (caddr band)))
+      (if (null bandy)
+      (foreach e (qc:collect (list '(0 . "LINE,LWPOLYLINE") (cons 8 *QC:LAY-GRAPH*)) parea)
         (setq pts (qc:entpts (entget e)))
         (if (and (= (length pts) 2)
                  (equal (cadr (car pts)) (cadr (cadr pts)) 1e-4)
@@ -1597,12 +1701,12 @@
                  (> (cadr (car pts)) (+ basey 0.5))
                  (< (cadr (car pts)) (+ basey 15.0))
                  (or (null bandy) (< (cadr (car pts)) bandy)))
-          (setq bandy (cadr (car pts)))))
+          (setq bandy (cadr (car pts))))))
       ;; 기존 밴드 문구의 글꼴/높이
       (setq th *QC:TXT-H* tsty (getvar "TEXTSTYLE"))
       (if (tblsearch "STYLE" "굴림") (setq tsty "굴림"))
       (if bandy
-        (foreach e (qc:collect '((0 . "TEXT")) box)
+        (foreach e (qc:collect '((0 . "TEXT")) parea)
           (setq ed (entget e))
           (if (and (wcmatch (strcase (qc:dxf 1 ed)) "*MM*")
                    (< (abs (- (cadr (qc:txtpt ed)) bandy)) 3.0)
