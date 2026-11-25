@@ -1,6 +1,6 @@
 package main
 
-// 확인이 필요한 칸에 엑셀 메모(노란 쪽지)를 단다.
+// 연장(자재내역 길이 vs 집계 길이)에 오류가 있는 행의 H 칸에 엑셀 메모(노란 쪽지)를 단다.
 // 양식에는 메모가 없고, 메모가 하나라도 생길 때만 comments1.xml / vmlDrawing1.vml 을 새로 만들어 넣는다.
 
 import (
@@ -131,18 +131,4 @@ func pqAttachMemos(files map[string][]byte, order *[]string, m *pqMemos) {
 		ct = strings.Replace(ct, "</Types>", `<Override PartName="/xl/comments1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml"/></Types>`, 1)
 	}
 	files["[Content_Types].xml"] = []byte(ct)
-}
-
-// 검토 사항(notes) 중 "63mm 신설관만 지나가는 칼라아스콘 구간" 안내를 도면별로 뽑는다.
-// 예: "#3  도면 A-001 : 미끄럼방지 MMA : 63mm 신설관만 지나가는 구간 2곳 1.2+3.4M2 포함 -> ..."
-var pqMMA63Re = regexp.MustCompile(`도면 (\S+) : 미끄럼방지 MMA : 63mm 신설관만 지나가는 구간 (\d+)곳 ([0-9.+]+)M2`)
-
-func pqMMA63Notes(notes []string) map[string][2]string {
-	out := map[string][2]string{}
-	for _, n := range notes {
-		if mm := pqMMA63Re.FindStringSubmatch(n); mm != nil {
-			out[mm[1]] = [2]string{mm[2], mm[3]}
-		}
-	}
-	return out
 }

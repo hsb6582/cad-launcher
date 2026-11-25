@@ -230,7 +230,6 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 
 	var mergesOut []string
 	memos := &pqMemos{}
-	mma63 := pqMMA63Notes(csv.notes)
 	var mism, unknown []string
 	var newRows []*pqRowBuf
 	row := pqFirstRow
@@ -280,7 +279,6 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 			accParts := map[string][]string{}
 			bigW := map[string][2]float64{} // col -> (width, lengthUsedToPick)
 			var rem []string
-			var remMemo []string
 
 			for _, k := range csv.kinds {
 				if k.lenIdx >= len(r) {
@@ -299,7 +297,6 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 				if tg == nil {
 					unknown = append(unknown, fmt.Sprintf("%s %s : %s %sm", b.dwg, dispRow(r), k.name, pqIntOrNum(L)))
 					rem = append(rem, fmt.Sprintf("%s %sm", k.name, pqIntOrNum(L)))
-					remMemo = append(remMemo, fmt.Sprintf("양식에 '%s' 열이 없음 → 알맞은 열에 직접 넣어 주세요", k.name))
 					continue
 				}
 				col := tg.lenCol
@@ -396,15 +393,11 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 			}
 			rb.set(hIdx, pqCFormula("H"+itoa(R), hStyle, strings.Join(hParts, "+")))
 
-			if diaOK && dia == 63 && len(mergeNote[b.dwg]) > 0 {
+			if diaOK && dia == 63 {
 				rem = append(rem, mergeNote[b.dwg]...)
-				remMemo = append(remMemo, "짧은 포장구분을 가장 긴 포장에 합산함 → 맞는지 확인")
 			}
 			if len(rem) > 0 {
 				lastIdx := pqColIndex(pqLastCol)
-				if len(remMemo) > 0 {
-					memos.add(hIdx, R, "[비고("+pqLastCol+"열)] "+strings.Join(remMemo, "\n"))
-				}
 				rb.set(lastIdx, pqCStr(pqLastCol+itoa(R), styleMap[lastIdx], strings.Join(rem, ", ")))
 			}
 			newRows = append(newRows, rb)
@@ -439,9 +432,6 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 		if ar := am["미끄럼방지 MMA"]; len(ar) > 0 {
 			blIdx := pqColIndex("BL")
 			first.set(blIdx, pqCFormula("BL"+itoa(row), firstStyle[blIdx], strings.Join(ar, "+")))
-			if m63, ok := mma63[b.dwg]; ok {
-				memos.add(pqColIndex("H"), row, fmt.Sprintf("[미끄럼방지(BL열)] 수식 끝 %s개 항목(%s㎡)은 63mm 신설관만 지나는 구간\n필요 없으면 수식에서 지우세요", m63[0], m63[1]))
-			}
 		}
 		aIdx := pqColIndex("A")
 		first.set(aIdx, pqCStr("A"+itoa(row), firstStyle[aIdx], strings.ReplaceAll(b.dwg, "-", " ")))
@@ -523,7 +513,7 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 		headerEdits[c] = ss.withFill(row6Style[c], yellowFill)
 	}
 
-	// 메모가 달린 H 칸은 모두 노란색 (불일치가 아니어도 확인 필요 표시)
+	// 메모가 달린 H 칸은 노란색 (연장 불일치)
 	pqYellowMemoCells(ss, newRows, memos, yellowFill)
 
 	warnings = append(warnings, prefixEach(mism, "자재내역 불일치: ")...)
