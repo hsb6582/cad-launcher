@@ -128,7 +128,8 @@ func onAskTimer() {
 }
 
 func askDialog(r *askReq) (string, bool) {
-	const W = 520
+	const W = 600
+	const btnW = 220 // '미끄럼방지 MMA (M)  (기본)' 이 한 줄에 들어가는 폭
 	title := r.title
 	if title == "" {
 		title = "CAD 질문"
@@ -142,7 +143,7 @@ func askDialog(r *askReq) (string, bool) {
 	if helpText != "" {
 		helpH = helpLines*20 + 8
 	}
-	descW := W - 16 - 170 - 10 - 16
+	descW := W - 20 - btnW - 10 - 20
 	rowH := make([]int, len(r.choices))
 	listH := 0
 	for i, ch := range r.choices {
@@ -153,18 +154,19 @@ func askDialog(r *askReq) (string, bool) {
 		}
 		listH += rowH[i] + 6
 	}
-	H := 16 + 26 + 8 + helpH + 8 + listH + 8 + 20 + 16
+	H := askBandH + 16 + 26 + 8 + helpH + 8 + listH + 8 + 20 + 16 + askBorder
 	d := newDialog("CAD 질문 - "+title, W, H)
 	askDlg = d
 	placeAskDialog(d)
 
-	y := 16
-	t := d.label(title, 16, y, W-32)
+	d.paint = func(hdc uintptr) { paintAskFrame(d.h, hdc, askBandText(r.id)) }
+	y := askBandH + 16
+	t := d.label(title, 20, y, W-40)
 	c(pSendMessageW, t, WM_SETFONT, hFontBold, 1)
-	mv(t, 16, y, W-32, 26)
+	mv(t, 20, y, W-40, 26)
 	y += 34
 	if helpText != "" {
-		d.note(helpText, 16, y, W-32, helpH)
+		d.note(helpText, 20, y, W-40, helpH)
 		y += helpH + 8
 	}
 	answer := ""
@@ -175,17 +177,17 @@ func askDialog(r *askReq) (string, bool) {
 		if isDef {
 			label += "  (기본)"
 		}
-		b := d.button(label, idAskBase+i, 16, y+(rowH[i]-30)/2, 170, isDef)
+		b := d.button(label, idAskBase+i, 20, y+(rowH[i]-30)/2, btnW, isDef)
 		if isDef || focus == 0 {
 			focus = b
 		}
 		if ch.desc != "" {
-			l := d.label(ch.desc, 16+170+10, y+4, descW)
-			mv(l, 16+170+10, y+4, descW, rowH[i]-8)
+			l := d.label(ch.desc, 20+btnW+10, y+4, descW)
+			mv(l, 20+btnW+10, y+4, descW, rowH[i]-8)
 		}
 		y += rowH[i] + 6
 	}
-	d.note("창을 닫으면 캐드 명령줄에서 직접 답할 수 있습니다.", 16, y+8, W-32, 20)
+	d.note("창을 닫으면 캐드 명령줄에서 직접 답할 수 있습니다.", 20, y+8, W-40, 20)
 	d.onCmd = func(id, code int) {
 		if code == BN_CLICKED && id >= idAskBase && id < idAskBase+len(r.choices) {
 			answer = r.choices[id-idAskBase].kw
@@ -198,6 +200,46 @@ func askDialog(r *askReq) (string, bool) {
 	c(pSetForegroundWindow, d.h)
 	ok := d.run(focus)
 	return answer, ok && answer != ""
+}
+
+const (
+	askBandH  = 30 // 창 맨 위 테라코타 띠 높이
+	askBorder = 4  // 창 둘레 테라코타 테두리 두께
+)
+
+// 띠 글자: 질문 ID 앞부분(PAVQ_PAVE → PAVQ)으로 어느 리습의 질문인지 표시
+func askBandText(id string) string {
+	name := id
+	if i := strings.Index(id, "_"); i > 0 {
+		name = id[:i]
+	}
+	if name == "" {
+		return "▶ CAD런처 질문"
+	}
+	return "▶ " + name + " 질문 · CAD런처"
+}
+
+// 어두운 CAD 도면 위에서도 잘 보이도록: 창 둘레 굵은 테라코타 테두리 + 맨 위 테라코타 띠
+func paintAskFrame(h, hdc uintptr, band string) {
+	var r rectT
+	c(pGetClientRect, h, uintptr(P(&r)))
+	br := c(pCreateSolidBrush, clrAccent)
+	b := int32(s(askBorder))
+	for _, e := range []rectT{
+		{r.left, r.top, r.right, r.top + int32(s(askBandH))}, // 띠
+		{r.left, r.top, r.left + b, r.bottom},                // 왼쪽
+		{r.right - b, r.top, r.right, r.bottom},              // 오른쪽
+		{r.left, r.bottom - b, r.right, r.bottom},            // 아래
+	} {
+		c(pFillRect, hdc, uintptr(P(&e)), br)
+	}
+	c(pDeleteObject, br)
+	old := c(pSelectObject, hdc, hFontBtnBold)
+	c(pSetBkMode, hdc, TRANSPARENT)
+	c(pSetTextColor, hdc, clrAccentTxt)
+	tr := rectT{r.left + int32(s(16)), r.top, r.right - int32(s(16)), r.top + int32(s(askBandH))}
+	c(pDrawTextW, hdc, uintptr(P(ws(band))), ^uintptr(0), uintptr(P(&tr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX)
+	c(pSelectObject, hdc, old)
 }
 
 // 항상 위 (HWND_TOPMOST, 이동·크기·포커스는 그대로)

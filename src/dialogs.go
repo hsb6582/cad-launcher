@@ -80,7 +80,8 @@ type dialog struct {
 	h, owner uintptr
 	done, ok bool
 	onCmd    func(id, code int)
-	defID    int // Enter 키로 눌리는 기본 버튼 id
+	defID    int               // Enter 키로 눌리는 기본 버튼 id
+	paint    func(hdc uintptr) // 컨트롤 테두리를 그린 뒤 추가로 그릴 것 (질문 창의 띠·테두리 등)
 }
 
 var (
@@ -121,6 +122,11 @@ func dlgProc(h, msg, wp, lp uintptr) uintptr {
 		return drawButton(lp)
 	case WM_PAINT:
 		paintFrames(h)
+		if d != nil && d.paint != nil {
+			hdc := c(pGetDC, h)
+			d.paint(hdc)
+			c(pReleaseDC, h, hdc)
+		}
 		return 0
 	case DM_GETDEFID: // 직접 그리는 버튼은 '기본 버튼' 표시가 없으므로 Enter 키 대상을 알려 준다
 		if d != nil && d.defID != 0 {
