@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -61,8 +62,12 @@ func parseMatxCSV(csvText string) (drawingOrder []string, rows map[int][]string,
 		}
 		fields := strings.Split(line, ",")
 		if first {
-			if len(fields) < 1 || fields[0] != "행" {
-				return nil, nil, fmt.Errorf("CSV 헤더가 예상과 다릅니다 (첫 칸이 '행'이 아님): %q", line)
+			// 첫 칸은 "행"이라는 한글 머리글인데, MATX.lsp 가 AutoLISP open/write-line 으로
+			// 쓴 파일이라 윈도우 한글 코드페이지(CP949)로 저장돼 있어 UTF-8 "행"과 바이트가
+			// 다름. 이 칸 값 자체는 어디에도 쓰이지 않으므로 내용은 보지 않고 첫 줄을 그냥
+			// 머리글로 받아들인다 (도면번호 칸이 하나도 없으면만 오류로 봄).
+			if len(fields) < 2 {
+				return nil, nil, fmt.Errorf("CSV 헤더에 도면번호 칸이 없습니다: %q", line)
 			}
 			drawingOrder = fields[1:]
 			first = false
@@ -116,32 +121,153 @@ func matxBuildEdits(csvText string) (edits []matxEdit, warnings []string, err er
 	return edits, warnings, nil
 }
 
-var matxCellSelfClose = regexp.MustCompile(`<c r="([A-Z]+[0-9]+)"([^>]*)/>`)
 var matxCalcPr = regexp.MustCompile(`<calcPr([^>]*)/>`)
+var matxRowRe = regexp.MustCompile(`(?s)<row r="([0-9]+)"[^>]*?(/>|>.*?</row>)`)
+var matxCellRe = regexp.MustCompile(`(?s)<c r="([A-Z]+)([0-9]+)"([^>]*?)(/>|>.*?</c>)`)
+var matxTypeAttr = regexp.MustCompile(` t="[^"]*"`)
+var matxStyleAttr = regexp.MustCompile(` s="[0-9]+"`)
 
-// 빈 셀 하나를 숫자 또는 수식이 들어간 셀로 바꾼다. s=".." 같은 기존 속성(서식)은 그대로 둠.
+// "AB" → 28
+func colNumber(letters string) int {
+	n := 0
+	for _, ch := range letters {
+		n = n*26 + int(ch-'A'+1)
+	}
+	return n
+}
+
+func splitRef(ref string) (string, int) {
+	i := 0
+	for i < len(ref) && ref[i] >= 'A' && ref[i] <= 'Z' {
+		i++
+	}
+	r, _ := strconv.Atoi(ref[i:])
+	return ref[:i], r
+}
+
+func matxCellXML(ref, attrs, val string) string {
+	attrs = matxTypeAttr.ReplaceAllString(attrs, "") // 문자열 칸 표시(t="s") 등은 지움
+	if strings.HasPrefix(val, "=") {
+		return `<c r="` + ref + `"` + attrs + `><f>` + val[1:] + `</f><v>0</v></c>`
+	}
+	return `<c r="` + ref + `"` + attrs + `><v>` + val + `</v></c>`
+}
+
+// 시트 XML 의 칸들에 숫자 또는 수식을 넣는다. s=".." 같은 기존 속성(서식)은 그대로 둔다.
+// 템플릿에 칸(<c>)이나 행(<row>) 자체가 없으면 열 순서에 맞춰 새로 끼워 넣는다
+// (예전에는 그런 칸은 "찾지 못함" 경고만 내고 값을 버렸음 - 예: R331 라인마크).
 func matxApplyCellEdits(sheetXML string, edits map[string]string) (string, []string) {
-	applied := map[string]bool{}
-	out := matxCellSelfClose.ReplaceAllStringFunc(sheetXML, func(m string) string {
-		sub := matxCellSelfClose.FindStringSubmatch(m)
-		ref, attrs := sub[1], sub[2]
-		val, ok := edits[ref]
-		if !ok {
-			return m
+	byRow := map[int]map[string]string{} // 행 → (열문자 → 값)
+	for ref, val := range edits {
+		col, r := splitRef(ref)
+		if col == "" || r == 0 {
+			continue
 		}
-		applied[ref] = true
-		if strings.HasPrefix(val, "=") {
-			return `<c r="` + ref + `"` + attrs + `><f>` + val[1:] + `</f><v>0</v></c>`
+		if byRow[r] == nil {
+			byRow[r] = map[string]string{}
 		}
-		return `<c r="` + ref + `"` + attrs + `><v>` + val + `</v></c>`
+		byRow[r][col] = val
+	}
+	done := map[int]bool{}
+	out := matxRowRe.ReplaceAllStringFunc(sheetXML, func(rowXML string) string {
+		sub := matxRowRe.FindStringSubmatch(rowXML)
+		r, _ := strconv.Atoi(sub[1])
+		want := byRow[r]
+		if want == nil {
+			return rowXML
+		}
+		done[r] = true
+		open := rowXML
+		body := ""
+		if strings.HasSuffix(sub[2], "/>") {
+			open = strings.TrimSuffix(rowXML, "/>") + ">"
+		} else {
+			k := strings.Index(rowXML, ">")
+			open, body = rowXML[:k+1], strings.TrimSuffix(rowXML[k+1:], "</row>")
+		}
+		return open + matxMergeCells(body, r, want) + "</row>"
 	})
-	var missed []string
-	for ref := range edits {
-		if !applied[ref] {
-			missed = append(missed, ref)
+	// 행 자체가 없는 경우: 행 번호 순서에 맞춰 새 행을 끼워 넣음
+	var missingRows []int
+	for r := range byRow {
+		if !done[r] {
+			missingRows = append(missingRows, r)
 		}
 	}
+	sort.Ints(missingRows)
+	var missed []string
+	for _, r := range missingRows {
+		rowXML := fmt.Sprintf(`<row r="%d">`, r) + matxMergeCells("", r, byRow[r]) + "</row>"
+		inserted := false
+		locs := matxRowRe.FindAllStringSubmatchIndex(out, -1)
+		for _, loc := range locs {
+			n, _ := strconv.Atoi(out[loc[2]:loc[3]])
+			if n > r {
+				out = out[:loc[0]] + rowXML + out[loc[0]:]
+				inserted = true
+				break
+			}
+		}
+		if !inserted {
+			if k := strings.Index(out, "</sheetData>"); k >= 0 {
+				out = out[:k] + rowXML + out[k:]
+				inserted = true
+			} else if k := strings.Index(out, "<sheetData/>"); k >= 0 {
+				out = out[:k] + "<sheetData>" + rowXML + "</sheetData>" + out[k+len("<sheetData/>"):]
+				inserted = true
+			}
+		}
+		if !inserted {
+			for col := range byRow[r] {
+				missed = append(missed, fmt.Sprintf("%s%d", col, r))
+			}
+		}
+	}
+	sort.Strings(missed)
 	return out, missed
+}
+
+// 한 행의 칸 목록(body)에 want(열문자→값)를 반영: 있는 칸은 값만 바꾸고, 없는 칸은 열 순서대로 끼움
+func matxMergeCells(body string, r int, want map[string]string) string {
+	type cell struct {
+		col   int
+		name  string
+		style string // ` s="12"` 형태 (없으면 "")
+		xml   string // 새로 끼울 칸이면 ""
+	}
+	var cells []cell
+	seen := map[string]bool{}
+	for _, m := range matxCellRe.FindAllStringSubmatch(body, -1) {
+		col, attrs := m[1], m[3]
+		x := m[0]
+		if val, ok := want[col]; ok {
+			x = matxCellXML(fmt.Sprintf("%s%d", col, r), attrs, val)
+			seen[col] = true
+		}
+		cells = append(cells, cell{colNumber(col), col, matxStyleAttr.FindString(attrs), x})
+	}
+	for col := range want {
+		if !seen[col] {
+			cells = append(cells, cell{col: colNumber(col), name: col})
+		}
+	}
+	sort.SliceStable(cells, func(i, j int) bool { return cells[i].col < cells[j].col })
+	var b strings.Builder
+	for i, c := range cells {
+		if c.xml == "" {
+			// 새 칸은 왼쪽(없으면 오른쪽) 이웃 칸의 서식을 따라감
+			style := ""
+			if i > 0 {
+				style = cells[i-1].style
+			} else if i+1 < len(cells) {
+				style = cells[i+1].style
+			}
+			cells[i].style = style
+			c.xml = matxCellXML(fmt.Sprintf("%s%d", c.name, r), style, want[c.name])
+		}
+		b.WriteString(c.xml)
+	}
+	return b.String()
 }
 
 // 열면 바로 재계산하도록 fullCalcOnLoad="1" 을 추가 (안 그러면 수식 칸이 캐시된 0으로 보일 수 있음)
@@ -154,12 +280,15 @@ func matxForceFullCalcOnLoad(workbookXML string) string {
 
 // templateXlsx(embed 된 자재내역.xlsx 원본)에 excel_matched.csv 내용을 채워서
 // 결과 xlsx 바이트를 돌려준다.
-func matxBuildExcel(templateXlsx []byte, csvText string) (outBytes []byte, warnings []string, err error) {
+// notesText 는 excel_notes.csv (도면번호,행,메모) 내용 - 없으면 "" (해당 칸에 엑셀 메모로 붙임)
+func matxBuildExcel(templateXlsx []byte, csvText string, notesText string) (outBytes []byte, warnings []string, err error) {
 	edits, warn, err := matxBuildEdits(csvText)
 	warnings = append(warnings, warn...)
 	if err != nil {
 		return nil, warnings, err
 	}
+	notes, nwarn := matxParseNotes(notesText)
+	warnings = append(warnings, nwarn...)
 	editMap := map[string]string{}
 	for _, e := range edits {
 		editMap[e.ref] = e.val
@@ -187,10 +316,14 @@ func matxBuildExcel(templateXlsx []byte, csvText string) (outBytes []byte, warni
 			s, missed := matxApplyCellEdits(string(data), editMap)
 			data = []byte(s)
 			for _, ref := range missed {
-				warnings = append(warnings, "셀 "+ref+" 을 템플릿에서 찾지 못해 값을 못 넣었습니다 (양식이 바뀌었을 수 있음)")
+				warnings = append(warnings, "셀 "+ref+" 을 템플릿에 넣지 못했습니다 (양식이 바뀌었을 수 있음)")
 			}
 		case "xl/workbook.xml":
 			data = []byte(matxForceFullCalcOnLoad(string(data)))
+		case "xl/comments1.xml":
+			data = []byte(matxAddComments(string(data), notes))
+		case "xl/drawings/vmlDrawing1.vml":
+			data = []byte(matxAddNoteShapes(string(data), notes))
 		}
 		w, err := zw.Create(f.Name)
 		if err != nil {
@@ -204,4 +337,94 @@ func matxBuildExcel(templateXlsx []byte, csvText string) (outBytes []byte, warni
 		return nil, warnings, err
 	}
 	return buf.Bytes(), warnings, nil
+}
+
+// ---------- 확인 메모 (excel_notes.csv → 엑셀 칸 메모) ----------
+
+type matxNote struct {
+	ref  string // 예: "H286"
+	col  int    // 1부터 (A=1)
+	row  int
+	text string
+}
+
+// CSV 한 줄 파싱 (따옴표 칸 지원)
+func matxSplitCSV(line string) []string {
+	var out []string
+	var b strings.Builder
+	inQ := false
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case inQ && c == '"' && i+1 < len(line) && line[i+1] == '"':
+			b.WriteByte('"')
+			i++
+		case c == '"':
+			inQ = !inQ
+		case c == ',' && !inQ:
+			out = append(out, b.String())
+			b.Reset()
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return append(out, b.String())
+}
+
+func matxParseNotes(text string) (notes []matxNote, warnings []string) {
+	colOf := matxDrawingColumn()
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	for i, line := range lines {
+		if i == 0 || strings.TrimSpace(line) == "" {
+			continue // 첫 줄은 머리글
+		}
+		f := matxSplitCSV(strings.TrimRight(line, "\r"))
+		if len(f) < 3 {
+			continue
+		}
+		r, err := strconv.Atoi(strings.TrimSpace(f[1]))
+		col, ok := colOf[strings.TrimSpace(f[0])]
+		if err != nil || !ok {
+			warnings = append(warnings, "메모를 붙일 칸을 못 찾음: "+line)
+			continue
+		}
+		notes = append(notes, matxNote{ref: fmt.Sprintf("%s%d", col, r), col: colNumber(col), row: r, text: f[2]})
+	}
+	return notes, warnings
+}
+
+func matxXMLEscape(s string) string {
+	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;").Replace(s)
+}
+
+// comments1.xml 의 commentList 끝에 메모 추가
+func matxAddComments(xml string, notes []matxNote) string {
+	if len(notes) == 0 {
+		return xml
+	}
+	var b strings.Builder
+	for _, n := range notes {
+		b.WriteString(`<comment ref="` + n.ref + `" authorId="0" shapeId="0"><text><r><rPr><b/><sz val="9"/><color rgb="FFFF0000"/><rFont val="맑은 고딕"/><family val="3"/><charset val="129"/></rPr><t xml:space="preserve">` + matxXMLEscape(n.text) + `</t></r></text></comment>`)
+	}
+	if k := strings.LastIndex(xml, "</commentList>"); k >= 0 {
+		return xml[:k] + b.String() + xml[k:]
+	}
+	return xml
+}
+
+// vmlDrawing1.vml 에 메모 상자 모양 추가 (엑셀이 메모를 표시하려면 칸마다 하나씩 필요)
+func matxAddNoteShapes(vml string, notes []matxNote) string {
+	if len(notes) == 0 {
+		return vml
+	}
+	var b strings.Builder
+	for i, n := range notes {
+		// Anchor: 왼쪽열, 오프셋, 윗행, 오프셋, 오른쪽열, 오프셋, 아랫행, 오프셋 (모두 0부터)
+		b.WriteString(fmt.Sprintf(`<v:shape id="_x0000_s%d" type="#_x0000_t202" style='position:absolute;margin-left:0;margin-top:0;width:180pt;height:45pt;z-index:%d;visibility:hidden;mso-wrap-style:tight' fillcolor="infoBackground [80]" strokecolor="none [81]" o:insetmode="auto"><v:fill color2="infoBackground [80]"/><v:shadow color="none [81]" obscured="t"/><v:path o:connecttype="none"/><v:textbox style='mso-direction-alt:auto'><div style='text-align:left'></div></v:textbox><x:ClientData ObjectType="Note"><x:MoveWithCells/><x:SizeWithCells/><x:Anchor>%d, 15, %d, 2, %d, 15, %d, 16</x:Anchor><x:AutoFill>False</x:AutoFill><x:Row>%d</x:Row><x:Column>%d</x:Column></x:ClientData></v:shape>`,
+			2001+i, 100+i, n.col, n.row-1, n.col+3, n.row+3, n.row-1, n.col-1))
+	}
+	if k := strings.LastIndex(vml, "</xml>"); k >= 0 {
+		return vml[:k] + b.String() + vml[k:]
+	}
+	return vml
 }

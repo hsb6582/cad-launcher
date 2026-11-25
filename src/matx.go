@@ -19,6 +19,7 @@ var matxTemplateXlsx []byte
 
 const matxResultName = "자재내역_결과.xlsx"
 const matxCsvName = "excel_matched.csv"
+const matxNotesName = "excel_notes.csv"
 const matxLogName = "auto_matx_log.txt"
 
 func matxLog(dir string, format string, a ...interface{}) {
@@ -44,7 +45,14 @@ func runMatxFill(dir string) int {
 		matxLog(dir, "[실패] %s 를 읽을 수 없습니다: %v", csvPath, err)
 		return 1
 	}
-	out, warnings, err := matxBuildExcel(matxTemplateXlsx, string(csvBytes))
+	// MATX.lsp 가 AutoLISP open/write-line 으로 쓴 파일이라 CP949(한글 윈도우 코드페이지)로
+	// 저장돼 있음 - UTF-8 문자열로 바꿔서 넘김.
+	// excel_notes.csv (확인 메모) 는 있으면 씀 - 없어도 됨
+	notesText := ""
+	if nb, nerr := os.ReadFile(filepath.Join(dir, matxNotesName)); nerr == nil {
+		notesText = fromCP949(nb)
+	}
+	out, warnings, err := matxBuildExcel(matxTemplateXlsx, fromCP949(csvBytes), notesText)
 	for _, w := range warnings {
 		matxLog(dir, "[경고] %s", w)
 	}
