@@ -5,7 +5,7 @@
   python dev/catalog_xlsx.py import [파일.xlsx]   엑셀 → catalog.json (검사 후 반영)
 
 엑셀은 '기능 목록' 시트 하나: 한 행 = 기능 하나, 행 순서 = 런처 목록 순서.
-옵션·외부 프로그램·리습 공통 안내는 엑셀에 없고 catalog.json 에 그대로 보존됩니다.
+옵션·외부 프로그램·리습 공통 안내·실행 전/후 그림은 엑셀에 없고 catalog.json 에 그대로 보존됩니다.
 (리습 + 명령어 가 같은 행끼리 옵션이 이어짐)
 """
 import json, sys
@@ -20,7 +20,11 @@ XLSX = ROOT / "dev" / "catalog.xlsx"
 FONT = "맑은 고딕"
 MAXROW = 300
 SHEET = "기능 목록"
-COLS = [("분류", 16), ("기능 이름", 26), ("간단한 설명", 46), ("리습", 10), ("명령어", 13), ("설명서", 80)]
+COLS = [("분류", 16), ("기능 이름", 26), ("간단한 설명", 46), ("리습", 10), ("명령어", 13), ("설명서", 80),
+        ("언제 쓰나", 40), ("사용 순서", 40), ("주의", 34)]
+NCOL = len(COLS)
+CHK = NCOL + 1  # 확인 칸
+WRAP = (3, 6, 7, 8, 9)
 EDIT = PatternFill("solid", fgColor="1F4E78")
 KEYF = PatternFill("solid", fgColor="808080")
 ROWFILL = PatternFill("solid", fgColor="F2F2F2")
@@ -38,33 +42,34 @@ def export():
         c.fill = KEYF if h in ("리습", "명령어") else EDIT
         c.alignment = Alignment(horizontal="center", vertical="center")
         ws.column_dimensions[c.column_letter].width = w
-    chk = ws.cell(1, 7, "확인")
+    chk = ws.cell(1, CHK, "확인")
     chk.font = Font(name=FONT, bold=True, color="FFFFFF")
     chk.fill = KEYF
-    ws.column_dimensions["G"].width = 22
+    ws.column_dimensions[chk.column_letter].width = 22
     ws.row_dimensions[1].height = 22
     r = 2
     for ct in cat["categories"]:
         for it in ct["items"]:
-            row = [ct["name"], it["name"], it.get("desc", ""), it.get("lisp", ""), it["command"].replace("\n", "\\n"), it.get("manual", "")]
+            row = [ct["name"], it["name"], it.get("desc", ""), it.get("lisp", ""), it["command"].replace("\n", "\\n"), it.get("manual", ""),
+                   it.get("when", ""), "\n".join(it.get("steps", [])), it.get("warn", "")]
             for i, v in enumerate(row, 1):
                 c = ws.cell(r, i, v)
                 c.font = Font(name=FONT, size=10, color="595959" if i in (4, 5) else "000000")
-                c.alignment = Alignment(vertical="top", wrap_text=(i in (3, 6)))
+                c.alignment = Alignment(vertical="top", wrap_text=(i in WRAP))
                 c.border = Border(bottom=THIN)
                 if i in (4, 5):
                     c.fill = ROWFILL
             ws.row_dimensions[r].height = 30  # 설명서는 셀을 눌러 수식 입력줄에서 보기 (행이 너무 커지지 않게)
             r += 1
     for rr in range(2, MAXROW + 1):
-        c = ws.cell(rr, 7, f'=IF(B{rr}="","",IF(A{rr}="","분류를 적으세요",IF(AND(D{rr}<>"",COUNTIF(리습목록!$A:$A,D{rr})=0),"없는 리습",IF(E{rr}="","명령어를 적으세요",IF(COUNTIFS($D$2:$D${MAXROW},D{rr},$E$2:$E${MAXROW},E{rr})>1,"같은 기능이 두 번","")))))')
+        c = ws.cell(rr, CHK, f'=IF(B{rr}="","",IF(A{rr}="","분류를 적으세요",IF(AND(D{rr}<>"",COUNTIF(리습목록!$A:$A,D{rr})=0),"없는 리습",IF(E{rr}="","명령어를 적으세요",IF(COUNTIFS($D$2:$D${MAXROW},D{rr},$E$2:$E${MAXROW},E{rr})>1,"같은 기능이 두 번","")))))')
         c.font = Font(name=FONT, size=9, color="C00000")
-        for i in range(1, 7):
+        for i in range(1, NCOL + 1):
             if rr >= r:
                 ws.cell(rr, i).font = Font(name=FONT, size=10)
-                ws.cell(rr, i).alignment = Alignment(vertical="top", wrap_text=(i in (3, 6)))
+                ws.cell(rr, i).alignment = Alignment(vertical="top", wrap_text=(i in WRAP))
     ws.freeze_panes = "C2"
-    ws.auto_filter.ref = f"A1:F{r - 1}"
+    ws.auto_filter.ref = f"A1:{ws.cell(1, NCOL).column_letter}{r - 1}"
     # 리습 목록(드롭다운용)
     ls = wb.create_sheet("리습목록")
     ls.cell(1, 1, "리습").font = Font(name=FONT, bold=True)
@@ -98,6 +103,8 @@ def export():
         ("• 분류: 런처 목록의 묶음 이름. 새 이름을 적으면 새 분류가 생깁니다. 분류 순서는 위에서 처음 나오는 순서.", 10, False),
         ("• 기능 이름: 런처 목록에 보이는 이름.  • 간단한 설명: 이름 옆·설명서 위에 보이는 한 줄.", 10, False),
         ("• 설명서: 오른쪽 설명서 창 내용. 셀 안 줄바꿈은 Alt + Enter.", 10, False),
+        ("• 언제 쓰나 / 사용 순서 / 주의: 간단 설명서. 하나라도 적으면 설명서 창이 간단 버전으로 바뀌고, 위 '설명서'는 '자세한 설명 보기'에 접힙니다.", 10, False),
+        ("  사용 순서는 셀 안에서 Alt + Enter 로 줄을 나눠 한 줄에 한 단계씩 적습니다. 실행 전/후 그림은 대화로 요청해 주세요.", 10, False),
         ("• 행 순서 = 목록 순서. 행을 잘라내서 끼워 넣으면 순서가 바뀝니다. 행을 지우면 목록에서 빠집니다.", 10, False),
         ("", 10, False),
         ("회색 칸 (리습 · 명령어)", 11, True),
@@ -132,10 +139,10 @@ def do_import(path):
             old[(it.get("lisp", ""), it["command"].split("\n")[0].strip("_.").upper())] = it
     errs, seen, cats = [], set(), []
     for r in range(2, ws.max_row + 1):
-        v = [("" if ws.cell(r, i).value is None else str(ws.cell(r, i).value).strip()) for i in range(1, 7)]
+        v = [("" if ws.cell(r, i).value is None else str(ws.cell(r, i).value).strip()) for i in range(1, NCOL + 1)]
         if not any(v):
             continue
-        cname, name, desc, lisp, cmd, man = v
+        cname, name, desc, lisp, cmd, man, when, steps, warn = v
         if not name:
             errs.append(f"{r}행: 기능 이름이 비어 있습니다")
             continue
@@ -159,6 +166,16 @@ def do_import(path):
             it["manual"] = man.replace("\r\n", "\n")
         if key in old and old[key].get("options"):
             it["options"] = old[key]["options"]  # 옵션은 그대로 이어받음
+        if when:
+            it["when"] = when
+        steps = [x.strip() for x in steps.replace("\r\n", "\n").split("\n") if x.strip()]
+        if steps:
+            it["steps"] = steps
+        if warn:
+            it["warn"] = warn
+        for k in ("before", "after"):  # 그림은 엑셀에 없으므로 이어받음
+            if key in old and old[key].get(k):
+                it[k] = old[key][k]
         ct = next((c for c in cats if c["name"] == cname), None)
         if not ct:
             ct = {"name": cname, "items": []}

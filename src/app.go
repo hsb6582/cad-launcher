@@ -208,6 +208,7 @@ func createControls() {
 	hStartup = mk("BUTTON", "모든 도면에서 자동 로드 (시작하기 세트)", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idStartup)
 
 	hLog = mk("EDIT", "", ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL, WS_EX_CLIENTEDGE, idLog)
+	createGuide()
 }
 
 // 목록 칸 폭 (경계를 끌어서 조절, 96DPI 기준)
@@ -315,6 +316,7 @@ func layout() {
 	}
 	mv(hLblManual, rightX, y+2, 80, 20)
 	mv(hManual, rightX, y+24, rw, max(mainBottom-36-(y+24), 40))
+	mv(hGuide, rightX, y+24, rw, max(mainBottom-36-(y+24), 40))
 	mv(hRun, rightX, mainBottom-28, 110, 30)
 	mv(hReset, rightX+118, mainBottom-28, 110, 30)
 	mv(hTools, rightX+rw-150, mainBottom-28, 150, 30)

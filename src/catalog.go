@@ -29,6 +29,16 @@ type Item struct {
 	Command string   `json:"command"` // 명령어
 	Manual  string   `json:"manual,omitempty"`
 	Options []Option `json:"options,omitempty"`
+	// 간단 설명서 (하나라도 있으면 설명서 칸을 간단 버전으로, manual 은 '자세한 설명'에 접어 둠)
+	When   string   `json:"when,omitempty"`   // 언제 쓰나 (한 줄)
+	Steps  []string `json:"steps,omitempty"`  // 사용 순서
+	Warn   string   `json:"warn,omitempty"`   // 주의 (한 줄)
+	Before string   `json:"before,omitempty"` // 실행 전 그림 (예: lsp/img/HG1BRK_before.png)
+	After  string   `json:"after,omitempty"`  // 실행 후 그림
+}
+
+func (it *Item) hasGuide() bool {
+	return it.When != "" || len(it.Steps) > 0 || it.Warn != "" || it.Before != "" || it.After != ""
 }
 
 type Category struct {
@@ -279,6 +289,7 @@ func showNode(n nodeRef) {
 	cur = n
 	clearOptions()
 	run := uintptr(0)
+	var guide *guideDoc
 	switch n.kind {
 	case nkCat:
 		ct := n.category()
@@ -312,6 +323,9 @@ func showNode(n nodeRef) {
 			man += "\n" + toolsSummary(l)
 		}
 		setManual(man)
+		if it.hasGuide() {
+			guide = &guideDoc{when: it.When, steps: it.Steps, warn: it.Warn, detail: strings.TrimSpace(man), pics: [2]string{it.Before, it.After}}
+		}
 		buildOptions(it.Options, st.Values[itemKey(it)])
 		run = 1
 	default:
@@ -320,6 +334,7 @@ func showNode(n nodeRef) {
 		setManual("왼쪽 목록에서 기능을 선택하면 설명이 여기에 표시됩니다.\n\n더블클릭하거나 ▶ 실행을 누르면 AutoCAD LT에서 실행됩니다.\n괄호 안은 (리습 · 명령어) 입니다.")
 	}
 	c(pEnableWindow, hRun, run)
+	setGuide(guide)
 	l := n.lisp()
 	show(hTools, l != nil && len(l.Tools) > 0)
 	show(hStartup, n.kind == nkItem && l != nil && l.File != "")
