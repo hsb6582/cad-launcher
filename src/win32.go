@@ -199,15 +199,17 @@ func RGB(r, g, b byte) uintptr { return uintptr(r) | uintptr(g)<<8 | uintptr(b)<
 
 // ───────────── 배색 (Claude 데스크톱 앱 느낌의 따뜻한 톤) ─────────────
 var (
-	clrBg        = RGB(0xF7, 0xF4, 0xEC) // 창 배경 (크림색)
-	clrText      = RGB(0x2D, 0x29, 0x24) // 기본 글자색
-	clrSubText   = RGB(0x8C, 0x85, 0x7A) // 회색 처리된(grey[]) 보조 글자색
-	clrPanelBg   = RGB(0xFF, 0xFF, 0xFF) // 로그·설명서 칸 배경
-	clrAccent    = RGB(0xCC, 0x78, 0x5C) // 강조색(테라코타) - '▶ 실행' 버튼
-	clrAccentDk  = RGB(0xAD, 0x5F, 0x46) // 강조색 테두리/눌렸을 때
-	clrAccentTxt = RGB(0xFF, 0xFF, 0xFF)
-	clrDisBg     = RGB(0xE4, 0xE0, 0xD8) // 비활성 '▶ 실행' 버튼 바탕(회색)
-	clrDisBorder = RGB(0xC9, 0xC4, 0xBA)
+	clrBg          = RGB(0xF7, 0xF4, 0xEC) // 창 배경 (크림색)
+	clrText        = RGB(0x2D, 0x29, 0x24) // 기본 글자색
+	clrSubText     = RGB(0x8C, 0x85, 0x7A) // 회색 처리된(grey[]) 보조 글자색
+	clrPanelBg     = RGB(0xFF, 0xFF, 0xFF) // 로그·설명서 칸 배경
+	clrAccent      = RGB(0xCC, 0x78, 0x5C) // 강조색(테라코타) - '▶ 실행' 버튼
+	clrAccentDk    = RGB(0xAD, 0x5F, 0x46) // 강조색 테두리/눌렸을 때
+	clrAccentTxt   = RGB(0xFF, 0xFF, 0xFF)
+	clrAccentHot   = RGB(0x9A, 0x46, 0x30) // 강조 버튼에 마우스를 올렸을 때 (진한 적갈색)
+	clrAccentPress = RGB(0x7A, 0x35, 0x23) // 강조 버튼을 눌렀을 때
+	clrDisBg       = RGB(0xE4, 0xE0, 0xD8) // 비활성 '▶ 실행' 버튼 바탕(회색)
+	clrDisBorder   = RGB(0xC9, 0xC4, 0xBA)
 
 	hBgBrush    uintptr // 창 배경 브러시 (main()에서 생성)
 	hPanelBrush uintptr // 로그·설명서 칸 배경 브러시 (main()에서 생성)

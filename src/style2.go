@@ -177,8 +177,10 @@ func drawButton(lp uintptr) uintptr {
 		case disabled:
 			fill, border, txt = clrDisBg, clrDisBorder, clrSubText
 		case pressed:
-			fill, border = clrAccentDk, clrAccentDk
-		case hot || focus:
+			fill, border = clrAccentPress, clrAccentPress
+		case hot:
+			fill, border = clrAccentHot, clrAccentHot // 마우스를 올리면 진한 적갈색으로 확실히 바뀜
+		case focus:
 			border = clrAccentDk
 		}
 	} else {
