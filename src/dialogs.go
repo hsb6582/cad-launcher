@@ -82,6 +82,9 @@ type dialog struct {
 	onCmd    func(id, code int)
 	defID    int               // Enter 키로 눌리는 기본 버튼 id
 	paint    func(hdc uintptr) // 컨트롤 테두리를 그린 뒤 추가로 그릴 것 (질문 창의 띠·테두리 등)
+	onSize   func(w, h int)    // 크기 조절 가능한 창: 바뀐 크기(96DPI 기준)로 컨트롤 다시 배치
+	minW     int32             // 크기 조절 가능한 창의 최소 크기(픽셀, 창 테두리 포함)
+	minH     int32
 }
 
 var (
@@ -128,6 +131,18 @@ func dlgProc(h, msg, wp, lp uintptr) uintptr {
 			c(pReleaseDC, h, hdc)
 		}
 		return 0
+	case WM_SIZE:
+		if d != nil && d.onSize != nil {
+			d.onSize(int(float64(lp&0xFFFF)/scale), int(float64((lp>>16)&0xFFFF)/scale))
+			c(pInvalidateRect, h, 0, 1)
+		}
+		return 0
+	case WM_GETMINMAXINFO:
+		if d != nil && d.minW > 0 {
+			pt := (*[2]int32)(P(lp + 24)) // ptMinTrackSize
+			pt[0], pt[1] = d.minW, d.minH
+			return 0
+		}
 	case DM_GETDEFID: // 직접 그리는 버튼은 '기본 버튼' 표시가 없으므로 Enter 키 대상을 알려 준다
 		if d != nil && d.defID != 0 {
 			return DC_HASDEFID<<16 | uintptr(d.defID)
@@ -154,8 +169,16 @@ func registerDialogClass() {
 }
 
 func newDialog(title string, w, h int) *dialog {
+	return newDialogStyle(title, w, h, false)
+}
+
+// resizable: 테두리를 끌어 크기 조절 + 최대화 버튼. 처음 크기가 최소 크기.
+func newDialogStyle(title string, w, h int, resizable bool) *dialog {
 	owner := topOwner()
 	style := uint32(WS_POPUP | WS_CAPTION | WS_SYSMENU)
+	if resizable {
+		style |= 0x00040000 | 0x00010000 // WS_THICKFRAME | WS_MAXIMIZEBOX
+	}
 	r := rectT{0, 0, int32(s(w)), int32(s(h))}
 	c(pAdjustWindowRectEx, uintptr(P(&r)), uintptr(style), 0, WS_EX_DLGMODALFRAME)
 	ow, oh := r.right-r.left, r.bottom-r.top
@@ -170,6 +193,9 @@ func newDialog(title string, w, h int) *dialog {
 		uintptr(x), uintptr(y), uintptr(ow), uintptr(oh), owner, 0, hInst, 0)
 	styleWindow(hwnd)
 	d := &dialog{h: hwnd, owner: owner}
+	if resizable {
+		d.minW, d.minH = ow*80/100, oh // 높이는 처음 크기보다 줄이지 않음 (내용이 잘리지 않게)
+	}
 	dialogs[hwnd] = d
 	return d
 }
@@ -281,49 +307,125 @@ func adoptLisp(p string) string {
 // 평소에는 거의 건드릴 일이 없는 설정(전송 방식·취소·항상 위·인코딩)과
 // 직접 명령 입력을 메인 화면에서 빼서 여기에 모아둔다.
 func advancedDialog() {
-	d := newDialog("설정", 480, 392)
-	const lx, ex, ew = 14, 150, 310
+	d := newDialogStyle("설정", 640, 560, true)
+	const lx, ex = 16, 160
+	head := func(t string) uintptr {
+		h := d.label(t, lx, 0, 200)
+		c(pSendMessageW, h, WM_SETFONT, hFontBtnBold, 1)
+		return h
+	}
 
-	d.label("전송 방식", lx, 18, 100)
+	hHeadSend := head("CAD 전송")
+	hLblMethod := d.label("전송 방식", lx, 0, 100)
 	hMethod := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvMethod)
-	mv(hMethod, ex, 14, 150, 200)
 	comboFill(hMethod, methods, indexOf(methods, st.Method))
-	d.note("WM_COPYDATA가 안 먹히면 '키입력'으로 바꿔보세요", ex+158, 18, ew-158, 36)
+	hNoteMethod := d.note("WM_COPYDATA가 안 먹히면 '키입력'으로 바꿔보세요", 0, 0, 10, 20)
 
 	hCancel := d.mk("BUTTON", "실행 전 진행 중 명령 취소", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvCancel)
-	mv(hCancel, lx, 56, 300, 22)
 	setCheck(hCancel, st.Cancel)
-
 	hTop := d.mk("BUTTON", "항상 위 (런처 창을 다른 창 위에 고정)", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvTop)
-	mv(hTop, lx, 84, 320, 22)
 	setCheck(hTop, st.Topmost)
 
+	hHeadUpd := head("업데이트")
 	hAuto := d.mk("BUTTON", "런처를 켤 때 자동으로 업데이트 확인", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvAuto)
-	mv(hAuto, lx, 112, 320, 22)
 	setCheck(hAuto, st.AutoUpdate)
 	upd := "받는 곳: github.com/" + fixedRepo + " (" + fixedBranch + ")"
 	if localCatalogChanged() {
 		upd += "\n※ 이 PC에서 리습 목록을 수정했습니다. 다음 업데이트 때 덮어쓸지 물어봅니다."
 	}
-	d.note(upd, lx+20, 136, 440, 36)
+	hNoteUpd := d.note(upd, 0, 0, 10, 20)
+	updH := 20
+	if strings.Contains(upd, "\n") {
+		updH = 40
+	}
+	// 마지막 업데이트 날짜
+	pcDate := fmtStamp(st.LastUpdate)
+	if pcDate == "" {
+		if fi, err := os.Stat(catalogPath); err == nil {
+			pcDate = fi.ModTime().Format("2006-01-02 15:04") + " (추정 - 다음 업데이트부터 정확히 기록)"
+		} else {
+			pcDate = "기록 없음"
+		}
+	}
+	ghDate := fmtStamp(st.GitHubDate)
+	if ghDate == "" {
+		ghDate = "아직 확인 전 ('업데이트 확인'을 누르면 표시)"
+	} else if ck := fmtStamp(st.LastCheck); ck != "" {
+		ghDate += "   (확인: " + ck + ")"
+	}
+	hLblPc := d.label("이 PC 마지막 업데이트", lx+20, 0, 140)
+	hValPc := d.label(pcDate, 0, 0, 10)
+	hLblGh := d.label("GitHub 마지막 변경", lx+20, 0, 140)
+	hValGh := d.label(ghDate, 0, 0, 10)
 
+	hHeadCad := head("AutoCAD")
 	hTrust := d.mk("BUTTON", "런처 폴더를 AutoCAD '신뢰할 수 있는 위치'에 자동 추가", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvTrust)
-	mv(hTrust, lx, 176, 440, 22)
 	setCheck(hTrust, st.Trust != "no")
-	d.note("끄면 리습 로드가 '파일 로드 취소됨'으로 막힐 수 있습니다", lx+20, 198, 440, 20)
-
-	d.label("옵션파일 인코딩", lx, 232, 105)
+	hNoteTrust := d.note("끄면 리습 로드가 '파일 로드 취소됨'으로 막힐 수 있습니다", 0, 0, 10, 20)
+	hLblEnc := d.label("옵션파일 인코딩", lx, 0, 120)
 	hEnc := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvEnc)
-	mv(hEnc, ex, 228, 100, 200)
 	comboFill(hEnc, encodings, indexOf(encodings, st.Encoding))
-	d.note("보통 cp949 그대로 두세요 (한글이 깨질 때만 utf-8)", ex+108, 232, ew-108, 20)
+	hNoteEnc := d.note("보통 cp949 그대로 두세요 (한글이 깨질 때만 utf-8)", 0, 0, 10, 20)
 
-	d.label("직접 명령", lx, 274, 100)
-	hFree := d.edit("", ex, 270, 230)
-	d.button("보내기", idAdvSend, ex+238, 269, 90, true)
-	d.note("목록에 없는 명령어를 바로 AutoCAD로 보냅니다", ex, 298, ew, 20)
+	hHeadFree := head("직접 명령")
+	hFree := d.edit("", ex, 0, 230)
+	hSend := d.button("보내기", idAdvSend, 0, 0, 90, true)
+	hNoteFree := d.note("목록에 없는 명령어를 바로 AutoCAD로 보냅니다", 0, 0, 10, 20)
 
-	d.button("닫기", IDCANCEL, 370, 346, 95, false)
+	hClose := d.button("닫기", IDCANCEL, 0, 0, 95, false)
+
+	// 창 크기에 맞춰 배치 (오른쪽 설명 글은 창 폭만큼 늘어남)
+	d.onSize = func(W, H int) {
+		rw := func(x int) int { return max(W-x-16, 40) }
+		y := 14
+		mv(hHeadSend, lx, y, 200, 20)
+		y += 28
+		mv(hLblMethod, lx, y+4, 120, 20)
+		mv(hMethod, ex, y, 150, 200)
+		mv(hNoteMethod, ex+160, y+4, rw(ex+160), 20)
+		y += 34
+		mv(hCancel, lx, y, rw(lx), 22)
+		y += 28
+		mv(hTop, lx, y, rw(lx), 22)
+		y += 40
+
+		mv(hHeadUpd, lx, y, 200, 20)
+		y += 28
+		mv(hAuto, lx, y, rw(lx), 22)
+		y += 26
+		mv(hNoteUpd, lx+20, y, rw(lx+20), updH)
+		y += updH + 8
+		mv(hLblPc, lx+20, y, 140, 20)
+		mv(hValPc, lx+170, y, rw(lx+170), 20)
+		y += 24
+		mv(hLblGh, lx+20, y, 140, 20)
+		mv(hValGh, lx+170, y, rw(lx+170), 20)
+		y += 40
+
+		mv(hHeadCad, lx, y, 200, 20)
+		y += 28
+		mv(hTrust, lx, y, rw(lx), 22)
+		y += 24
+		mv(hNoteTrust, lx+20, y, rw(lx+20), 20)
+		y += 30
+		mv(hLblEnc, lx, y+4, 140, 20)
+		mv(hEnc, ex, y, 100, 200)
+		mv(hNoteEnc, ex+110, y+4, rw(ex+110), 20)
+		y += 46
+
+		mv(hHeadFree, lx, y, 200, 20)
+		y += 28
+		ew := max(W-ex-16-98, 120)
+		mv(hFree, ex, y, ew, 24)
+		mv(hSend, ex+ew+8, y-1, 90, 28)
+		y += 30
+		mv(hNoteFree, ex, y, rw(ex), 20)
+
+		mv(hClose, W-16-95, H-14-28, 95, 28)
+	}
+	var cr rectT
+	c(pGetClientRect, d.h, uintptr(P(&cr)))
+	d.onSize(int(float64(cr.right)/scale), int(float64(cr.bottom)/scale))
 
 	d.onCmd = func(id, code int) {
 		switch {

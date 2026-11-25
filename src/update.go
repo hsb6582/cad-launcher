@@ -32,6 +32,37 @@ type updatePlan struct {
 	updates     []remoteFile // 로컬이 손대지 않았거나 새 파일 → 바로 교체 가능
 	conflicts   []remoteFile // 로컬에서도 수정된 파일
 	sameAll     []remoteFile // 이미 같은 파일 (동기화 기록만 갱신)
+	ghDate      string       // GitHub 브랜치의 마지막 커밋 시각 (RFC3339, 못 읽으면 "")
+}
+
+// GitHub 브랜치의 마지막 변경(커밋) 시각
+func fetchBranchDate() string {
+	body, err := ghGet("https://api.github.com/repos/"+fixedRepo+"/branches/"+url.PathEscape(branch()), "application/vnd.github+json")
+	if err != nil {
+		return ""
+	}
+	var b struct {
+		Commit struct {
+			Commit struct {
+				Committer struct {
+					Date string `json:"date"`
+				} `json:"committer"`
+			} `json:"commit"`
+		} `json:"commit"`
+	}
+	if json.Unmarshal(body, &b) != nil {
+		return ""
+	}
+	return b.Commit.Commit.Committer.Date
+}
+
+// 설정 창 표시용: RFC3339 → 이 PC 시각 "2026-11-25 16:30"
+func fmtStamp(v string) string {
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return ""
+	}
+	return t.Local().Format("2006-01-02 15:04")
 }
 
 var (
@@ -126,6 +157,7 @@ func fetchPlan(interactive bool) *updatePlan {
 		plan.err = err
 		return plan
 	}
+	plan.ghDate = fetchBranchDate()
 	for _, f := range tree.Tree {
 		if f.Type != "blob" || !syncTarget(f.Path) {
 			continue
@@ -188,6 +220,10 @@ func onUpdateResult() {
 	}
 	for _, f := range p.sameAll {
 		st.Synced[f.Path] = f.Sha
+	}
+	st.LastCheck = time.Now().Format(time.RFC3339)
+	if p.ghDate != "" {
+		st.GitHubDate = p.ghDate
 	}
 	saveState()
 	if len(p.updates) == 0 && len(p.conflicts) == 0 {
@@ -274,6 +310,9 @@ func applyUpdates(files []remoteFile) {
 		st.Synced[f.Path] = f.Sha
 		okN++
 		logf("업데이트: %s", f.Path)
+	}
+	if okN > 0 {
+		st.LastUpdate = time.Now().Format(time.RFC3339)
 	}
 	saveState()
 	if catUpdated {

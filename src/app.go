@@ -29,12 +29,15 @@ type State struct {
 	AutoUpdate bool                              `json:"autoUpdate"`
 	Token      string                            `json:"token,omitempty"`
 	Synced     map[string]string                 `json:"synced,omitempty"`
-	Installed  map[string]string                 `json:"installed,omitempty"` // 외부 프로그램 이름 → 설치한 버전
-	LeftW      int                               `json:"leftW,omitempty"`     // 목록 칸 폭
-	Order      map[string][]string               `json:"order,omitempty"`     // 이 PC에서 바꾼 목록 순서
-	Startup    []string                          `json:"startup,omitempty"`   // 시작하기 세트로 모든 도면에 자동 로드할 리습 id
-	Theme      string                            `json:"theme,omitempty"`     // 화면 색상: dark(기본)/cream (theme.go, 전구 버튼)
-	Trust      string                            `json:"trust,omitempty"`     // AutoCAD 신뢰 위치 자동 추가: ""(아직 안 물음)/"yes"/"no" (trust.go)
+	Installed  map[string]string                 `json:"installed,omitempty"`  // 외부 프로그램 이름 → 설치한 버전
+	LeftW      int                               `json:"leftW,omitempty"`      // 목록 칸 폭
+	Order      map[string][]string               `json:"order,omitempty"`      // 이 PC에서 바꾼 목록 순서
+	Startup    []string                          `json:"startup,omitempty"`    // 시작하기 세트로 모든 도면에 자동 로드할 리습 id
+	Theme      string                            `json:"theme,omitempty"`      // 화면 색상: dark(기본)/cream (theme.go, 전구 버튼)
+	Trust      string                            `json:"trust,omitempty"`      // AutoCAD 신뢰 위치 자동 추가: ""(아직 안 물음)/"yes"/"no" (trust.go)
+	LastUpdate string                            `json:"lastUpdate,omitempty"` // 이 PC가 마지막으로 파일을 내려받은 시각 (RFC3339)
+	LastCheck  string                            `json:"lastCheck,omitempty"`  // 마지막으로 업데이트를 확인한 시각
+	GitHubDate string                            `json:"githubDate,omitempty"` // 마지막 확인 때 본 GitHub 브랜치의 마지막 변경 시각
 }
 
 var (
