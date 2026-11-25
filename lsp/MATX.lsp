@@ -18,13 +18,15 @@
 ;;;   1) 새 프로젝트면 '자재내역 표 위치 보정'(MATCAL)을 먼저 1회 실행합니다. 보정값은 도면 폴더의 matx-config.txt 에 저장됩니다.
 ;;;   2) '자재내역 엑셀 자동 작성'(MATX)을 실행합니다.
 ;;;   3) 결과는 도면 폴더 안 MATX 폴더에 저장됩니다: material_export.csv, excel_matched.csv → 자재내역_결과.xlsx (생성되면 자동으로 열립니다)
+;;;   4) matx-review.csv 에 엑셀에 자동으로 못 넣은 자재(매핑 규칙 없음·규격 없음·도면번호 중복 등)가 정리됩니다. 이 목록은 꼭 직접 확인하세요.
 ;;;
 ;;;   ※ 엑셀이 자동으로 안 만들어지면 MATX 폴더의 auto_matx_log.txt 를 확인하세요. (CAD런처가 옛 버전이면 CAD런처 '업데이트 확인'을 먼저 눌러 주세요)
 ;;;   ※ 도면이 40개 기준 양식(MP-001~011, LP-001~029)보다 많아 새 도면번호가 생기면, 그 열만 자동 반영에서 빠집니다 - excel_matched.csv 를 열어 해당 칸만 수동으로 옮겨 붙이세요.
 ;;; 기능설명서: MATX
 ;;;   모든 도곽을 좌측 상단부터 차례로 돌며 자재내역 표를 읽어 CSV 로 모읍니다.
 ;;;   끝나면 CAD런처.exe 가 자재내역 양식을 채운 '자재내역_결과.xlsx' 를 만들고 자동으로 엽니다.
-;;;   • 매핑 규칙: MP/LP 구분, LP 63mm → PE 전자류, S.TEE 부속 자동 계산, 관 수량은 엑셀 수식으로 기록
+;;;   • 매핑 규칙: MP/LP 구분, 규격이 A 호칭(예: 300A)이면 강관 규칙, LP 63mm → PE 전자류, S.TEE 부속 자동 계산, 관 수량은 엑셀 수식으로 기록
+;;;   • 도곽은 FORM_ 레이어 사각형 중 표가 들어갈 만한 크기인 것만 씁니다 (표 칸막이선 등은 자동 제외)
 ;;;   • 결과 위치: 도면 폴더\MATX\
 ;;; 기능설명서: MATCAL
 ;;;   도곽 하나를 골라 자재내역 표의 위치(번호·품명·규격·수량 칸 등)를 지정합니다.
@@ -52,7 +54,7 @@
 ;;;   - 수량 칸은 프로젝트별로 레이어명이 다를 수 있음(고정 안 함)
 ;;;
 ;;; 설정 파일: 도면과 같은 폴더에 matx-config.txt 로 저장/로드
-;;; 결과 파일: 도면과 같은 폴더에 material_export.csv 로 누적 저장(append)
+;;; 결과 파일: 도면 폴더\MATX\ 에 material_export.csv / excel_matched.csv / matx-review.csv (매번 새로 씀)
 ;;; 로그 파일: matx-log.txt
 ;;; ============================================================
 
@@ -254,43 +256,238 @@
   )
 )
 
-(defun matx-nth-text-value (pt tol-x-left tol-x-right tol-y / ss i e ed txt best bestd d)
-  ;; pt 기준 좌측 tol-x-left, 우측 tol-x-right, 상하 tol-y 반경 내에서
-  ;; TEXT/MTEXT/ATTRIB 엔티티 중 기준점에 가장 가까운 것의 문자열과 레이어명을
-  ;; 리스트로 반환 (text . layer). 없으면 nil.
-  ;; (셀 안의 텍스트가 정렬 방식에 따라 중심이 아니라 셀 왼쪽에 붙어있는 경우가 있어
-  ;;  좌우 비대칭 검색을 지원함)
-  (setq ss (ssget "_C"
-                  (list (- (car pt) tol-x-left) (- (cadr pt) tol-y))
-                  (list (+ (car pt) tol-x-right) (+ (cadr pt) tol-y))
-                  '((0 . "TEXT,MTEXT,ATTRIB"))
-           )
+(defun matx-text-center (ed / p10 box rot mx my c s)
+  ;; TEXT 의 실제 글자 상자 중심점. 왼쪽 정렬 문자는 삽입점이 글자 왼쪽 끝이라
+  ;; 칸 중심과 멀리 떨어져 있으므로(예: 품명 칸), 정렬 방식과 상관없이 중심점으로 비교한다.
+  ;; textbox 를 못 쓰면(MTEXT 등) 기존 정렬점 방식으로 대체.
+  (setq p10 (cdr (assoc 10 ed)))
+  (if (and (= (cdr (assoc 0 ed)) "TEXT")
+           (or (vl-catch-all-error-p (setq box (vl-catch-all-apply 'textbox (list ed))))
+               (null box)))
+    ;; textbox 가 안 되면 글자 수 x 높이로 폭을 어림잡음 (그룹 10 = 글자 왼쪽 아래)
+    (setq box (list (list 0.0 0.0)
+                    (list (* (strlen (cdr (assoc 1 ed))) (cdr (assoc 40 ed)) 0.8
+                             (if (assoc 41 ed) (cdr (assoc 41 ed)) 1.0))
+                          (cdr (assoc 40 ed)))))
   )
-  (setq best nil bestd nil)
+  (if (and (= (cdr (assoc 0 ed)) "TEXT") box)
+    (progn
+      (setq mx (/ (+ (car (car box)) (car (cadr box))) 2.0))
+      (setq my (/ (+ (cadr (car box)) (cadr (cadr box))) 2.0))
+      (setq rot (cdr (assoc 50 ed)))
+      (if (null rot) (setq rot 0.0))
+      (setq c (cos rot) s (sin rot))
+      (list (+ (car p10) (- (* mx c) (* my s)))
+            (+ (cadr p10) (+ (* mx s) (* my c))))
+    )
+    (matx-text-position ed)
+  )
+)
+
+(defun matx-replace-all (s old new / p)
+  (setq p (vl-string-search old s))
+  (while p
+    (setq s (strcat (substr s 1 p) new (substr s (+ p 1 (strlen old)))))
+    (setq p (vl-string-search old s (+ p (strlen new))))
+  )
+  s
+)
+
+(defun matx-strip-mtext (s / out i n c nx)
+  ;; MTEXT 서식 코드(\P 줄바꿈, {\f글꼴;...}, \H, \C 등) 제거
+  (setq out "" i 1 n (strlen s))
+  (while (<= i n)
+    (setq c (substr s i 1))
+    (cond
+      ((or (= c "{") (= c "}")) (setq i (1+ i)))
+      ((= c "\\")
+       (setq nx (substr s (1+ i) 1))
+       (cond
+         ((member (strcase nx) '("P" "~")) (setq out (strcat out " ") i (+ i 2)))
+         ((member nx '("\\" "{" "}")) (setq out (strcat out nx) i (+ i 2)))
+         ((member (strcase nx) '("F" "H" "C" "W" "A" "T" "Q" "S"))
+          (setq i (+ i 2))
+          (while (and (<= i n) (/= (substr s i 1) ";")) (setq i (1+ i)))
+          (setq i (1+ i))
+         )
+         (T (setq i (+ i 2)))
+       )
+      )
+      (T (setq out (strcat out c) i (1+ i)))
+    )
+  )
+  out
+)
+
+(defun matx-text-string (ed / s)
+  ;; 문자열 정리: MTEXT 서식 제거, %%D → °, %%P → ±, 앞뒤 공백 제거
+  (setq s (cdr (assoc 1 ed)))
+  (if (/= (type s) 'STR) (setq s ""))
+  (if (= (cdr (assoc 0 ed)) "MTEXT")
+    (setq s (matx-strip-mtext
+              (strcat (apply 'strcat (mapcar 'cdr (vl-remove-if-not '(lambda (x) (= (car x) 3)) ed))) s)))
+  )
+  (foreach pr '(("%%D" . "°") ("%%d" . "°") ("%%P" . "±") ("%%p" . "±") ("%%%" . "%"))
+    (setq s (matx-replace-all s (car pr) (cdr pr)))
+  )
+  (vl-string-trim " \t" s)
+)
+
+;; ---------- 텍스트 색인 ----------
+;; 예전에는 칸마다 ssget "_C"(화면 창 선택)를 썼는데, 이 방식은 화면 확대 상태에 따라
+;; 결과가 달라지고(전체 줌에서 1mm 칸은 1픽셀도 안 됨) 도곽이 많으면 매우 느리다.
+;; 그래서 도면 전체 문자를 ssget "_X" 로 한 번만 모은 뒤 좌표로 직접 거른다.
+(defun matx-collect-texts (/ ss i e p result)
+  (setq result '())
+  (setq ss (ssget "_X" '((0 . "TEXT,MTEXT") (410 . "Model"))))
   (if ss
     (progn
       (setq i 0)
       (while (< i (sslength ss))
         (setq e (ssname ss i))
-        (setq ed (entget e))
-        (setq txt (cdr (assoc 1 ed)))
-        (if (/= (type txt) 'STR) (setq txt ""))
-        (setq d (distance pt (matx-text-position ed)))
-        (if (or (null bestd) (< d bestd))
-          (progn (setq bestd d) (setq best (cons txt (cdr (assoc 8 ed)))))
-        )
+        (setq p (cdr (assoc 10 (entget e))))
+        (setq result (cons (list (car p) (cadr p) e) result))
         (setq i (1+ i))
       )
     )
   )
-  best
+  result
+)
+
+(defun matx-frame-roi (origin cfg / xs ys pitch r1)
+  ;; 도곽 하나에서 읽을 범위(표 + 도면번호 주변). 삽입점 기준으로 대충 거르는 용도라
+  ;; 왼쪽(왼쪽 정렬 문자의 삽입점)과 도면번호 쪽으로 여유를 둔다.
+  (setq pitch (cdr (assoc 'ROWPITCH cfg)) r1 (cdr (assoc 'ROW1DY cfg)))
+  (setq xs (cdr (assoc 'COLDX cfg)))
+  (if (assoc 'DRWNODX cfg) (setq xs (cons (cdr (assoc 'DRWNODX cfg)) xs)))
+  (setq ys (list r1 (+ r1 (* (cdr (assoc 'MAXROWS cfg)) pitch)) (- r1 pitch)))
+  (if (assoc 'DRWNODY cfg) (setq ys (cons (cdr (assoc 'DRWNODY cfg)) ys)))
+  (list (+ (car origin) (apply 'min xs) -40.0)
+        (+ (cadr origin) (apply 'min ys) -25.0)
+        (+ (car origin) (apply 'max xs) 25.0)
+        (+ (cadr origin) (apply 'max ys) 25.0))
+)
+
+(defun matx-texts-in-box (all x1 y1 x2 y2 / result ed c)
+  ;; all = ((x y ename) ...). 범위 안 문자만 골라 ((중심x 중심y 문자열) ...) 로 반환
+  (setq result '())
+  (foreach t1 all
+    (if (and (>= (car t1) x1) (<= (car t1) x2) (>= (cadr t1) y1) (<= (cadr t1) y2))
+      (progn
+        (setq ed (entget (caddr t1)))
+        (setq c (matx-text-center ed))
+        (setq result (cons (list (car c) (cadr c) (matx-text-string ed)) result))
+      )
+    )
+  )
+  result
+)
+
+(defun matx-round (x)
+  (if (< x 0) (- (fix (+ (- x) 0.5))) (fix (+ x 0.5)))
+)
+
+(defun matx-col-halfwidth (coldx i / gl gr)
+  ;; i번째 열이 차지하는 폭의 절반 (양옆 열 간격 중 큰 쪽의 절반)
+  (setq gl (if (> i 0) (abs (- (nth i coldx) (nth (1- i) coldx))) 0.0))
+  (setq gr (if (< i (1- (length coldx))) (abs (- (nth (1+ i) coldx) (nth i coldx))) 0.0))
+  (/ (max gl gr) 2.0)
+)
+
+(defun matx-join-cell (items / out seen)
+  ;; 한 칸에 문자가 여러 개면 왼쪽부터 이어붙임 (같은 문자가 겹쳐 있으면 하나만)
+  (setq items (vl-sort items '(lambda (a b) (< (car a) (car b)))))
+  (setq out "" seen '())
+  (foreach it items
+    (if (and (/= (cdr it) "") (not (member (cdr it) seen)))
+      (progn
+        (setq seen (cons (cdr it) seen))
+        (setq out (if (= out "") (cdr it) (strcat out " " (cdr it))))
+      )
+    )
+  )
+  out
+)
+
+(defun matx-read-table (origin cfg texts / coldx pitch row1y maxrows cells dy ri dx k best bd d entry rows vals)
+  ;; 도곽 하나의 자재내역 표를 읽어 ((번호 품명 규격 단위 수량 비고) ...) 로 반환 (1행부터, 빈 행 제외)
+  ;; 각 문자의 중심점이 어느 행/열에 속하는지 계산해서 칸에 넣는다:
+  ;;  - 행: 1행 중심에서 행간격의 몇 배 떨어졌는지 (행간격의 45% 이내만 인정)
+  ;;  - 열: 보정된 열 위치 중 가장 가까운 열 (표 바깥으로 벗어난 문자는 제외)
+  (setq coldx (cdr (assoc 'COLDX cfg)) pitch (cdr (assoc 'ROWPITCH cfg))
+        maxrows (cdr (assoc 'MAXROWS cfg)) row1y (+ (cadr origin) (cdr (assoc 'ROW1DY cfg))))
+  (setq cells '())
+  (foreach tx texts
+    (setq dy (- (cadr tx) row1y))
+    (setq ri (matx-round (/ dy pitch)))
+    (if (and (>= ri 0) (< ri maxrows)
+             (<= (abs (- dy (* ri pitch))) (* 0.45 (abs pitch)))
+             (/= (caddr tx) ""))
+      (progn
+        (setq dx (- (car tx) (car origin)))
+        (setq k 0 best nil bd nil)
+        (foreach c coldx
+          (setq d (abs (- dx c)))
+          (if (or (null bd) (< d bd)) (setq bd d best k))
+          (setq k (1+ k))
+        )
+        (if (<= bd (matx-col-halfwidth coldx best))
+          (progn
+            (setq entry (assoc (cons ri best) cells))
+            (if entry
+              (setq cells (subst (cons (car entry) (cons (cons (car tx) (caddr tx)) (cdr entry))) entry cells))
+              (setq cells (cons (cons (cons ri best) (list (cons (car tx) (caddr tx)))) cells))
+            )
+          )
+        )
+      )
+    )
+  )
+  (setq rows '() ri 0)
+  (while (< ri maxrows)
+    (setq vals '() k 0)
+    (foreach c coldx
+      (setq entry (assoc (cons ri k) cells))
+      (setq vals (cons (if entry (matx-join-cell (cdr entry)) "") vals))
+      (setq k (1+ k))
+    )
+    (setq vals (reverse vals))
+    ;; 번호만 있고 나머지가 빈 행은 버림
+    (if (vl-some '(lambda (v) (/= v "")) (cdr vals))
+      (setq rows (cons vals rows))
+    )
+    (setq ri (1+ ri))
+  )
+  (reverse rows)
 )
 
 ;; ---------- 도곽 수집 (FORM 블록 우선, 없으면 FORM_ 레이어 폴리라인) ----------
-(defun matx-collect-frames (/ ss i e ed name frames pt)
+(defun matx-frame-min-size (cfg / maxdx top)
+  ;; 보정값(표 위치)으로 "도곽이라면 최소 이 정도 크기는 돼야 한다"를 계산.
+  ;; FORM_ 레이어에는 도곽 테두리뿐 아니라 표 칸막이선·결재란 선 같은 작은 폴리라인도
+  ;; 수천 개 들어 있어서(실제 도면: 2848개 중 도곽은 20개), 크기로 걸러야 함.
+  (setq maxdx (apply 'max (mapcar 'abs (cdr (assoc 'COLDX cfg)))))
+  (setq top (abs (+ (cdr (assoc 'ROW1DY cfg))
+                    (* (1- (cdr (assoc 'MAXROWS cfg))) (cdr (assoc 'ROWPITCH cfg))))))
+  (list (* 0.9 maxdx) (* 0.9 top))
+)
+
+(defun matx-bbox-inside-p (a b / tol)
+  ;; a 박스(minx miny maxx maxy)가 b 박스 안에 들어있는지 (a와 b가 같은 크기면 nil)
+  (setq tol 0.5)
+  (and (>= (nth 0 a) (- (nth 0 b) tol))
+       (>= (nth 1 a) (- (nth 1 b) tol))
+       (<= (nth 2 a) (+ (nth 2 b) tol))
+       (<= (nth 3 a) (+ (nth 3 b) tol))
+       (< (* (- (nth 2 a) (nth 0 a)) (- (nth 3 a) (nth 1 a)))
+          (* 0.9 (- (nth 2 b) (nth 0 b)) (- (nth 3 b) (nth 1 b))))
+  )
+)
+
+(defun matx-collect-frames (cfg / ss i e ed frames pt box minsz cands total kept)
   (setq frames '())
-  ;; 1) FORM 블록 INSERT 우선
-  (setq ss (ssget "_X" '((0 . "INSERT") (2 . "FORM"))))
+  ;; 1) FORM 블록 INSERT 우선 (모형 공간만)
+  (setq ss (ssget "_X" '((0 . "INSERT") (2 . "FORM") (410 . "Model"))))
   (if ss
     (progn
       (setq i 0)
@@ -303,24 +500,56 @@
       )
     )
   )
-  ;; 2) FORM 블록이 하나도 없으면 FORM_ 레이어의 폴리라인 바운딩박스 좌하단 사용
+  ;; 2) FORM 블록이 하나도 없으면 FORM_ 레이어의 폴리라인 중 '도곽 크기'인 것만 사용
   (if (null frames)
     (progn
-      (setq ss (ssget "_X" '((0 . "LWPOLYLINE") (8 . "FORM_"))))
+      (setq minsz (matx-frame-min-size cfg))
+      (setq cands '() total 0)
+      (setq ss (ssget "_X" '((0 . "LWPOLYLINE") (8 . "FORM_") (410 . "Model"))))
       (if ss
         (progn
+          (setq total (sslength ss))
           (setq i 0)
-          (while (< i (sslength ss))
+          (while (< i total)
             (setq e (ssname ss i))
-            (setq pt (matx-bbox-bl e))
-            (setq frames (cons (list pt e) frames))
+            (setq box (matx-poly-bbox e))
+            (if (and box
+                     (>= (- (nth 2 box) (nth 0 box)) (car minsz))
+                     (>= (- (nth 3 box) (nth 1 box)) (cadr minsz)))
+              (setq cands (cons (list box e) cands))
+            )
             (setq i (1+ i))
           )
         )
       )
+      ;; 다른 도곽 후보 안에 들어있는 사각형(안쪽 테두리 등)은 제외
+      (setq kept '())
+      (foreach c cands
+        (if (not (vl-some '(lambda (o) (and (not (eq o c)) (matx-bbox-inside-p (car c) (car o)))) cands))
+          (setq kept (cons c kept))
+        )
+      )
+      (foreach c kept
+        (setq frames (cons (list (list (nth 0 (car c)) (nth 1 (car c)) 0.0) (cadr c)) frames))
+      )
+      (matx-log (strcat "FORM_ 폴리라인 " (itoa total) "개 중 도곽 크기("
+                        (rtos (car minsz) 2 0) "x" (rtos (cadr minsz) 2 0) " 이상) "
+                        (itoa (length kept)) "개를 도곽으로 사용"))
+      (princ (strcat "\n[MATX] FORM_ 폴리라인 " (itoa total) "개 중 도곽 크기인 " (itoa (length kept)) "개를 도곽으로 사용합니다."))
     )
   )
   (matx-dedupe-frames frames)
+)
+
+(defun matx-poly-bbox (ent / ed pts)
+  ;; LWPOLYLINE 정점들의 (minx miny maxx maxy). 정점이 4개 미만이면 nil (선분은 도곽이 아님)
+  (setq ed (entget ent))
+  (setq pts (mapcar 'cdr (vl-remove-if-not '(lambda (x) (= (car x) 10)) ed)))
+  (if (>= (length pts) 4)
+    (list (apply 'min (mapcar 'car pts)) (apply 'min (mapcar 'cadr pts))
+          (apply 'max (mapcar 'car pts)) (apply 'max (mapcar 'cadr pts)))
+    nil
+  )
 )
 
 (defun matx-dedupe-frames (frames / result pt dup fr2)
@@ -386,104 +615,36 @@
   )
 )
 
-;; ---------- 도면번호 추출: 도곽 내부 텍스트 중 (MP|LP)-### 패턴 검색 ----------
-(defun matx-find-pattern-in-box (c1 c2 ref-pt / ss i e ed txt result all-found d bestd match)
-  ;; c1~c2 사각형 범위의 모든 TEXT/MTEXT/ATTRIB 중 MP-###/LP-### 패턴에 맞는 것들을 찾아서
-  ;; ref-pt에서 가장 가까운 것 하나를 고름 (첫 번째로 찾은 게 아니라 최근접 후보를 선택 -
-  ;; 넓은 범위를 훑을 때 엉뚱한 곳의 패턴 텍스트를 잘못 집어오는 걸 방지)
-  ;; 반환: (result . all-found-texts)  result가 nil이면 못 찾은 것, all-found-texts는 진단용
-  (setq result nil bestd nil all-found '())
-  (setq ss (ssget "_C" c1 c2 '((0 . "TEXT,MTEXT,ATTRIB"))))
-  (if ss
+;; ---------- 도면번호 추출: 보정된 도면번호 위치 근처의 (MP|LP)-### 문자 ----------
+(defun matx-find-drawing-no (origin cfg texts / pt best bd d m near)
+  ;; 보정 위치에서 25 이내의 문자 중 패턴이 맞는 가장 가까운 것.
+  ;; (예전에는 못 찾으면 150 반경까지 넓혀 찾았는데, 평면도 안의 '접속 도면' 표시
+  ;;  (예: 당진-2026-LP-006) 를 잘못 집어서 엉뚱한 도면번호로 기록되는 문제가 있어 없앰)
+  (if (not (and (assoc 'DRWNODX cfg) (assoc 'DRWNODY cfg)))
+    nil
     (progn
-      (setq i 0)
-      (while (< i (sslength ss))
-        (setq e (ssname ss i))
-        (setq ed (entget e))
-        (setq txt (cdr (assoc 1 ed)))
-        (if (and txt (= (type txt) 'STR))
+      (setq pt (list (+ (car origin) (cdr (assoc 'DRWNODX cfg)))
+                     (+ (cadr origin) (cdr (assoc 'DRWNODY cfg)))))
+      (setq best nil bd nil near '())
+      (foreach tx texts
+        (setq d (distance pt (list (car tx) (cadr tx))))
+        (if (< d 25.0)
           (progn
-            (setq all-found (cons txt all-found))
-            (setq match (matx-regex-mp-lp txt))
-          )
-          (setq match nil)
-        )
-        (if match
-          (progn
-            (setq d (distance ref-pt (matx-text-position ed)))
-            (if (or (null bestd) (< d bestd))
-              (progn (setq bestd d) (setq result match))
-            )
+            (if (< d 8.0) (setq near (cons (caddr tx) near)))
+            (setq m (matx-regex-mp-lp (caddr tx)))
+            (if (and m (or (null bd) (< d bd))) (setq bd d best m))
           )
         )
-        (setq i (1+ i))
       )
-    )
-  )
-  (cons result all-found)
-)
-
-(defun matx-find-pattern-in-window (pt tol)
-  ;; pt 중심 정사각(tol 반경) 범위에서 pt와 가장 가까운 패턴 매칭 텍스트를 찾음
-  (matx-find-pattern-in-box
-    (list (- (car pt) tol) (- (cadr pt) tol))
-    (list (+ (car pt) tol) (+ (cadr pt) tol))
-    pt
-  )
-)
-
-(defun matx-find-drawing-no (origin size cfg tol / ss i e ed txt result pt search-result found-texts)
-  (setq result nil)
-
-  ;; 1) 캘리브레이션된 도면번호 위치 근처에서 패턴 매칭 우선 탐색
-  (if (and cfg (assoc 'DRWNODX cfg) (assoc 'DRWNODY cfg))
-    (progn
-      (setq pt
-        (list
-          (+ (car origin) (cdr (assoc 'DRWNODX cfg)))
-          (+ (cadr origin) (cdr (assoc 'DRWNODY cfg)))
+      (if (and (null best) near)
+        (progn
+          (princ "\n      [진단] 도면번호 예상 위치 근처 문자(패턴 불일치): ")
+          (foreach ft near (princ (strcat "'" ft "' ")))
         )
       )
-      (princ (strcat "\n  [디버그] 원점=(" (rtos (car origin) 2 3) "," (rtos (cadr origin) 2 3) ")"
-                     " DRWNODX=" (rtos (cdr (assoc 'DRWNODX cfg)) 2 3)
-                     " DRWNODY=" (rtos (cdr (assoc 'DRWNODY cfg)) 2 3)
-                     " pt=(" (rtos (car pt) 2 3) "," (rtos (cadr pt) 2 3) ")"))
-      ;; 도면번호 주변엔 다른 텍스트(설계/확인/성명 등)도 몰려있을 수 있어 반경을 넉넉히 확보
-      (setq search-result (matx-find-pattern-in-window pt (max tol 20.0)))
-      (setq result (car search-result))
-      (setq found-texts (cdr search-result))
+      best
     )
   )
-
-  ;; 2) 못 찾았으면 캘리브레이션 지점(pt) 기준으로 더 넓게(150mm) 재탐색.
-  ;;    원점 기준 박스로 하면 도면번호가 원점보다 음수 방향에 있는 경우 아예 범위 밖으로
-  ;;    벗어나는 문제가 있어서, pt는 이미 방향까지 올바르게 반영된 값이므로 pt를 그대로 씀.
-  ;;    150mm는 옆 도곽(간격 약 447 이상)보다 훨씬 작아 침범 위험 없음.
-  (if (and (null result) pt)
-    (progn
-      (setq search-result (matx-find-pattern-in-window pt 150.0))
-      (setq result (car search-result))
-      (if (cdr search-result) (setq found-texts (cdr search-result)))
-    )
-  )
-
-  ;; 3) 그래도 못 찾았으면 진단용으로 캘리브레이션 지점 근처에서 실제로 발견된 텍스트를 출력
-  (if (and (null result) found-texts)
-    (progn
-      (princ "\n      [진단] 도면번호 예상위치 근처에서 발견된 텍스트(패턴 불일치): ")
-      (foreach ft found-texts
-        (if (= (type ft) 'STR)
-          (princ (strcat "'" ft "' "))
-          (princ (strcat "[비문자값:" (vl-princ-to-string ft) "] "))
-        )
-      )
-    )
-  )
-  (if (and (null result) (null found-texts))
-    (princ "\n      [진단] 도면번호 예상위치 근처에서 텍스트를 아예 찾지 못함(반경/좌표 문제 가능성)")
-  )
-
-  result
 )
 
 (defun matx-regex-mp-lp (s / pos p2 sub)
@@ -502,7 +663,11 @@
       (progn
         (setq digits (matx-take-digits s (+ i plen)))
         (if digits
-          (setq digits (strcat prefix digits))
+          (progn
+            ;; "MP-1" 처럼 자리수가 모자라면 엑셀 양식과 같은 3자리로 맞춤 ("MP-001")
+            (while (< (strlen digits) 3) (setq digits (strcat "0" digits)))
+            (setq digits (strcat prefix digits))
+          )
         )
       )
     )
@@ -542,7 +707,8 @@
   (if (not (member (cdr (assoc 0 ed)) '("TEXT" "MTEXT" "ATTRIB")))
     (progn (princ (strcat "\n[MATX] 선택한 것은 텍스트가 아닙니다: " (cdr (assoc 0 ed)))) (exit))
   )
-  (matx-text-position ed)
+  ;; 읽을 때와 같은 기준(글자 상자 중심)으로 저장
+  (matx-text-center ed)
 )
 
 ;; ============================================================
@@ -700,111 +866,28 @@
   (princ)
 )
 
-(defun matx-consec-diffs (lst / result i)
-  (setq result '())
-  (setq i 0)
-  (while (< i (1- (length lst)))
-    (setq result (cons (abs (- (nth (1+ i) lst) (nth i lst))) result))
-    (setq i (1+ i))
-  )
-  result
-)
-
-(defun matx-min-positive (lst / m)
-  (setq m nil)
-  (foreach v lst
-    (if (and (> v 0.0) (or (null m) (< v m)))
-      (setq m v)
-    )
-  )
-  (if m m 5.0) ; 값이 하나도 없으면 기본 5mm
-)
-
-(defun matx-apply-strict (lst strict-idxs strict-val / result i)
-  ;; 특정 열 인덱스(strict-idxs)만 아주 좁은 값(strict-val)으로 강제 교체.
-  ;; 규격/수량처럼 원래 비어있는 경우가 많은 열은, 자기 칸에 텍스트가 없으면
-  ;; 무리하게 이웃 행/열까지 찾아가지 말고 그냥 빈 값으로 남도록 하기 위함.
-  (setq result '())
-  (setq i 0)
-  (foreach v lst
-    (setq result (cons (if (member i strict-idxs) strict-val v) result))
-    (setq i (1+ i))
-  )
-  (reverse result)
-)
-
-(defun matx-col-left-tols (coldx-list default-tol / gaps result i)
-  ;; 각 열의 왼쪽 확장 반경을 "바로 왼쪽 열과의 실제 간격의 45%"로 계산 (첫 열은 default-tol).
-  ;; 이렇게 하면 왼쪽 열의 텍스트를 절대 침범하지 않으면서도, 셀 안에서 왼쪽으로 치우친
-  ;; 텍스트는 넉넉히 잡을 수 있음.
-  (setq gaps (matx-consec-diffs coldx-list))
-  (setq result (list default-tol)) ; 첫 열(번호)은 왼쪽 이웃이 없으므로 기본값
-  (setq i 0)
-  (while (< i (length gaps))
-    (setq result (cons (* 0.45 (nth i gaps)) result))
-    (setq i (1+ i))
-  )
-  (reverse result)
-)
-
-(defun matx-list-to-str (lst / s)
-  (setq s "")
-  (foreach v lst (setq s (strcat s (rtos v 2 2) " ")))
-  s
-)
-
 ;; ============================================================
 ;; MATX - 전체 도곽 순회 추출
 ;; ============================================================
-(defun c:MATX (/ cfg frames sorted-frames idx fr origin drawing-no
-                 row rowno colnames vals cell-txt csv-path csv-primary
-                 csv-fallback csv-mode open-result f
-                 has-any-value tol strict-tol tol-left-list tol-right-list tol-y-list colidx
-                 drawing-rows-acc matx-mc-err)
+(defun c:MATX (/ cfg frames sorted-frames idx fr origin drawing-no all-texts texts box rows
+                 csv-path open-result f seen-dns matx-mc-err n-ok n-fail n-dup)
   (if (not (matx-load-config))
     (progn (princ "\n[MATX] 캘리브레이션 정보가 없습니다. 먼저 MATCAL을 실행하세요.") (exit))
   )
-  ;; 대용량 도면에서 ssget이 화면에 인식되지 않은 먼 영역을 놓치는 걸 방지하기 위해
-  ;; 전체 도면을 한번 펼쳐서 인식시킴
-  (command "_.ZOOM" "_Extents")
-  (princ "\n[MATX] 전체 도면 인식을 위해 화면을 펼쳤습니다.")
   (setq *matx-excel-matrix* nil)
+  (setq *matx-review* nil)
   (setq cfg *matx-config*)
-  (setq colnames '("번호" "품명" "규격" "단위" "수량" "비고"))
-  ;; 검색 반경은 행간격/열간격보다 작아야 인접 셀 텍스트를 잘못 줍지 않음
-  (setq tol (* 0.4 (matx-min-positive
-                      (cons (abs (cdr (assoc 'ROWPITCH cfg)))
-                            (matx-consec-diffs (cdr (assoc 'COLDX cfg))))
-                    )
-             )
-  )
-  ;; 셀 텍스트가 정렬 방식에 따라 셀 중앙이 아니라 왼쪽에 붙어있는 경우가 있어
-  ;; 왼쪽 방향으로는 더 넉넉하게 검색 - 단, 규격(idx 2)/수량(idx 4)/비고(idx 5)는 원래 빈
-  ;; 경우가 많아 무리하게 이웃 행/열까지 찾아가지 않도록 좁게 강제 고정.
-  ;; 반경은 행 높이(ROWPITCH)의 25%로 계산 - 행 높이 절반보다 충분히 작아서
-  ;; 위/아래 행을 절대 침범하지 않음
-  (setq strict-tol (* 0.25 (abs (cdr (assoc 'ROWPITCH cfg)))))
-  (setq tol-left-list
-    (matx-apply-strict (matx-col-left-tols (cdr (assoc 'COLDX cfg)) tol) '(2 4 5) strict-tol)
-  )
-  (setq tol-right-list (matx-apply-strict (list tol tol tol tol tol tol) '(2 4 5) strict-tol))
-  ;; Y축(상하)은 어느 열이든 위/아래 행을 침범하면 안 되므로 전체 열 공통으로 좁게 고정
-  (setq tol-y-list (list strict-tol strict-tol strict-tol strict-tol strict-tol strict-tol))
-  (princ (strcat "\n[MATX] 텍스트 검색 반경(tol) = " (rtos tol 2 3)
-                 "mm, 규격/수량/비고 반경(strict-tol) = " (rtos strict-tol 2 3)
-                 "mm (열별 좌측 확장: " (matx-list-to-str tol-left-list) "mm)"))
 
-  (setq frames (matx-collect-frames))
+  (setq frames (matx-collect-frames cfg))
   (if (null frames)
     (progn (princ "\n[MATX] FORM 블록/FORM_ 레이어 도곽을 찾지 못했습니다.") (exit))
   )
   (setq sorted-frames (matx-sort-frames frames))
-  (princ (strcat "\n[MATX] 도곽 " (itoa (length sorted-frames)) "개 발견. 처리 시작..."))
+  (princ (strcat "\n[MATX] 도곽 " (itoa (length sorted-frames)) "개 발견. 문자 모으는 중..."))
+  (setq all-texts (matx-collect-texts))
+  (princ (strcat "\n[MATX] 문자 " (itoa (length all-texts)) "개. 처리 시작..."))
 
-  (setq csv-primary (strcat (matx-output-dir) "material_export.csv"))
-  (setq csv-fallback (strcat (matx-temp-dir) "MATX\\material_export.csv"))
-  (setq csv-mode "w") ; 매번 새로 덮어씀 - 이전 실행 결과가 계속 쌓여 중복되는 걸 방지
-  (setq open-result (matx-safe-open csv-primary csv-mode))
+  (setq open-result (matx-safe-open (strcat (matx-output-dir) "material_export.csv") "w"))
   (if (null open-result)
     (progn
       (princ "\n[MATX] 오류: 결과 CSV 파일을 어느 경로에도 열지 못했습니다.")
@@ -815,76 +898,55 @@
   (setq f (car open-result))
   (setq csv-path (cdr open-result))
   (princ (strcat "\n[MATX] 결과 CSV 경로: " csv-path))
-  (if (or (null (vl-file-size csv-path)) (= (vl-file-size csv-path) 0))
-    (write-line "도면번호,번호,품명,규격,단위,수량,비고" f)
-  )
+  (write-line "도면번호,번호,품명,규격,단위,수량,비고" f)
 
-  (setq idx 0)
+  (setq idx 0 seen-dns '() n-ok 0 n-fail 0 n-dup 0)
   (foreach fr sorted-frames
     (setq origin (car fr))
-    (setq drawing-no (matx-find-drawing-no origin (list 390.0 270.0) cfg tol)) ; 실제 도곽(396.9x273.98)보다 살짝 작게 - 이웃 도곽 침범 방지
-    (if (null drawing-no)
-      (progn
-        (matx-log (strcat "도곽 #" (itoa idx) " 도면번호 인식 실패 - 스킵"))
-        (princ (strcat "\n  [경고] 도곽 #" (itoa idx) " 도면번호를 찾지 못해 스킵합니다."))
+    (setq box (matx-frame-roi origin cfg))
+    (setq texts (matx-texts-in-box all-texts (nth 0 box) (nth 1 box) (nth 2 box) (nth 3 box)))
+    (setq drawing-no (matx-find-drawing-no origin cfg texts))
+    (cond
+      ((null drawing-no)
+       (setq n-fail (1+ n-fail))
+       (matx-log (strcat "도곽 #" (itoa idx) " (원점 " (rtos (car origin) 2 1) "," (rtos (cadr origin) 2 1)
+                         ") 도면번호 인식 실패 - 스킵"))
+       (princ (strcat "\n  [경고] 도곽 #" (itoa idx) " 도면번호를 찾지 못해 스킵합니다."))
       )
-      (progn
-        (princ (strcat "\n  처리중: " drawing-no))
-        (setq drawing-rows-acc '())
-        (setq row 0)
-        (while (< row (cdr (assoc 'MAXROWS cfg)))
-          (setq rowno (- (cdr (assoc 'MAXROWS cfg)) row)) ; 맨 위=20, 아래로 갈수록 감소, 1행이 제일 아래
-          (setq vals '())
-          (setq has-any-value nil)
-          (setq colidx 0)
-          (foreach dx (cdr (assoc 'COLDX cfg))
-            (setq cell-txt
-              (matx-nth-text-value
-                (list
-                  (+ (car origin) dx)
-                  (+ (cadr origin) (cdr (assoc 'ROW1DY cfg)) (* row (cdr (assoc 'ROWPITCH cfg))))
-                )
-                (nth colidx tol-left-list)   ; 이 열의 왼쪽 확장
-                (nth colidx tol-right-list)  ; 이 열의 오른쪽 확장
-                (nth colidx tol-y-list)      ; 이 열의 상하 확장
-              )
-            )
-            (setq vals (cons (if cell-txt (car cell-txt) "") vals))
-            (if (and cell-txt (/= (car cell-txt) "")) (setq has-any-value T))
-            (setq colidx (1+ colidx))
-          )
-          (setq vals (reverse vals))
-          ;; vals = (번호 품명 규격 단위 수량 비고)
-          (if (and has-any-value (/= (car vals) ""))
-            (progn
-              (write-line
-                (strcat
-                  drawing-no "," (nth 0 vals) "," (matx-csv-esc (nth 1 vals)) ","
-                  (matx-csv-esc (nth 2 vals)) "," (nth 3 vals) "," (nth 4 vals) ","
-                  (matx-csv-esc (nth 5 vals))
-                )
-                f
-              )
-              ;; 엑셀 매칭용으로도 같은 행 데이터를 누적
-              (setq drawing-rows-acc (cons vals drawing-rows-acc))
-            )
-          )
-          (setq row (1+ row))
-        )
-        ;; 이 도면의 20행을 다 훑었으면, 엑셀 매칭 규칙을 적용해서 결과 누적
-        (setq *matx-excel-matrix*
-          (cons
-            (cons drawing-no (matx-classify-drawing drawing-no (reverse drawing-rows-acc)))
-            *matx-excel-matrix*
-          )
-        )
+      ((member drawing-no seen-dns)
+       ;; 같은 도면번호가 두 도곽에서 나오면, 나중 것이 앞의 결과를 덮어쓰지 않도록 건너뜀
+       (setq n-dup (1+ n-dup))
+       (matx-log (strcat "도곽 #" (itoa idx) " (원점 " (rtos (car origin) 2 1) "," (rtos (cadr origin) 2 1)
+                         ") 도면번호 " drawing-no " 중복 - 스킵"))
+       (setq *matx-review* (cons (list drawing-no "" "" "" "" ""
+                                       (strcat "도면번호 중복 - 도곽 #" (itoa idx) " 은 건너뜀 (도면번호 문자 확인 필요)"))
+                                 *matx-review*))
+       (princ (strcat "\n  [경고] 도곽 #" (itoa idx) " 도면번호 " drawing-no " 가 중복되어 건너뜁니다."))
+      )
+      (T
+       (setq seen-dns (cons drawing-no seen-dns))
+       (setq n-ok (1+ n-ok))
+       (princ (strcat "\n  처리중: " drawing-no))
+       (setq rows (matx-read-table origin cfg texts))
+       (if (null rows)
+         (setq *matx-review* (cons (list drawing-no "" "" "" "" "" "자재내역 표에서 읽은 행이 없음 (표 위치 보정 확인)")
+                                   *matx-review*))
+       )
+       (foreach vals rows
+         (write-line (matx-csv-line (cons drawing-no vals)) f)
+       )
+       (setq *matx-excel-matrix*
+         (cons (cons drawing-no (matx-classify-drawing drawing-no rows)) *matx-excel-matrix*)
+       )
       )
     )
     (setq idx (1+ idx))
   )
   (close f)
-  (matx-log (strcat "MATX 완료: 도곽 " (itoa (length sorted-frames)) "개 처리, 결과 -> " csv-path))
-  (princ (strcat "\n[MATX] 완료. 결과 파일: " csv-path))
+  (matx-log (strcat "MATX 완료: 도곽 " (itoa (length sorted-frames)) "개 중 " (itoa n-ok) "개 추출, 도면번호 실패 "
+                    (itoa n-fail) "개, 중복 " (itoa n-dup) "개 -> " csv-path))
+  (princ (strcat "\n[MATX] 완료. 도곽 " (itoa n-ok) "개 추출 (도면번호 실패 " (itoa n-fail)
+                 ", 중복 " (itoa n-dup) "). 결과 파일: " csv-path))
 
   ;; 리습 안에 포팅된 매칭 규칙으로 엑셀 위치에 맞춘 CSV도 바로 생성 (파이썬 단계 불필요)
   (if (vl-catch-all-error-p (setq matx-mc-err (vl-catch-all-apply 'matx-write-matched-csv nil)))
@@ -893,6 +955,8 @@
       (princ (strcat "\n  " (vl-catch-all-error-message matx-mc-err)))
     )
   )
+  ;; 엑셀에 자동 반영되지 않은 항목 목록 (사람이 확인할 것)
+  (vl-catch-all-apply 'matx-write-review-csv nil)
 
   ;; excel_matched.csv 가 준비되면 CAD런처.exe 자신을 불러서 자재내역.xlsx 양식에 채워 넣고
   ;; 바로 엑셀로 연다 (CAD런처 실행 때마다 (setq *CADLAUNCHER-EXE* ...) 로 경로를 받아둠).
@@ -914,10 +978,39 @@
 )
 
 (defun matx-csv-esc (s)
-  ;; 콤마/따옴표 포함 시 CSV 이스케이프
-  (if (or (vl-string-search "," s) (vl-string-search "\"" s))
-    (strcat "\"" (vl-string-subst "\"\"" "\"" s) "\"")
+  ;; 콤마/따옴표/줄바꿈 포함 시 CSV 이스케이프 (따옴표는 전부 "" 로)
+  (if (/= (type s) 'STR) (setq s (vl-princ-to-string s)))
+  (if (or (vl-string-search "," s) (vl-string-search "\"" s) (vl-string-search "\n" s))
+    (strcat "\"" (matx-replace-all s "\"" "\"\"") "\"")
     s
+  )
+)
+
+(defun matx-csv-line (fields / s first)
+  (setq s "" first T)
+  (foreach v fields
+    (setq s (if first (matx-csv-esc v) (strcat s "," (matx-csv-esc v))))
+    (setq first nil)
+  )
+  s
+)
+
+(defun matx-write-review-csv (/ open-result f)
+  (setq open-result (matx-safe-open (strcat (matx-output-dir) "matx-review.csv") "w"))
+  (if open-result
+    (progn
+      (setq f (car open-result))
+      (write-line "도면번호,번호,품명,규격,수량,비고,확인 사유" f)
+      (foreach r (reverse *matx-review*)
+        (write-line (matx-csv-line r) f)
+      )
+      (close f)
+      (if *matx-review*
+        (princ (strcat "\n[MATX] 엑셀에 자동 반영되지 않은 항목 " (itoa (length *matx-review*))
+                       "건 - 꼭 확인하세요: " (cdr open-result)))
+        (princ "\n[MATX] 모든 자재 행이 엑셀 위치에 매칭되었습니다.")
+      )
+    )
   )
 )
 
@@ -1281,24 +1374,42 @@
   )
 )
 
-(defun matx-classify (raw-name / key found bucket pair)
+(defun matx-classify (raw-name / key bucket bestlen pair)
+  ;; 품명 안에 들어있는 표 키워드 중 가장 긴 것으로 분류
+  ;; (예: "S.TEE" 는 "TEE" 보다 길어서 S.TEE 로. 예전처럼 품명이 키워드의 일부인 경우까지
+  ;;  거꾸로 맞추면 "T" 같은 짧은 문자가 엉뚱한 자재로 들어갈 수 있어 뺌)
   (setq key (matx-norm2 raw-name))
-  (setq bucket nil)
+  (setq bucket nil bestlen 0)
   (if (/= key "")
-    (progn
-      (setq found (assoc key MATX-NAME-TABLE))
-      (if found
-        (setq bucket (cdr found))
-        (foreach pair MATX-NAME-TABLE
-          (if (and (null bucket)
-                   (or (vl-string-search (car pair) key) (vl-string-search key (car pair))))
-            (setq bucket (cdr pair))
-          )
-        )
+    (foreach pair MATX-NAME-TABLE
+      (if (and (vl-string-search (car pair) key) (> (strlen (car pair)) bestlen))
+        (setq bucket (cdr pair) bestlen (strlen (car pair)))
       )
     )
   )
   bucket
+)
+
+(defun matx-spec-is-steel (spec / u i n found)
+  ;; 규격 단위로 강관/PE 구분: "200A", "200Ax100A" = 강관(A 호칭), "315mm" = PE
+  (setq u (strcase (if spec spec "")) found nil)
+  (if (not (vl-string-search "MM" u))
+    (progn
+      (setq i 1 n (strlen u))
+      (while (and (< i n) (not found))
+        (if (and (matx-is-digit (substr u i 1)) (= (substr u (1+ i) 1) "A")) (setq found T))
+        (setq i (1+ i))
+      )
+    )
+  )
+  found
+)
+
+(defun matx-review (dn row reason)
+  ;; 엑셀에 자동 반영 못 한 행을 matx-review.csv 용으로 모음 (+ 로그)
+  (setq *matx-review*
+    (cons (list dn (nth 0 row) (nth 1 row) (nth 2 row) (nth 4 row) (nth 5 row) reason) *matx-review*))
+  (matx-log (strcat "[매칭] " dn " #" (nth 0 row) " " (nth 1 row) " " (nth 2 row) " - " reason))
 )
 
 (defun matx-extract-angle (raw-name / nums)
@@ -1334,8 +1445,9 @@
 ;; ------------------------------------------------------------
 (defun matx-classify-drawing (drawing-no rows / pressure row name spec unit qty remark
                                bucket steel dia d1 d2 angle table row-num
-                               result pipe-alist entry vals-list qsum
-                               lp300-list stee-main stee-count)
+                               result pipe-alist entry lp300-list stee-main stee-count)
+  ;; steel(강관 규칙) = 비고에 PLP 가 있거나, 규격이 A 호칭(예: 300A)인 경우.
+  ;; (MP 도면은 원래 모두 강관 규칙)
   (setq pressure
     (cond
       ((/= (vl-string-search "MP" (strcase drawing-no)) nil) "MP")
@@ -1359,24 +1471,38 @@
       (setq qty (matx-str-to-real (nth 4 row)))
       (setq remark (nth 5 row))
       (setq bucket (matx-classify name))
-      (setq steel (matx-is-steel-remark remark))
+      (setq steel (or (matx-is-steel-remark remark) (matx-spec-is-steel spec)))
+      (setq dia (matx-all-numbers spec))
+      (setq row-num nil)
 
       (cond
+        ;; 품명이 비었거나 무시 규칙(보호철판 등)
+        ((or (= name "") (= bucket "IGNORE")) nil)
+
+        ;; 매핑 규칙 없는 품명 - 수량이나 규격이 있으면 확인 목록에
+        ((null bucket)
+         (if (or (/= qty 0.0) (/= spec ""))
+           (matx-review drawing-no row "품명 매핑 규칙 없음")
+         )
+        )
+
+        ;; 관경이 필요한 자재인데 규격에 숫자가 없음
+        ((and (member bucket '("PIPE" "ELBOW" "STEE" "TEE" "RD" "CAP" "VALVE" "TF")) (null dia))
+         (if (/= qty 0.0) (matx-review drawing-no row "규격에서 관경을 읽지 못함"))
+        )
+
         ;; ---------------- PIPE ----------------
         ((= bucket "PIPE")
-         (setq dia (matx-all-numbers spec))
-         (if dia
-           (if (and (= pressure "LP") steel)
-             (if (= (car dia) 300)
-               (setq lp300-list (cons qty lp300-list))
-               (matx-log (strcat "[매칭] " drawing-no " LP/PLP " (itoa (car dia)) "A - 300A 외 예외 규칙 없음"))
-             )
-             (progn
-               (setq entry (assoc (car dia) pipe-alist))
-               (if entry
-                 (setq pipe-alist (subst (cons (car dia) (cons qty (cdr entry))) entry pipe-alist))
-                 (setq pipe-alist (cons (cons (car dia) (list qty)) pipe-alist))
-               )
+         (if (and (= pressure "LP") steel)
+           (if (= (car dia) 300)
+             (setq lp300-list (cons qty lp300-list))
+             (matx-review drawing-no row "LP 도면의 강관(PLP) 파이프는 300A 만 규칙 있음")
+           )
+           (progn
+             (setq entry (assoc (car dia) pipe-alist))
+             (if entry
+               (setq pipe-alist (subst (cons (car dia) (cons qty (cdr entry))) entry pipe-alist))
+               (setq pipe-alist (cons (cons (car dia) (list qty)) pipe-alist))
              )
            )
          )
@@ -1384,22 +1510,17 @@
 
         ;; ---------------- ELBOW ----------------
         ((= bucket "ELBOW")
-         (setq dia (matx-all-numbers spec))
-         (if dia
+         (if (= (car dia) 63)
+           (setq row-num (matx-lookup1 ROW-DIANJA-ELBOW 63))
            (progn
-             (if (= (car dia) 63)
-               (setq row-num (matx-lookup1 ROW-DIANJA-ELBOW 63))
-               (progn
-                 (setq angle (matx-extract-angle name))
-                 (setq table (if (or steel (= pressure "MP")) ROW-STEEL-ELBOW ROW-PE-ELBOW))
-                 (setq row-num (if angle (matx-lookup2 table (car dia) angle) nil))
-               )
-             )
-             (if row-num
-               (matx-acc result row-num qty)
-               (matx-log (strcat "[매칭] " drawing-no " ELBOW " spec " - 해당 규격 없음"))
-             )
+             (setq angle (matx-extract-angle name))
+             (setq table (if (or steel (= pressure "MP")) ROW-STEEL-ELBOW ROW-PE-ELBOW))
+             (setq row-num (if angle (matx-lookup2 table (car dia) angle) nil))
            )
+         )
+         (if row-num
+           (setq result (matx-acc result row-num qty))
+           (matx-review drawing-no row (if angle "엑셀에 해당 규격(관경x각도) 없음" "품명에서 각도(90/45)를 읽지 못함"))
          )
         )
 
@@ -1408,27 +1529,19 @@
          (if (= pressure "MP")
            (progn
              ;; MP의 S.TEE는 스토팍류 수량 계산에 사용 (자재 자체는 무시)
-             (setq dia (matx-all-numbers spec))
-             (if dia
-               (progn
-                 (setq stee-main (car dia))
-                 (setq stee-count (matx-ceil-div stee-main 100))
-                 (setq result (matx-acc result ROW-STOPOK-CZ stee-count))
-                 (setq result (matx-acc result ROW-STOPOK-4100 (+ stee-count 1)))
-                 (setq result (matx-acc result ROW-PVC-TAPE stee-count))
-               )
-             )
+             (setq stee-main (car dia))
+             (setq stee-count (matx-ceil-div stee-main 100))
+             (setq result (matx-acc result ROW-STOPOK-CZ stee-count))
+             (setq result (matx-acc result ROW-STOPOK-4100 (+ stee-count 1)))
+             (setq result (matx-acc result ROW-PVC-TAPE stee-count))
            )
            (progn
-             (setq dia (matx-all-numbers spec))
              (if (>= (length dia) 2)
-               (progn
-                 (setq row-num (matx-lookup2 ROW-ST (nth 0 dia) (nth 1 dia)))
-                 (if row-num
-                   (setq result (matx-acc result row-num qty))
-                   (matx-log (strcat "[매칭] " drawing-no " S.TEE " spec " - S/T표에 해당 규격 없음"))
-                 )
-               )
+               (setq row-num (matx-lookup2 ROW-ST (nth 0 dia) (nth 1 dia)))
+             )
+             (if row-num
+               (setq result (matx-acc result row-num qty))
+               (matx-review drawing-no row "S/T 표에 해당 규격 없음")
              )
            )
          )
@@ -1436,7 +1549,6 @@
 
         ;; ---------------- TEE / RD ----------------
         ((or (= bucket "TEE") (= bucket "RD"))
-         (setq dia (matx-all-numbers spec))
          (if (>= (length dia) 2)
            (progn
              (setq d1 (nth 0 dia)) (setq d2 (nth 1 dia))
@@ -1455,78 +1567,47 @@
                  (setq row-num (matx-lookup2 table d1 d2))
                )
              )
-             (if row-num
-               (setq result (matx-acc result row-num qty))
-               (matx-log (strcat "[매칭] " drawing-no " " bucket " " spec " - 해당 규격 없음"))
-             )
            )
+         )
+         (if row-num
+           (setq result (matx-acc result row-num qty))
+           (matx-review drawing-no row "엑셀에 해당 규격 없음 (관경 2개 필요)")
          )
         )
 
         ;; ---------------- CAP ----------------
         ((= bucket "CAP")
-         (setq dia (matx-all-numbers spec))
-         (if dia
-           (progn
-             (if (= (car dia) 63)
-               (setq row-num (matx-lookup1 ROW-DIANJA-CAP 63))
-               (progn
-                 (setq table (if (or steel (= pressure "MP")) ROW-STEEL-CAP ROW-PE-CAP))
-                 (setq row-num (matx-lookup1 table (car dia)))
-               )
-             )
-             (if row-num
-               (setq result (matx-acc result row-num qty))
-               (matx-log (strcat "[매칭] " drawing-no " CAP " spec " - 해당 규격 없음"))
-             )
-           )
+         (if (= (car dia) 63)
+           (setq row-num (matx-lookup1 ROW-DIANJA-CAP 63))
+           (setq row-num (matx-lookup1 (if (or steel (= pressure "MP")) ROW-STEEL-CAP ROW-PE-CAP) (car dia)))
+         )
+         (if row-num
+           (setq result (matx-acc result row-num qty))
+           (matx-review drawing-no row "엑셀에 해당 규격 없음")
          )
         )
 
         ;; ---------------- VALVE ----------------
         ((= bucket "VALVE")
-         (setq dia (matx-all-numbers spec))
-         (if dia
-           (progn
-             (setq table (if (= pressure "MP") ROW-VALVE-2P ROW-PE-VALVE))
-             (setq row-num (matx-lookup1 table (car dia)))
-             (if row-num
-               (setq result (matx-acc result row-num qty))
-               (matx-log (strcat "[매칭] " drawing-no " VALVE " spec " - 해당 규격(2P) 없음"))
-             )
-           )
+         (setq row-num (matx-lookup1 (if (or steel (= pressure "MP")) ROW-VALVE-2P ROW-PE-VALVE) (car dia)))
+         (if row-num
+           (setq result (matx-acc result row-num qty))
+           (matx-review drawing-no row "엑셀에 해당 밸브 규격 없음")
          )
         )
 
-        ;; ---------------- ANODE / TESTBOX / SIGNBOARD / LINEMARK / TF ----------------
-        ((= bucket "ANODE")
-         (setq result (matx-acc result ROW-MG-ANODE-N qty))
-        )
-        ((= bucket "TESTBOX")
-         (setq result (matx-acc result ROW-TEST-BOX-N qty))
-        )
-        ((= bucket "SIGNBOARD")
-         (setq result (matx-acc result ROW-SIGNBOARD-N qty))
-        )
-        ((= bucket "LINEMARK")
-         (setq result (matx-acc result ROW-LINE-MARK-N qty))
-        )
+        ;; ---------------- ANODE / TESTBOX / SIGNBOARD / LINEMARK ----------------
+        ((= bucket "ANODE") (setq result (matx-acc result ROW-MG-ANODE-N qty)))
+        ((= bucket "TESTBOX") (setq result (matx-acc result ROW-TEST-BOX-N qty)))
+        ((= bucket "SIGNBOARD") (setq result (matx-acc result ROW-SIGNBOARD-N qty)))
+        ((= bucket "LINEMARK") (setq result (matx-acc result ROW-LINE-MARK-N qty)))
+
+        ;; ---------------- T/F ----------------
         ((= bucket "TF")
-         (setq dia (matx-all-numbers spec))
-         (if dia
-           (progn
-             (setq table
-               (cond
-                 ((/= (vl-string-search "LONG" (strcase remark)) nil) ROW-TF-LONG)
-                 (T ROW-TF-SHORT)
-               )
-             )
-             (setq row-num (matx-lookup1 table (car dia)))
-             (if row-num
-               (setq result (matx-acc result row-num qty))
-               (matx-log (strcat "[매칭] " drawing-no " T/F " spec " - 해당 규격 없음"))
-             )
-           )
+         (setq row-num (matx-lookup1 (if (vl-string-search "LONG" (strcase remark)) ROW-TF-LONG ROW-TF-SHORT) (car dia)))
+         (if row-num
+           (setq result (matx-acc result row-num qty))
+           (matx-review drawing-no row "엑셀에 해당 T/F 규격 없음")
          )
         )
       ) ; cond 끝
@@ -1536,16 +1617,18 @@
   ;; 파이프 합산 결과를 result에 반영 (여러 값이면 수식 문자열, 하나면 숫자)
   (if pressure
     (progn
+      (setq table (if (= pressure "MP") ROW-PLP-PIPE ROW-PE-PIPE))
       (foreach entry pipe-alist
-        (setq table (if (= pressure "MP") ROW-PLP-PIPE ROW-PE-PIPE))
         (setq row-num (matx-lookup1 table (car entry)))
         (if row-num
-          (setq result (matx-acc-values result row-num (cdr entry)))
-          (matx-log (strcat "[매칭] " drawing-no " 파이프 " (itoa (car entry)) "A - 해당 관경 없음"))
+          (setq result (matx-acc-values result row-num (reverse (cdr entry))))
+          (matx-review drawing-no (list "" "파이프" (itoa (car entry)) ""
+                                        (matx-fmt-num (apply '+ (cdr entry))) "")
+                       "엑셀에 해당 관경의 파이프 행 없음")
         )
       )
       (if lp300-list
-        (setq result (matx-acc-values result ROW-LP-PLP-PIPE300-N lp300-list))
+        (setq result (matx-acc-values result ROW-LP-PLP-PIPE300-N (reverse lp300-list)))
       )
     )
   )
@@ -1584,11 +1667,13 @@
   (vl-remove (assoc row result) result)
 )
 
-(defun matx-fmt-num (v)
-  (if (= v (atoi (rtos v 2 0)))
-    (rtos v 2 0)
-    (rtos v 2 4)
+(defun matx-fmt-num (v / s)
+  ;; 1.5 -> "1.5", 200.0 -> "200" (예전엔 "1.5000" 처럼 0이 붙어 나왔음)
+  (setq s (rtos v 2 4))
+  (if (vl-string-search "." s)
+    (setq s (vl-string-right-trim "." (vl-string-right-trim "0" s)))
   )
+  s
 )
 
 (defun matx-ceil-div (a b / q)
@@ -1599,10 +1684,8 @@
 (defun matx-str-to-real (s / n)
   (if (or (null s) (= s ""))
     0.0
-    (progn
-      (setq n (atof s))
-      n
-    )
+    ;; "1,200" 같은 천단위 콤마 제거 후 숫자로
+    (atof (matx-replace-all s "," ""))
   )
 )
 

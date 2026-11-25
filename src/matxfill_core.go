@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -120,32 +121,153 @@ func matxBuildEdits(csvText string) (edits []matxEdit, warnings []string, err er
 	return edits, warnings, nil
 }
 
-var matxCellSelfClose = regexp.MustCompile(`<c r="([A-Z]+[0-9]+)"([^>]*)/>`)
 var matxCalcPr = regexp.MustCompile(`<calcPr([^>]*)/>`)
+var matxRowRe = regexp.MustCompile(`(?s)<row r="([0-9]+)"[^>]*?(/>|>.*?</row>)`)
+var matxCellRe = regexp.MustCompile(`(?s)<c r="([A-Z]+)([0-9]+)"([^>]*?)(/>|>.*?</c>)`)
+var matxTypeAttr = regexp.MustCompile(` t="[^"]*"`)
+var matxStyleAttr = regexp.MustCompile(` s="[0-9]+"`)
 
-// 빈 셀 하나를 숫자 또는 수식이 들어간 셀로 바꾼다. s=".." 같은 기존 속성(서식)은 그대로 둠.
+// "AB" → 28
+func colNumber(letters string) int {
+	n := 0
+	for _, ch := range letters {
+		n = n*26 + int(ch-'A'+1)
+	}
+	return n
+}
+
+func splitRef(ref string) (string, int) {
+	i := 0
+	for i < len(ref) && ref[i] >= 'A' && ref[i] <= 'Z' {
+		i++
+	}
+	r, _ := strconv.Atoi(ref[i:])
+	return ref[:i], r
+}
+
+func matxCellXML(ref, attrs, val string) string {
+	attrs = matxTypeAttr.ReplaceAllString(attrs, "") // 문자열 칸 표시(t="s") 등은 지움
+	if strings.HasPrefix(val, "=") {
+		return `<c r="` + ref + `"` + attrs + `><f>` + val[1:] + `</f><v>0</v></c>`
+	}
+	return `<c r="` + ref + `"` + attrs + `><v>` + val + `</v></c>`
+}
+
+// 시트 XML 의 칸들에 숫자 또는 수식을 넣는다. s=".." 같은 기존 속성(서식)은 그대로 둔다.
+// 템플릿에 칸(<c>)이나 행(<row>) 자체가 없으면 열 순서에 맞춰 새로 끼워 넣는다
+// (예전에는 그런 칸은 "찾지 못함" 경고만 내고 값을 버렸음 - 예: R331 라인마크).
 func matxApplyCellEdits(sheetXML string, edits map[string]string) (string, []string) {
-	applied := map[string]bool{}
-	out := matxCellSelfClose.ReplaceAllStringFunc(sheetXML, func(m string) string {
-		sub := matxCellSelfClose.FindStringSubmatch(m)
-		ref, attrs := sub[1], sub[2]
-		val, ok := edits[ref]
-		if !ok {
-			return m
+	byRow := map[int]map[string]string{} // 행 → (열문자 → 값)
+	for ref, val := range edits {
+		col, r := splitRef(ref)
+		if col == "" || r == 0 {
+			continue
 		}
-		applied[ref] = true
-		if strings.HasPrefix(val, "=") {
-			return `<c r="` + ref + `"` + attrs + `><f>` + val[1:] + `</f><v>0</v></c>`
+		if byRow[r] == nil {
+			byRow[r] = map[string]string{}
 		}
-		return `<c r="` + ref + `"` + attrs + `><v>` + val + `</v></c>`
+		byRow[r][col] = val
+	}
+	done := map[int]bool{}
+	out := matxRowRe.ReplaceAllStringFunc(sheetXML, func(rowXML string) string {
+		sub := matxRowRe.FindStringSubmatch(rowXML)
+		r, _ := strconv.Atoi(sub[1])
+		want := byRow[r]
+		if want == nil {
+			return rowXML
+		}
+		done[r] = true
+		open := rowXML
+		body := ""
+		if strings.HasSuffix(sub[2], "/>") {
+			open = strings.TrimSuffix(rowXML, "/>") + ">"
+		} else {
+			k := strings.Index(rowXML, ">")
+			open, body = rowXML[:k+1], strings.TrimSuffix(rowXML[k+1:], "</row>")
+		}
+		return open + matxMergeCells(body, r, want) + "</row>"
 	})
-	var missed []string
-	for ref := range edits {
-		if !applied[ref] {
-			missed = append(missed, ref)
+	// 행 자체가 없는 경우: 행 번호 순서에 맞춰 새 행을 끼워 넣음
+	var missingRows []int
+	for r := range byRow {
+		if !done[r] {
+			missingRows = append(missingRows, r)
 		}
 	}
+	sort.Ints(missingRows)
+	var missed []string
+	for _, r := range missingRows {
+		rowXML := fmt.Sprintf(`<row r="%d">`, r) + matxMergeCells("", r, byRow[r]) + "</row>"
+		inserted := false
+		locs := matxRowRe.FindAllStringSubmatchIndex(out, -1)
+		for _, loc := range locs {
+			n, _ := strconv.Atoi(out[loc[2]:loc[3]])
+			if n > r {
+				out = out[:loc[0]] + rowXML + out[loc[0]:]
+				inserted = true
+				break
+			}
+		}
+		if !inserted {
+			if k := strings.Index(out, "</sheetData>"); k >= 0 {
+				out = out[:k] + rowXML + out[k:]
+				inserted = true
+			} else if k := strings.Index(out, "<sheetData/>"); k >= 0 {
+				out = out[:k] + "<sheetData>" + rowXML + "</sheetData>" + out[k+len("<sheetData/>"):]
+				inserted = true
+			}
+		}
+		if !inserted {
+			for col := range byRow[r] {
+				missed = append(missed, fmt.Sprintf("%s%d", col, r))
+			}
+		}
+	}
+	sort.Strings(missed)
 	return out, missed
+}
+
+// 한 행의 칸 목록(body)에 want(열문자→값)를 반영: 있는 칸은 값만 바꾸고, 없는 칸은 열 순서대로 끼움
+func matxMergeCells(body string, r int, want map[string]string) string {
+	type cell struct {
+		col   int
+		name  string
+		style string // ` s="12"` 형태 (없으면 "")
+		xml   string // 새로 끼울 칸이면 ""
+	}
+	var cells []cell
+	seen := map[string]bool{}
+	for _, m := range matxCellRe.FindAllStringSubmatch(body, -1) {
+		col, attrs := m[1], m[3]
+		x := m[0]
+		if val, ok := want[col]; ok {
+			x = matxCellXML(fmt.Sprintf("%s%d", col, r), attrs, val)
+			seen[col] = true
+		}
+		cells = append(cells, cell{colNumber(col), col, matxStyleAttr.FindString(attrs), x})
+	}
+	for col := range want {
+		if !seen[col] {
+			cells = append(cells, cell{col: colNumber(col), name: col})
+		}
+	}
+	sort.SliceStable(cells, func(i, j int) bool { return cells[i].col < cells[j].col })
+	var b strings.Builder
+	for i, c := range cells {
+		if c.xml == "" {
+			// 새 칸은 왼쪽(없으면 오른쪽) 이웃 칸의 서식을 따라감
+			style := ""
+			if i > 0 {
+				style = cells[i-1].style
+			} else if i+1 < len(cells) {
+				style = cells[i+1].style
+			}
+			cells[i].style = style
+			c.xml = matxCellXML(fmt.Sprintf("%s%d", c.name, r), style, want[c.name])
+		}
+		b.WriteString(c.xml)
+	}
+	return b.String()
 }
 
 // 열면 바로 재계산하도록 fullCalcOnLoad="1" 을 추가 (안 그러면 수식 칸이 캐시된 0으로 보일 수 있음)
@@ -191,7 +313,7 @@ func matxBuildExcel(templateXlsx []byte, csvText string) (outBytes []byte, warni
 			s, missed := matxApplyCellEdits(string(data), editMap)
 			data = []byte(s)
 			for _, ref := range missed {
-				warnings = append(warnings, "셀 "+ref+" 을 템플릿에서 찾지 못해 값을 못 넣었습니다 (양식이 바뀌었을 수 있음)")
+				warnings = append(warnings, "셀 "+ref+" 을 템플릿에 넣지 못했습니다 (양식이 바뀌었을 수 있음)")
 			}
 		case "xl/workbook.xml":
 			data = []byte(matxForceFullCalcOnLoad(string(data)))
