@@ -1,17 +1,21 @@
 name: Build zip
 
-# '요즘 스타일'(WebView2, src-modern) 런처를 빌드해서, 압축만 풀면 바로 쓸 수 있는
-# zip 으로 올린다. (전에는 Inno Setup 설치 파일이었는데, 서명 없는 설치 파일이
+# 런처 두 가지를 각각 따로 zip 으로 올린다 (압축만 풀면 바로 사용).
+#  - CAD런처-네이티브 : 저장소 맨 위 CAD런처.exe (src/, Windows 기본 화면). 실행 때마다 exe 까지 자동 업데이트.
+#  - CAD런처-WebView2 : src-modern 을 빌드한 CAD런처-WebView2.exe (웹 화면). exe 는 자동 업데이트 안 함.
+#    네이티브 업데이트가 저장소의 CAD런처.exe 로 덮어쓰지 않도록 exe 이름을 다르게 한다.
+# (전에는 Inno Setup 설치 파일이었는데, 서명 없는 설치 파일이
 # 회사 보안 프로그램(Cortex XDR)에 계속 막혀서 zip 으로 바꿈)
-# 받는 곳: Actions → 가장 최근 "Build zip" 실행 → 아래 Artifacts 의 "CAD런처"
+# 받는 곳: Actions → 가장 최근 "Build zip" 실행 → 아래 Artifacts
 # (GitHub 가 폴더를 zip 으로 묶어서 내려준다)
-# WebView2 런타임은 Windows 11 에 기본 포함. Windows 10 에서 안 뜨면 직접 설치:
+# (WebView2 버전) WebView2 런타임은 Windows 11 에 기본 포함. Windows 10 에서 안 뜨면 직접 설치:
 # https://developer.microsoft.com/microsoft-edge/webview2/
 
 on:
   push:
     branches: [main]
     paths:
+      - "CAD런처.exe"
       - "catalog.json"
       - "lsp/**"
       - "tools/**"
@@ -21,7 +25,26 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  build:
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Put files together
+        run: |
+          out="dist/CAD런처-네이티브"
+          mkdir -p "$out"
+          cp CAD런처.exe catalog.json README.md "$out/"
+          cp -r lsp tools "$out/"
+
+      - name: Upload zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: CAD런처-네이티브
+          path: dist/
+
+  webview2:
     runs-on: windows-latest
     steps:
       - name: Check out repository
@@ -32,18 +55,18 @@ jobs:
         with:
           go-version: "1.24"
 
-      - name: Build CAD 런처 (요즘 스타일, src-modern)
+      - name: Build CAD런처-WebView2.exe (src-modern)
         shell: cmd
         run: |
           cd src-modern
-          go build -ldflags "-H windowsgui -s -w" -o build\CAD런처.exe .
+          go build -ldflags "-H windowsgui -s -w" -o build\CAD런처-WebView2.exe .
 
       - name: Put files together
         shell: pwsh
         run: |
-          $out = "dist\CAD런처"
+          $out = "dist\CAD런처-WebView2"
           New-Item -ItemType Directory -Force $out | Out-Null
-          Copy-Item "src-modern\build\CAD런처.exe" $out
+          Copy-Item "src-modern\build\CAD런처-WebView2.exe" $out
           # exe 옆에 두면 메모리 로딩 대신 일반 파일로 불러온다 (보안 프로그램 오탐 줄이기)
           Push-Location src-modern
           $dir = go list -m -f '{{.Dir}}' github.com/jchv/go-webview2
@@ -55,5 +78,5 @@ jobs:
       - name: Upload zip
         uses: actions/upload-artifact@v4
         with:
-          name: CAD런처
+          name: CAD런처-WebView2
           path: dist/

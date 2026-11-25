@@ -4,7 +4,8 @@
 // 외부 프로그램 설치 같은 실제 동작은 실제 CAD런처(../src)와 동일한 Win32 API를
 // 그대로 호출해서 처리한다 (winapi.go, run.go, ghupdate.go, toolsinstall.go).
 //
-// 빌드: GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w" -o CAD런처.exe
+// 빌드: GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w" -o CAD런처-WebView2.exe
+// (네이티브 런처의 자동 업데이트가 CAD런처.exe 를 덮어쓰므로 이름을 다르게 둔다)
 // 실행 전 필요: Windows의 Microsoft Edge WebView2 런타임 (Win11은 기본 포함)
 package main
 
