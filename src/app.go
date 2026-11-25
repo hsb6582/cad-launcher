@@ -676,12 +676,14 @@ func onDrawItem(lp uintptr) uintptr {
 	// 1) 버튼 네모 전체를 창 배경색으로 먼저 지워서, 둥근 테두리 바깥쪽이 주변과 자연스럽게 이어지게 한다.
 	c(pFillRect, hdc, uintptr(P(&dis.rcItem)), hBgBrush)
 
-	fill := clrAccent
-	if dis.itemState&ODS_SELECTED != 0 {
+	fill, border, txt := clrAccent, clrAccentDk, clrAccentTxt
+	if dis.itemState&ODS_DISABLED != 0 { // 상위 구분 선택 등으로 꺼져 있으면 회색
+		fill, border, txt = clrDisBg, clrDisBorder, clrSubText
+	} else if dis.itemState&ODS_SELECTED != 0 {
 		fill = clrAccentDk
 	}
 	br := c(pCreateSolidBrush, fill)
-	pen := c(pCreatePen, PS_SOLID, 1, clrAccentDk)
+	pen := c(pCreatePen, PS_SOLID, 1, border)
 	oldBr := c(pSelectObject, hdc, br)
 	oldPen := c(pSelectObject, hdc, pen)
 	radius := int(s(8))
@@ -693,7 +695,7 @@ func onDrawItem(lp uintptr) uintptr {
 	c(pDeleteObject, pen)
 
 	c(pSetBkMode, hdc, TRANSPARENT)
-	c(pSetTextColor, hdc, clrAccentTxt)
+	c(pSetTextColor, hdc, txt)
 	oldFont := c(pSelectObject, hdc, hFontBold)
 	rc := dis.rcItem
 	c(pDrawTextW, hdc, uintptr(P(ws(getText(dis.hwndItem)))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)

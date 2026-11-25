@@ -175,6 +175,7 @@ const (
 	BS_OWNERDRAW = 0x000B
 	WM_DRAWITEM  = 0x002B
 	ODS_SELECTED = 0x0001
+	ODS_DISABLED = 0x0004
 
 	DT_CENTER     = 0x0001
 	DT_VCENTER    = 0x0004
@@ -204,6 +205,8 @@ var (
 	clrAccent    = RGB(0xCC, 0x78, 0x5C) // 강조색(테라코타) - '▶ 실행' 버튼
 	clrAccentDk  = RGB(0xAD, 0x5F, 0x46) // 강조색 테두리/눌렸을 때
 	clrAccentTxt = RGB(0xFF, 0xFF, 0xFF)
+	clrDisBg     = RGB(0xE4, 0xE0, 0xD8) // 비활성 '▶ 실행' 버튼 바탕(회색)
+	clrDisBorder = RGB(0xC9, 0xC4, 0xBA)
 
 	hBgBrush    uintptr // 창 배경 브러시 (main()에서 생성)
 	hPanelBrush uintptr // 로그·설명서 칸 배경 브러시 (main()에서 생성)
