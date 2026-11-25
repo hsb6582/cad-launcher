@@ -1,0 +1,59 @@
+name: Build zip
+
+# '요즘 스타일'(WebView2, src-modern) 런처를 빌드해서, 압축만 풀면 바로 쓸 수 있는
+# zip 으로 올린다. (전에는 Inno Setup 설치 파일이었는데, 서명 없는 설치 파일이
+# 회사 보안 프로그램(Cortex XDR)에 계속 막혀서 zip 으로 바꿈)
+# 받는 곳: Actions → 가장 최근 "Build zip" 실행 → 아래 Artifacts 의 "CAD런처"
+# (GitHub 가 폴더를 zip 으로 묶어서 내려준다)
+# WebView2 런타임은 Windows 11 에 기본 포함. Windows 10 에서 안 뜨면 직접 설치:
+# https://developer.microsoft.com/microsoft-edge/webview2/
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "catalog.json"
+      - "lsp/**"
+      - "tools/**"
+      - "src-modern/**"
+      - "README.md"
+      - ".github/workflows/build-zip.yml"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Build CAD 런처 (요즘 스타일, src-modern)
+        shell: cmd
+        run: |
+          cd src-modern
+          go build -ldflags "-H windowsgui -s -w" -o build\CAD런처.exe .
+
+      - name: Put files together
+        shell: pwsh
+        run: |
+          $out = "dist\CAD런처"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item "src-modern\build\CAD런처.exe" $out
+          # exe 옆에 두면 메모리 로딩 대신 일반 파일로 불러온다 (보안 프로그램 오탐 줄이기)
+          Push-Location src-modern
+          $dir = go list -m -f '{{.Dir}}' github.com/jchv/go-webview2
+          Pop-Location
+          Copy-Item "$dir\webviewloader\sdk\x64\WebView2Loader.dll" $out
+          Copy-Item catalog.json, README.md $out
+          Copy-Item lsp, tools $out -Recurse
+
+      - name: Upload zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: CAD런처
+          path: dist/

@@ -3,5 +3,3 @@ _backup/
 *.old
 *.new
 src-modern/build/
-installer/output/
-installer/MicrosoftEdgeWebView2Setup.exe
