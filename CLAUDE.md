@@ -24,3 +24,9 @@ catalog.json 에서 해당 항목만 python 한두 줄로 수정 → `export` �
 ## 런처 코드 (src/, Go 표준 라이브러리 + Win32, 외부 라이브러리 없음)
 `cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w" -o ../CAD런처.exe .`
 코드를 안 바꿨으면 exe 를 다시 빌드하지 않는다. Windows에서 실행 테스트는 못 하므로 사용자에게 확인을 부탁한다.
+
+## 네이티브 우선 (src/ = CAD런처.exe)
+- 런처 코드 작업은 항상 네이티브 버전(src/)에만 한다. WebView2 버전(src-modern/, CAD런처-WebView2.exe)은 사용자가 요청할 때만 고친다.
+- 리습(lsp/)·catalog.json 은 두 버전이 함께 받으므로 평소대로 고치면 된다.
+- 기능 차이(예: MATX/PAVQ 엑셀 자동 작성은 네이티브에만 있음)를 사용자에게 설명할 때만 WebView2 를 언급한다.
+- 대화와 중간 진행 메시지는 모두 한국어로 쓴다.
