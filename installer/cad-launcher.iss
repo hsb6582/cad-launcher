@@ -19,17 +19,18 @@
 #define MyAppVersion "1.0"
 #define MyAppExeName "CAD런처.exe"
 #define RepoRoot "..\"
-#define ModernExe "..\src-modern\build\CAD런처.exe"
+#define ModernDir "..\src-modern\build\"
+#define ModernExe ModernDir + "CAD런처.exe"
 
 [Setup]
 AppId={{F3C1E6A2-6E6B-4B2C-9B7A-2B7C7E6B9C10}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher=hsb6582
-; 사용자 폴더에 설치: 런처가 실행 때마다 lsp/·catalog.json 을 받아 덮어쓰고 설정을 저장하므로
-; 관리자 권한 없이 쓸 수 있는 곳이어야 한다 (Program Files 에 두면 업데이트가 조용히 실패함).
-DefaultDirName={localappdata}\CADLauncher
-PrivilegesRequired=lowest
+; Program Files 에 설치 (AppData 에 exe 를 두면 보안 프로그램이 의심하기 쉬움).
+; 런처가 실행 때마다 lsp/·catalog.json 을 받아 덮어쓰고 설정을 저장하므로,
+; 아래 [Dirs] 에서 설치 폴더에 일반 사용자 쓰기 권한(users-modify)을 준다.
+DefaultDirName={autopf}\CADLauncher
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 AllowNoIcons=yes
@@ -46,9 +47,16 @@ Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 [Tasks]
 Name: "desktopicon"; Description: "바탕화면에 바로가기 만들기"; GroupDescription: "추가 아이콘:"
 
+[Dirs]
+; 관리자 권한 없이도 자동 업데이트·설정 저장이 되도록 설치 폴더에 쓰기 권한 부여 (하위 파일·폴더에 상속됨)
+Name: "{app}"; Permissions: users-modify
+
 [Files]
 Source: "MicrosoftEdgeWebView2Setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 Source: "{#ModernExe}"; DestDir: "{app}"; DestName: "{#MyAppExeName}"; Flags: ignoreversion
+; WebView2Loader.dll 을 exe 옆에 두면 런처가 이 파일을 일반 방식으로 불러온다.
+; 없으면 exe 안에 든 DLL을 메모리에서 직접 불러오는데, 이 방식은 보안 프로그램(Cortex XDR 등)이 의심한다.
+Source: "{#ModernDir}WebView2Loader.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}catalog.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}lsp\*"; DestDir: "{app}\lsp"; Flags: ignoreversion recursesubdirs createallsubdirs
