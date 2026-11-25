@@ -3,9 +3,9 @@
 ;;; 분류: 허가도면
 ;;; 설명: 허가도면 작성 도구 (지적 교차 끊기 → 허가구간 종단 반영 → 도곽 복사)
 ;;; 기능: 허가도면 한 번에 작성 | HG0 | 지적 선택 한 번으로 1~3단계(끊기·종단 반영·도곽 복사)를 연속 실행
-;;; 기능: 1) 지적 교차 끊기 | HG1BRK | 지적과 교차하는 신설관을 끊고 지적 안 신설관을 색상 210 으로
+;;; 기능: 1) 지적 교차 끊기 | HG1BRK | 지적과 교차하는 신설관을 끊고 지적 안 신설관을 색상 210 으로 + 관경별 연장 텍스트 작성
 ;;; 기능: 2) 허가구간 종단 반영 | HG2PRF | 끊어 놓은 주관로 구간을 종단면도에 반영하고 허가구간 밴드 작도
-;;; 기능: 3) 도곽 복사 | HG3CPY | 도곽을 허가도면용으로 복사하고 관경별 연장 텍스트 작성
+;;; 기능: 3) 도곽 복사 | HG3CPY | 도곽을 허가도면용으로 복사 (HG0 로 실행하면 관경별 연장 텍스트도 작성)
 ;;; 설명서:
 ;;;   허가도면 작성을 돕는 도구입니다. 보통 'HG0' 하나로 1~3단계를 연속 실행합니다.
 ;;;   (각 단계를 따로 실행해도 됩니다. 실행 결과는 U 한 번으로 되돌릴 수 있습니다.)
@@ -19,9 +19,10 @@
 ;;;     밴드 양끝에 화살표(블록·SOLID·짧은 선 무엇이든)가 있으면 확인용으로 쓰고, 없으면 명령창에 '밴드 확인 필요'를 표시합니다.
 ;;;
 ;;;   [순서]
-;;;   1) 지적 교차 끊기(HG1BRK): 지적 선택 → 교차하는 신설관을 끊고, 지적 안 신설관을 색상 210 으로
+;;;   1) 지적 교차 끊기(HG1BRK): 지적 선택 → 교차하는 신설관을 끊고, 지적 안 신설관을 색상 210 으로 + 원본 도곽 아래에 관경별·지번별 연장 작성
 ;;;   2) 허가구간 종단 반영(HG2PRF): 색상 210 주관로 구간을 종단에 반영 (구간 밖 검은색, 시/종점 수직선 + 허가구간 밴드)
-;;;   3) 도곽 복사(HG3CPY): 도곽을 삽입점에 복사 (평면도 안은 보존 레이어만) + 원본 도곽 아래에 관경별·지번별 연장 작성
+;;;   3) 도곽 복사(HG3CPY): 도곽을 삽입점에 복사 (평면도 안은 보존 레이어만)
+;;;   ※ 연장 작성은 단독 실행이면 HG1BRK 에서, HG0 로 실행하면 HG3CPY 단계(복사 후)에서 합니다.
 ;;; 기능설명서: HG0
 ;;;   지적을 한 번 선택하면, 그 지적이 들어 있는 도곽을 자동으로 찾아
 ;;;   1) 지적 교차 끊기 → 2) 허가구간 종단 반영 → 3) 도곽 복사 를 이어서 실행합니다.
@@ -33,6 +34,8 @@
 ;;;   • 포함 여부 확인 질문은 꺼져 있음 (*JB:CONFIRM* = T 로 켜면 색상을 바꾸기 전에 강조해서 추가/제외 확인)
 ;;;   • 구역선(도로·도시계획·하천) 제외 판정은 꺼져 있음 (*JB:USE-ZONE* = T 로 켜면 예전처럼 구역 안 제외)
 ;;;   • 관로명/63 관로명 글자도 해당 신설관 색상에 맞춤, 선택한 지적은 폴리선 두께 0.15
+;;;   • 끝나면 지적이 들어 있는 도곽 아래에 색상 210 신설관의 관경별(지번별) 연장 텍스트를 작성합니다.
+;;;     (HG0 로 실행할 때는 여기서 쓰지 않고 3단계 도곽 복사 때 작성)
 ;;; 기능설명서: HG2PRF
 ;;;   끊어 놓은 평면 신설관(주관로) 조각을 선택하면, 같은 측점에서 종단 관로를 잘라
 ;;;   구간 밖은 검은색으로 바꾸고, 구간 시/종점 수직선과 허가구간 밴드를 그립니다(0허가도면 레이어).
@@ -41,7 +44,8 @@
 ;;; 기능설명서: HG3CPY
 ;;;   도곽(블록/테두리 폴리선/창 지정) 안의 객체를 지정한 삽입점에 복사합니다.
 ;;;   평면도 틀 안은 보존 레이어(평면도틀·신설관·캡·지적·지번·L)만 복사하고,
-;;;   원본 도곽 아래에 색상 210 신설관의 관경별(지번별) 연장 텍스트를 작성합니다.
+;;;   HG0 로 실행할 때만 원본 도곽 아래에 색상 210 신설관의 관경별(지번별) 연장 텍스트를 작성합니다.
+;;;   (단독 실행 때 연장은 HG1BRK 에서 작성)
 ;;; @end
 ;;; ==========================================================================
 ;;;  HGTOOL.lsp  -  허가도면 작성 도구 (AutoCAD LT 2026, ActiveX 미사용)
@@ -58,6 +62,7 @@
 ;;;           관로명/63 관로명도 해당 신설관 색상에 맞춤 (63은 캡으로 매칭), 나머지 끊은 조각은 ByLayer, 모든 신설관 레이어 색상은 흰색(7)
 ;;;           (숨은선 신설관 제외, 관 시/종점 0.01 이내 교차는 무시)
 ;;;           선택한 지적은 폴리선 두께 0.15 적용
+;;;           단독 실행이면 끝에 지적이 들어 있는 도곽 하단에 색상 210 신설관 관경별(지번별) 연장 텍스트 작성
 ;;;
 ;;;   HG2PRF : (2) 허가구간 종단 반영
 ;;;           끊어 놓은 평면 신설관(주관로) 조각 선택 ->
@@ -71,7 +76,7 @@
 ;;;   HG3CPY : (3) 도곽 복사
 ;;;           도곽(블록/테두리 폴리선/창) 안의 객체를 삽입점에 복사
 ;;;           평면도 틀 안은 보존 레이어(평면도틀·신설관·캡·지적·지번·L)만 복사
-;;;           복사 후 원본 도곽 하단에 색상 210 신설관 관경별 연장 텍스트 작성
+;;;           HG0 로 실행할 때만 복사 후 원본 도곽 하단에 색상 210 신설관 관경별 연장 텍스트 작성
 ;;;
 ;;;
 ;;;  작업 순서 예 : HG1BRK(지적 경계에서 끊기) -> HG2PRF(종단 반영) -> HG3CPY(허가도면 복사)
@@ -803,16 +808,17 @@
 ;;; ==========================================================================
 (defun c:HG1BRK (/ *error* ce ss i ed bsegs bbox pipes e pbox s np nc k polys ni p lay lays nu
                    newp aff pinfo nm v x nw zbox zl nz zss nzu cpb cfr cpl nclip clines zid
-                   pool sel210 selz)
+                   pool sel210 selz dz)
   (defun *error* (m)
     (if (not (wcmatch (strcase m) "*CANCEL*,*QUIT*,*BREAK*,*취소*"))
       (princ (strcat "\n오류: " m)))
     (hg0:clear)
     (command-s "_.UNDO" "_E")
+    (if dz (setvar "DIMZIN" dz))
     (if ce (setvar "CMDECHO" ce))
     (princ)
   )
-  (setq ce (getvar "CMDECHO"))
+  (setq ce (getvar "CMDECHO") dz (getvar "DIMZIN"))
   (setvar "CMDECHO" 0)
 
   (princ "\n지적 객체 선택: ")
@@ -950,7 +956,17 @@
                  (if lays (strcat "\n레이어 색상 " (itoa *JB:LAY-COL*) " 변경: "
                                   (apply 'strcat (mapcar '(lambda (x) (strcat "[" x "] ")) lays)))
                      "")))
+
+  ;; 관경별(지번별) 연장 텍스트 : 단독 HG1BRK 일 때 여기서 작성 (HG0 는 HG3CPY 단계에서 작성)
+  (if (not *HG0*)
+    (if cfr
+      (if (setq x (hg:lencollect (car cfr) cpb))
+        (hg:lenwrite (car cfr) x)
+        (princ (strcat "\n※ 색상 " (itoa *HG:LEN-COL*) " 신설관이 없어 연장은 작성하지 않았습니다.")))
+      (princ "\n※ 선택한 지적이 들어 있는 도곽을 찾지 못해 연장은 작성하지 않았습니다.")))
+
   (hg0:undo "_E")
+  (setvar "DIMZIN" dz)
   (setvar "CMDECHO" ce)
   (princ)
 )
@@ -1867,7 +1883,7 @@
 ;;;  2) 도곽 안에 완전히 들어있는 모든 객체를 복사 대상으로 수집
 ;;;  3) 평면도 틀 안의 객체는 보존 패턴(PDEL 규칙) 레이어만 복사
 ;;;  4) 결과 확인 후 삽입점(도곽 좌측상단 기준)을 지정해 복사
-;;;  5) 원본 도곽 하단(-Y 5)에 관경별 연장 텍스트 작성
+;;;  5) (HG0 로 실행할 때만) 원본 도곽 하단(-Y 5)에 관경별 연장 텍스트 작성 - 단독 실행 때는 HG1BRK 가 작성 (hg:lencollect / hg:lenwrite)
 ;;;     - 평면도 안 신설관 중 숨은선 제외, 색상 210 인 것만
 ;;;     - 객체별 길이를 소수 첫째 자리로 반올림한 뒤 관경별 합계
 ;;;     - 닫힌 지적 안 지번 글자로 필지를 구분해 지번별 관경별 연장도 작성
@@ -2235,8 +2251,92 @@
 )
 
 ;;; ==========================================================================
+;; ==========================================================================
+;; 관경별(지번별) 연장 집계 : 도곽 fb 안(평면도 틀 pb 가 있으면 그 안)의
+;; 신설관, 숨은선 제외, 색상 *HG:LEN-COL* -> (lens . lotlens)
+;;   lens    : (((정렬키 . 관경) . 연장) ...)
+;;   lotlens : (((지번 정렬키 . 관경) . 연장) ...)
+(defun hg:lencollect (fb pb / fg lots ss i e ed pts lay cb c dk q lot ln lens lotlens)
+  (setq fg (qc:grow fb *HG:TOL*))
+  (if *HG:LEN-BYLOT* (setq lots (hg:lots fb)))
+  (if (setq ss (ssget "_X" (list '(0 . "LWPOLYLINE,LINE") (cons 8 *QC:LAY-PIPE*) '(410 . "Model"))))
+    (repeat (setq i (sslength ss))
+      (setq e   (ssname ss (setq i (1- i)))
+            ed  (entget e)
+            pts (hg:refpts e ed)
+            lay (qc:dxf 8 ed))
+      (if (hg:allin pts fg)
+        (progn
+          (setq cb (qc:bbox pts)
+                c  (list (/ (+ (car (car cb)) (car (cadr cb))) 2.0)
+                         (/ (+ (cadr (car cb)) (cadr (cadr cb))) 2.0)))
+          (if (and (not (qc:hidden-p ed))
+                   (= (hg:color ed) *HG:LEN-COL*)
+                   (or (null pb) (qc:inbox c pb)))
+            (progn
+              (setq dk (hg:diakey lay)
+                    q  (hg:r1 (qc:len (qc:verts ed))))
+              (if (assoc dk lens)
+                (setq lens (subst (cons dk (+ q (cdr (assoc dk lens)))) (assoc dk lens) lens))
+                (setq lens (cons (cons dk q) lens)))
+              ;; 지번별
+              (if *HG:LEN-BYLOT*
+                (progn
+                  (setq lot (cond ((hg:lotof (jb:midpt ed) lots)) ("지번 미확인"))
+                        ln  (cons lot dk))
+                  (if (assoc ln lotlens)
+                    (setq lotlens (subst (cons ln (+ q (cdr (assoc ln lotlens)))) (assoc ln lotlens) lotlens))
+                    (setq lotlens (cons (cons ln q) lotlens)))))))))))
+  (if lens (cons lens lotlens))
+)
+
+;; 원본 도곽 fb 하단에 관경별(지번별) 연장 텍스트 작성. data = hg:lencollect 결과
+(defun hg:lenwrite (fb data / dz lens lotlens rows strs lnames nm k tot)
+  (setq lens (car data) lotlens (cdr data) dz (getvar "DIMZIN"))
+  (setvar "DIMZIN" 0)
+  (if lens
+    (progn
+      (qc:newlayer)
+      (setq rows (mapcar '(lambda (x) (cons (cdr (car x)) (cdr x)))
+                         (vl-sort lens '(lambda (a b) (< (car (car a)) (car (car b)))))))
+      ;; 관경별 합계 줄
+      (setq strs (append (if *HG:LEN-TITLE* (list *HG:LEN-TITLE*))
+                         (mapcar '(lambda (r) (strcat (car r) " : " (rtos (cdr r) 2 1) "m")) rows)))
+      ;; 지번별 줄 : "376-14전 : 63mm 0.3m, 110mm 36.9m"
+      (if (and *HG:LEN-BYLOT* lotlens)
+        (progn
+          (foreach x lotlens (if (not (member (car (car x)) lnames)) (setq lnames (cons (car (car x)) lnames))))
+          (setq lnames (vl-sort lnames '(lambda (a b) (< (hg:lotkey (if (= a "지번 미확인") nil a))
+                                                          (hg:lotkey (if (= b "지번 미확인") nil b))))))
+          (setq strs (append strs (list "" "[지번별]")))
+          (foreach nm lnames
+            (setq k T)
+            (foreach x (vl-sort (vl-remove-if-not '(lambda (x) (= (car (car x)) nm)) lotlens)
+                                '(lambda (a b) (< (cadr (car a)) (cadr (car b)))))
+              ;; (지번 관경 연장) 3칸, 같은 지번의 둘째 관경부터는 지번 칸 비움
+              (setq strs (append strs (list (list (if k (strcat nm " : ") "")
+                                                  (strcat (cddr (car x)) " ")
+                                                  (strcat (rtos (cdr x) 2 1) "m"))))
+                    k nil)))))
+      (hg:lentext strs (car (car fb)) (- (cadr (car fb)) *HG:LEN-DY*))
+      (princ "\n관경별 연장 (색상 210 신설관):")
+      (setq tot 0.0)
+      (foreach r rows
+        (princ (strcat "\n  " (car r) " : " (rtos (cdr r) 2 1) "m"))
+        (setq tot (+ tot (cdr r))))
+      (princ (strcat "\n  합계 : " (rtos tot 2 1) "m"))
+      (if (and *HG:LEN-BYLOT* lotlens)
+        (progn
+          (princ "\n지번별:")
+          (foreach x (cdr (member "[지번별]" strs))
+            (princ (strcat "\n  " (if (listp x) (strcat (car x) (cadr x) (caddr x)) x)))))))
+    (princ "\n※ 색상 210 신설관이 없어 연장은 작성하지 않았습니다."))
+  (setvar "DIMZIN" dz)
+  (princ)
+)
+
 (defun c:HG3CPY (/ *error* ce cm dz p p1 p2 fr fb fg pb ss i e ed pts cb c lay grp bname nm
-                  cpy ncp keepcnt delcnt nlock ans bp dp lens dk q rows tot lots lot lotlens strs lnames ln k)
+                  cpy ncp keepcnt delcnt nlock ans bp dp lens)
   (defun *error* (m)
     (if (not (wcmatch (strcase m) "*CANCEL*,*QUIT*,*BREAK*,*취소*"))
       (princ (strcat "\n오류: " m)))
@@ -2284,7 +2384,6 @@
 
   ;; --- 3) 분류
   (setq cpy (ssadd) ncp 0 nlock 0 *HG:BLKEXT* nil)
-  (if *HG:LEN-BYLOT* (setq lots (hg:lots fb)))
   (princ "\n도곽 안 객체 확인 중...")
   (if (setq ss (ssget "_X" '((410 . "Model"))))
     (repeat (setq i (sslength ss))
@@ -2297,26 +2396,6 @@
           (setq cb (qc:bbox pts)
                 c  (list (/ (+ (car (car cb)) (car (cadr cb))) 2.0)
                          (/ (+ (cadr (car cb)) (cadr (cadr cb))) 2.0)))
-          ;; 관경별 연장 집계 : 신설관, 숨은선 제외, 색상 210, 평면도 안(평면도 틀이 없으면 도곽 안)
-          (if (and (member (qc:dxf 0 ed) '("LWPOLYLINE" "LINE"))
-                   (wcmatch (strcase lay) (strcase *QC:LAY-PIPE*))
-                   (not (qc:hidden-p ed))
-                   (= (hg:color ed) *HG:LEN-COL*)
-                   (or (null pb) (qc:inbox c pb)))
-            (progn
-              (setq dk (hg:diakey lay)
-                    q  (hg:r1 (qc:len (qc:verts ed))))
-              (if (assoc dk lens)
-                (setq lens (subst (cons dk (+ q (cdr (assoc dk lens)))) (assoc dk lens) lens))
-                (setq lens (cons (cons dk q) lens)))
-              ;; 지번별
-              (if *HG:LEN-BYLOT*
-                (progn
-                  (setq lot (cond ((hg:lotof (jb:midpt ed) lots)) ("지번 미확인"))
-                        ln  (cons lot dk))
-                  (if (assoc ln lotlens)
-                    (setq lotlens (subst (cons ln (+ q (cdr (assoc ln lotlens)))) (assoc ln lotlens) lotlens))
-                    (setq lotlens (cons (cons ln q) lotlens)))))))
           (if (and pb (qc:inbox c pb))
             (progn
               ;; 평면도 안 : 보존 패턴만
@@ -2357,6 +2436,9 @@
       (setq ans (getkword (strcat "\n\n" (itoa ncp) "개 객체를 복사할까요? [Yes/No] <Yes>: ")))))
   (if (= ans "No") (progn (princ "\n취소했습니다.") (exit)))
 
+  ;; 연장 집계는 복사 전에 (복사본이 원본 도곽에 겹쳐도 중복 집계 안 되게)
+  (if *HG0* (setq lens (hg:lencollect fb pb)))
+
   ;; --- 4) 삽입점 지정 후 복사
   (setq bp (list (car (car fb)) (cadr (cadr fb))))      ; 도곽 좌측상단
   (setq dp (getpoint (list (car bp) (cadr bp) 0.0) "\n삽입점 지정 (도곽 좌측상단 기준): "))
@@ -2367,44 +2449,8 @@
   (command "_.COPY" cpy "" "_non" (list (car bp) (cadr bp) 0.0) "_non" dp)
   (setvar "COPYMODE" cm)
 
-  ;; --- 5) 원본 도곽 하단 관경별 연장 텍스트
-  (if lens
-    (progn
-      (qc:newlayer)
-      (setq rows (mapcar '(lambda (x) (cons (cdr (car x)) (cdr x)))
-                         (vl-sort lens '(lambda (a b) (< (car (car a)) (car (car b)))))))
-      ;; 관경별 합계 줄
-      (setq strs (append (if *HG:LEN-TITLE* (list *HG:LEN-TITLE*))
-                         (mapcar '(lambda (r) (strcat (car r) " : " (rtos (cdr r) 2 1) "m")) rows)))
-      ;; 지번별 줄 : "376-14전 : 63mm 0.3m, 110mm 36.9m"
-      (if (and *HG:LEN-BYLOT* lotlens)
-        (progn
-          (foreach x lotlens (if (not (member (car (car x)) lnames)) (setq lnames (cons (car (car x)) lnames))))
-          (setq lnames (vl-sort lnames '(lambda (a b) (< (hg:lotkey (if (= a "지번 미확인") nil a))
-                                                          (hg:lotkey (if (= b "지번 미확인") nil b))))))
-          (setq strs (append strs (list "" "[지번별]")))
-          (foreach nm lnames
-            (setq k T)
-            (foreach x (vl-sort (vl-remove-if-not '(lambda (x) (= (car (car x)) nm)) lotlens)
-                                '(lambda (a b) (< (cadr (car a)) (cadr (car b)))))
-              ;; (지번 관경 연장) 3칸, 같은 지번의 둘째 관경부터는 지번 칸 비움
-              (setq strs (append strs (list (list (if k (strcat nm " : ") "")
-                                                  (strcat (cddr (car x)) " ")
-                                                  (strcat (rtos (cdr x) 2 1) "m"))))
-                    k nil)))))
-      (hg:lentext strs (car (car fb)) (- (cadr (car fb)) *HG:LEN-DY*))
-      (princ "\n관경별 연장 (색상 210 신설관):")
-      (setq tot 0.0)
-      (foreach r rows
-        (princ (strcat "\n  " (car r) " : " (rtos (cdr r) 2 1) "m"))
-        (setq tot (+ tot (cdr r))))
-      (princ (strcat "\n  합계 : " (rtos tot 2 1) "m"))
-      (if (and *HG:LEN-BYLOT* lotlens)
-        (progn
-          (princ "\n지번별:")
-          (foreach x (cdr (member "[지번별]" strs))
-            (princ (strcat "\n  " (if (listp x) (strcat (car x) (cadr x) (caddr x)) x)))))))
-    (princ "\n※ 색상 210 신설관이 없어 연장은 작성하지 않았습니다."))
+  ;; --- 5) 원본 도곽 하단 관경별 연장 텍스트 (HG0 로 실행할 때만. 단독 HG3CPY 는 HG1BRK 에서 작성)
+  (if *HG0* (hg:lenwrite fb lens))
 
   (hg0:undo "_E")
   (princ (strcat "\n완료: " (itoa ncp) "개 복사  (U 로 한 번에 되돌릴 수 있음)"))
