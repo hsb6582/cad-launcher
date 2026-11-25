@@ -291,7 +291,7 @@ func guideRender(hdc uintptr, W int, draw bool) int {
 		th := gText(hdc, hFont, clrText, tx, 0, w-si(50), stp, false)
 		rh := max(th+si(14), si(34))
 		if draw {
-			fillRound(hdc, x, y, w, rh, clrBg, clrBg, si(8))
+			fillRound(hdc, x, y, w, rh, guideStepBg(), guideStepBg(), si(8))
 			cy := y + rh/2
 			fillRoundEllipse(hdc, x+si(9), cy-si(11), si(22), clrAccent)
 			old := c(pSelectObject, hdc, hFontNum)
@@ -391,16 +391,38 @@ func guideRender(hdc uintptr, W int, draw bool) int {
 		if gOpen {
 			label = "▼ 자세한 설명 접기"
 		}
-		th := gText(hdc, hFontNum, clrAccentDk, x, y, w, label, draw)
+		th := gText(hdc, hFontNum, guideLinkColor(), x, y, w, label, draw)
 		gToggle = rectT{int32(x), int32(y - top - si(4)), int32(x + w), int32(y - top + th + si(4))}
 		y += th + si(8)
 		if gOpen {
-			y += gText(hdc, hFont, clrSubText, x, y, w, d.detail, draw) + si(4)
+			y += gText(hdc, hFont, guideDetailColor(), x, y, w, d.detail, draw) + si(4)
 		}
 	} else {
 		gToggle = rectT{}
 	}
 	return y + pad - top
+}
+
+// 차콜(어두운) 화면에서는 설명서 글자·상자를 더 밝게 (크림은 그대로)
+func guideLinkColor() uintptr { // '▶ 자세한 설명 보기'
+	if curTheme.dark {
+		return clrHoverTxt // 연한 하늘색
+	}
+	return clrAccentDk
+}
+
+func guideDetailColor() uintptr { // 펼친 자세한 설명 글자
+	if curTheme.dark {
+		return clrText
+	}
+	return clrSubText
+}
+
+func guideStepBg() uintptr { // 사용 순서 한 줄 바탕
+	if curTheme.dark {
+		return RGB(0x34, 0x38, 0x40)
+	}
+	return clrBg
 }
 
 func fillRoundEllipse(hdc uintptr, x, y, d int, clr uintptr) {

@@ -57,6 +57,7 @@ var (
 	pLoadCursorW          = user32.NewProc("LoadCursorW")
 	pLoadIconW            = user32.NewProc("LoadIconW")
 	pLoadImageW           = user32.NewProc("LoadImageW")
+	pDrawIconEx           = user32.NewProc("DrawIconEx")
 	pGetSysColor          = user32.NewProc("GetSysColor")
 	pGetSysColorBrush     = user32.NewProc("GetSysColorBrush")
 	pSetProcessDPIAware   = user32.NewProc("SetProcessDPIAware")

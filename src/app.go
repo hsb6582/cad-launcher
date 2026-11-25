@@ -245,7 +245,7 @@ func setLeftW(w int) {
 // 마우스 위치(클라이언트, 96DPI 기준)가 목록·설명 사이 경계 위인지
 func onSplitter(x, y int) bool {
 	_, H := clientSize()
-	return x >= 8+leftW-1 && x <= rightX+1 && y >= 78 && y <= H-168
+	return x >= 8+leftW-1 && x <= rightX+1 && y >= listTop && y <= H-168
 }
 
 func mouseXY(lp uintptr) (int, int) {
@@ -266,18 +266,51 @@ func show(h uintptr, on bool) {
 	c(pShowWindow, h, v)
 }
 
+const (
+	hdrH    = 46            // 맨 위 제목 줄 높이 (96DPI 기준)
+	listTop = hdrH + 4 + 34 // 목록·설명 칸 시작 y
+)
+
+var hFontHeader, hHeaderIcon uintptr
+
+// 맨 위 제목 줄: 런처 아이콘 + 큰 'CAD 런처' 글자 + 아래 구분선
+func paintHeader(hdc uintptr) {
+	if hFontHeader == 0 {
+		hFontHeader = makeFont(17, true)
+		hHeaderIcon = c(pLoadImageW, hInst, 1, 1, s(32), s(32), 0)
+	}
+	x := int(s(10))
+	if hHeaderIcon != 0 {
+		c(pDrawIconEx, hdc, uintptr(x), s(7), hHeaderIcon, s(32), s(32), 0, 0, 3 /*DI_NORMAL*/)
+		x += int(s(32 + 10))
+	}
+	old := c(pSelectObject, hdc, hFontHeader)
+	c(pSetBkMode, hdc, TRANSPARENT)
+	c(pSetTextColor, hdc, clrText)
+	rc := rectT{int32(x), 0, int32(x) + int32(s(400)), int32(s(hdrH))}
+	c(pDrawTextW, hdc, uintptr(P(ws(appTitle))), ^uintptr(0), uintptr(P(&rc)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX)
+	c(pSelectObject, hdc, old)
+	W, _ := clientSize()
+	line := rectT{int32(s(8)), int32(s(hdrH)), int32(s(W - 8)), int32(s(hdrH)) + 1}
+	br := c(pCreateSolidBrush, clrBorder)
+	c(pFillRect, hdc, uintptr(P(&line)), br)
+	c(pDeleteObject, br)
+}
+
 func layout() {
 	W, H := clientSize()
-	mv(hLblKw, 8, 12, 95, 20)
-	mv(hKeyword, 105, 8, 130, 24)
-	mv(hFind, 241, 7, 75, 26)
-	mv(hWinCombo, 322, 8, max(W-330, 100), 300)
+	// 맨 위 줄: 왼쪽은 큰 'CAD 런처' 제목(paintHeader), 오른쪽은 버튼
+	mv(hUpdate, W-110, 12, 102, 26)
+	mv(hAdvanced, W-196, 12, 80, 26)
+	mv(hThemeBtn, W-232, 12, 32, 26)
 
-	mv(hUpdate, W-110, 41, 102, 26)
-	mv(hAdvanced, W-196, 41, 80, 26)
-	mv(hThemeBtn, W-232, 41, 32, 26)
+	const ry = hdrH + 4 // 둘째 줄: 대상 CAD 창
+	mv(hLblKw, 8, ry+4, 95, 20)
+	mv(hKeyword, 105, ry, 130, 24)
+	mv(hFind, 241, ry-1, 75, 26)
+	mv(hWinCombo, 322, ry, max(W-330, 100), 300)
 
-	top := 78
+	top := listTop
 	bottomH := 120
 	mainBottom := H - bottomH - 8
 	mv(hList, 8, top, leftW, max(mainBottom-top-32, 60))
@@ -673,6 +706,9 @@ func wndProc(h, msg, wp, lp uintptr) uintptr {
 		return drawButton(lp)
 	case WM_PAINT:
 		paintFrames(h)
+		hdc := c(pGetDC, h)
+		paintHeader(hdc)
+		c(pReleaseDC, h, hdc)
 		return 0
 	case WM_CLOSE:
 		readSettings()

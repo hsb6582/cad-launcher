@@ -39,7 +39,7 @@ var themes = []theme{
 		bg: rgbHex(0x2B2E34), text: rgbHex(0xF7F5F1), sub: rgbHex(0xBCC2CA), panel: rgbHex(0x22252A),
 		accent: rgbHex(0x3A6EA5), accentDk: rgbHex(0x2B5278), accentHot: rgbHex(0x4D84BE), accentPress: rgbHex(0x2B5278), disBg: rgbHex(0x3A3E45), disBorder: rgbHex(0x4A4F57),
 		border: rgbHex(0x454A52), winBorder: rgbHex(0x3A3E45), hover: rgbHex(0x2C3440), hoverTxt: rgbHex(0xB9D3EE), press: rgbHex(0x2A3A4E), sel: rgbHex(0x2C3A4A),
-		selText: rgbHex(0xB9D3EE), hot: rgbHex(0x33373E), soft: rgbHex(0x3A302B), line: rgbHex(0x3A3E45)},
+		selText: rgbHex(0xB9D3EE), hot: rgbHex(0x33373E), soft: rgbHex(0x4A3A2A), line: rgbHex(0x3A3E45)},
 	{key: "cream", name: "크림",
 		bg: rgbHex(0xF7F4EC), text: rgbHex(0x2D2924), sub: rgbHex(0x8C857A), panel: rgbHex(0xFFFFFF),
 		accent: rgbHex(0xCC785C), accentDk: rgbHex(0xAD5F46), accentHot: rgbHex(0x9A4630), accentPress: rgbHex(0x7A3523), disBg: rgbHex(0xE4E0D8), disBorder: rgbHex(0xC9C4BA),
