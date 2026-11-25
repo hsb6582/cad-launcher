@@ -1,7 +1,7 @@
 package main
 
-// 화면 색상 (고급 설정 → 화면 색상). 기본은 차콜 다크.
-//  - 고르면 바로 바뀌고, launcher_state.json 의 "theme" 에 저장된다.
+// 화면 색상: 차콜 다크(기본) / 크림. 설정 버튼 옆 전구 버튼으로 바꾼다.
+//  - 누르면 바로 바뀌고, launcher_state.json 의 "theme" 에 저장된다.
 //  - 다크에서는 체크박스·옵션 묶음 테두리를 Windows 기본(밝은) 테마 대신 직접 색으로 그리게 하고,
 //    입력칸·목록·스크롤바는 Windows 의 어두운 테마(DarkMode_Explorer / DarkMode_CFD)를 입힌다.
 
@@ -44,16 +44,6 @@ var themes = []theme{
 		accent: rgbHex(0xCC785C), accentDk: rgbHex(0xAD5F46), disBg: rgbHex(0xE4E0D8), disBorder: rgbHex(0xC9C4BA),
 		border: rgbHex(0xE0D9CC), winBorder: rgbHex(0xD9D2C4), hover: rgbHex(0xFBEFEA), hoverTxt: rgbHex(0xAD5F46), press: rgbHex(0xF4DFD6), sel: rgbHex(0xF6E4DC),
 		selText: rgbHex(0x7A3E2A), hot: rgbHex(0xFAF6EF), soft: rgbHex(0xF3E6DF), line: rgbHex(0xE4DFD4)},
-	{key: "gray", name: "쿨 그레이",
-		bg: rgbHex(0xF1F3F6), text: rgbHex(0x23272E), sub: rgbHex(0x7D8590), panel: rgbHex(0xFFFFFF),
-		accent: rgbHex(0xCC785C), accentDk: rgbHex(0xAD5F46), disBg: rgbHex(0xE1E4E9), disBorder: rgbHex(0xC5CAD2),
-		border: rgbHex(0xD6DBE2), winBorder: rgbHex(0xC9CFD8), hover: rgbHex(0xFBEFEA), hoverTxt: rgbHex(0xAD5F46), press: rgbHex(0xF4DFD6), sel: rgbHex(0xF6E4DC),
-		selText: rgbHex(0x7A3E2A), hot: rgbHex(0xF6F7F9), soft: rgbHex(0xF3E6DF), line: rgbHex(0xDDE1E7)},
-	{key: "sage", name: "세이지 그린",
-		bg: rgbHex(0xEEF2EC), text: rgbHex(0x262B25), sub: rgbHex(0x7E877C), panel: rgbHex(0xFFFFFF),
-		accent: rgbHex(0xCC785C), accentDk: rgbHex(0xAD5F46), disBg: rgbHex(0xDFE4DC), disBorder: rgbHex(0xC3CCBF),
-		border: rgbHex(0xD3DBCF), winBorder: rgbHex(0xC6CFC2), hover: rgbHex(0xFBEFEA), hoverTxt: rgbHex(0xAD5F46), press: rgbHex(0xF4DFD6), sel: rgbHex(0xF6E4DC),
-		selText: rgbHex(0x7A3E2A), hot: rgbHex(0xF4F7F2), soft: rgbHex(0xF3E6DF), line: rgbHex(0xDAE1D6)},
 }
 
 var (
@@ -68,14 +58,6 @@ func themeIndex(key string) int {
 		}
 	}
 	return 0 // 저장된 값이 없으면 차콜 다크
-}
-
-func themeNames() []string {
-	out := make([]string, len(themes))
-	for i, t := range themes {
-		out[i] = t.name
-	}
-	return out
 }
 
 // 색 값만 바꾼다 (창을 만들기 전 main()에서도 호출)
@@ -187,4 +169,14 @@ func eraseBg(h, hdc uintptr) uintptr {
 	c(pGetClientRect, h, uintptr(P(&r)))
 	c(pFillRect, hdc, uintptr(P(&r)), hBgBrush)
 	return 1
+}
+
+// 전구 버튼: 다크 ↔ 크림
+func toggleTheme() {
+	next := "dark"
+	if curTheme.dark {
+		next = "cream"
+	}
+	applyTheme(next)
+	saveState()
 }

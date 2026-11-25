@@ -33,7 +33,7 @@ type State struct {
 	LeftW      int                               `json:"leftW,omitempty"`     // 목록 칸 폭
 	Order      map[string][]string               `json:"order,omitempty"`     // 이 PC에서 바꾼 목록 순서
 	Startup    []string                          `json:"startup,omitempty"`   // 시작하기 세트로 모든 도면에 자동 로드할 리습 id
-	Theme      string                            `json:"theme,omitempty"`     // 화면 색상: dark(기본)/cream/gray/sage (theme.go)
+	Theme      string                            `json:"theme,omitempty"`     // 화면 색상: dark(기본)/cream (theme.go, 전구 버튼)
 	Trust      string                            `json:"trust,omitempty"`     // AutoCAD 신뢰 위치 자동 추가: ""(아직 안 물음)/"yes"/"no" (trust.go)
 }
 
@@ -125,7 +125,7 @@ const (
 	idAdvSend
 	idAdvAuto
 	idAdvTrust
-	idAdvTheme
+	idThemeBtn
 )
 
 const WM_APP_UPDATE = 0x8001
@@ -140,7 +140,7 @@ var (
 	grey                           = map[uintptr]bool{}
 
 	hLblKw, hKeyword, hFind, hWinCombo                          uintptr
-	hUpdate, hAdvanced                                          uintptr
+	hUpdate, hAdvanced, hThemeBtn                               uintptr
 	hList, hAddCat, hAddLisp, hAddCmd, hEdit, hDel, hUp, hDown  uintptr
 	hTitle, hDesc, hOptGroup, hLblManual, hManual, hRun, hReset uintptr
 	hLog                                                        uintptr
@@ -188,6 +188,7 @@ func createControls() {
 	hUpdate = mk("BUTTON", "업데이트 확인", WS_TABSTOP, 0, idUpdate)
 	primaryBtn[hUpdate] = true // '▶ 실행' 과 같은 강조색(테라코타)으로 그림
 	hAdvanced = mk("BUTTON", "설정", WS_TABSTOP, 0, idAdvanced)
+	hThemeBtn = mk("BUTTON", "화면 색상", WS_TABSTOP, 0, idThemeBtn) // 전구 모양으로 그림 (style2.go)
 
 	hList = mk("SysTreeView32", "", TVS_HASBUTTONS|TVS_LINESATROOT|TVS_SHOWSELALWAYS|0x0010 /*TVS_DISABLEDRAGDROP*/ |WS_TABSTOP, WS_EX_CLIENTEDGE, idList)
 	c(pSendMessageW, hList, TVM_SETEXTENDEDSTYLE, TVS_EX_DOUBLEBUFFER, TVS_EX_DOUBLEBUFFER)
@@ -274,6 +275,7 @@ func layout() {
 
 	mv(hUpdate, W-110, 41, 102, 26)
 	mv(hAdvanced, W-196, 41, 80, 26)
+	mv(hThemeBtn, W-232, 41, 32, 26)
 
 	top := 78
 	bottomH := 120
@@ -579,6 +581,8 @@ func onCommand(id, code int) {
 		refreshWindows()
 	case id == idUpdate:
 		startUpdateCheck(true)
+	case id == idThemeBtn:
+		toggleTheme()
 	case id == idAdvanced:
 		advancedDialog()
 	case id == idUp:
@@ -723,6 +727,7 @@ func main() {
 	hFont = makeFont(9, false)
 	hFontBold = makeFont(12, true)
 	hFontBtnBold = makeFont(9, true)
+	hFontIcon = makeIconFont(12)
 	setThemeColors(st.Theme) // 화면 색상 (theme.go, 기본 차콜 다크)
 	hBgBrush = c(pCreateSolidBrush, clrBg)
 	hPanelBrush = c(pCreateSolidBrush, clrPanelBg)

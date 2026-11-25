@@ -78,7 +78,15 @@ type trackMouseEvent struct {
 	hoverTime   uint32
 }
 
-var hFontBtnBold uintptr // 강조 버튼 글꼴 (9pt 굵게)
+var (
+	hFontBtnBold uintptr // 강조 버튼 글꼴 (9pt 굵게)
+	hFontIcon    uintptr // 전구 버튼 아이콘 글꼴 (Segoe MDL2 Assets, Windows 10/11 기본 글꼴)
+)
+
+func makeIconFont(pt int) uintptr {
+	height := -int(float64(pt) * scale * 96 / 72)
+	return c(pCreateFontW, uintptr(height), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, uintptr(P(ws("Segoe MDL2 Assets"))))
+}
 
 var (
 	flatBtn    = map[uintptr]bool{} // 직접 그리는 일반 버튼
@@ -190,9 +198,16 @@ func drawButton(lp uintptr) uintptr {
 
 	c(pSetBkMode, hdc, TRANSPARENT)
 	c(pSetTextColor, hdc, txt)
+	label := getText(h)
+	if h == hThemeBtn { // 전구: 다크(불 꺼짐)는 회색, 크림(불 켜짐)은 노란색
+		font, label = hFontIcon, "\uE82F"
+		if !curTheme.dark {
+			c(pSetTextColor, hdc, RGB(0xE0, 0xA1, 0x1B))
+		}
+	}
 	oldFont := c(pSelectObject, hdc, font)
 	rc := dis.rcItem
-	c(pDrawTextW, hdc, uintptr(P(ws(getText(h)))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
+	c(pDrawTextW, hdc, uintptr(P(ws(label))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
 	c(pSelectObject, hdc, oldFont)
 	return 1
 }

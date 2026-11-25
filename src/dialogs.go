@@ -275,63 +275,52 @@ func adoptLisp(p string) string {
 // 평소에는 거의 건드릴 일이 없는 설정(전송 방식·취소·항상 위·인코딩)과
 // 직접 명령 입력을 메인 화면에서 빼서 여기에 모아둔다.
 func advancedDialog() {
-	d := newDialog("설정", 480, 432)
+	d := newDialog("설정", 480, 392)
 	const lx, ex, ew = 14, 150, 310
 
-	d.label("화면 색상", lx, 18, 100)
-	hTheme := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvTheme)
-	mv(hTheme, ex, 14, 150, 200)
-	comboFill(hTheme, themeNames(), themeIndex(st.Theme))
-	d.note("고르면 바로 바뀝니다", ex+158, 18, ew-158, 20)
-
-	d.label("전송 방식", lx, 58, 100)
+	d.label("전송 방식", lx, 18, 100)
 	hMethod := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvMethod)
-	mv(hMethod, ex, 54, 150, 200)
+	mv(hMethod, ex, 14, 150, 200)
 	comboFill(hMethod, methods, indexOf(methods, st.Method))
-	d.note("WM_COPYDATA가 안 먹히면 '키입력'으로 바꿔보세요", ex+158, 58, ew-158, 36)
+	d.note("WM_COPYDATA가 안 먹히면 '키입력'으로 바꿔보세요", ex+158, 18, ew-158, 36)
 
 	hCancel := d.mk("BUTTON", "실행 전 진행 중 명령 취소", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvCancel)
-	mv(hCancel, lx, 96, 300, 22)
+	mv(hCancel, lx, 56, 300, 22)
 	setCheck(hCancel, st.Cancel)
 
 	hTop := d.mk("BUTTON", "항상 위 (런처 창을 다른 창 위에 고정)", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvTop)
-	mv(hTop, lx, 124, 320, 22)
+	mv(hTop, lx, 84, 320, 22)
 	setCheck(hTop, st.Topmost)
 
 	hAuto := d.mk("BUTTON", "런처를 켤 때 자동으로 업데이트 확인", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvAuto)
-	mv(hAuto, lx, 152, 320, 22)
+	mv(hAuto, lx, 112, 320, 22)
 	setCheck(hAuto, st.AutoUpdate)
 	upd := "받는 곳: github.com/" + fixedRepo + " (" + fixedBranch + ")"
 	if localCatalogChanged() {
 		upd += "\n※ 이 PC에서 리습 목록을 수정했습니다. 다음 업데이트 때 덮어쓸지 물어봅니다."
 	}
-	d.note(upd, lx+20, 176, 440, 36)
+	d.note(upd, lx+20, 136, 440, 36)
 
 	hTrust := d.mk("BUTTON", "런처 폴더를 AutoCAD '신뢰할 수 있는 위치'에 자동 추가", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvTrust)
-	mv(hTrust, lx, 216, 440, 22)
+	mv(hTrust, lx, 176, 440, 22)
 	setCheck(hTrust, st.Trust != "no")
-	d.note("끄면 리습 로드가 '파일 로드 취소됨'으로 막힐 수 있습니다", lx+20, 238, 440, 20)
+	d.note("끄면 리습 로드가 '파일 로드 취소됨'으로 막힐 수 있습니다", lx+20, 198, 440, 20)
 
-	d.label("옵션파일 인코딩", lx, 272, 105)
+	d.label("옵션파일 인코딩", lx, 232, 105)
 	hEnc := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvEnc)
-	mv(hEnc, ex, 268, 100, 200)
+	mv(hEnc, ex, 228, 100, 200)
 	comboFill(hEnc, encodings, indexOf(encodings, st.Encoding))
-	d.note("보통 cp949 그대로 두세요 (한글이 깨질 때만 utf-8)", ex+108, 272, ew-108, 20)
+	d.note("보통 cp949 그대로 두세요 (한글이 깨질 때만 utf-8)", ex+108, 232, ew-108, 20)
 
-	d.label("직접 명령", lx, 314, 100)
-	hFree := d.edit("", ex, 310, 230)
-	d.button("보내기", idAdvSend, ex+238, 309, 90, true)
-	d.note("목록에 없는 명령어를 바로 AutoCAD로 보냅니다", ex, 338, ew, 20)
+	d.label("직접 명령", lx, 274, 100)
+	hFree := d.edit("", ex, 270, 230)
+	d.button("보내기", idAdvSend, ex+238, 269, 90, true)
+	d.note("목록에 없는 명령어를 바로 AutoCAD로 보냅니다", ex, 298, ew, 20)
 
-	d.button("닫기", IDCANCEL, 370, 386, 95, false)
+	d.button("닫기", IDCANCEL, 370, 346, 95, false)
 
 	d.onCmd = func(id, code int) {
 		switch {
-		case id == idAdvTheme && code == CBN_SELCHANGE:
-			if i := comboSel(hTheme); i >= 0 {
-				applyTheme(themes[i].key)
-				saveState()
-			}
 		case id == idAdvMethod && code == CBN_SELCHANGE:
 			if i := comboSel(hMethod); i >= 0 {
 				st.Method = methods[i]
