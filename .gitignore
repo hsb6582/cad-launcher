@@ -5,3 +5,4 @@ _backup/
 src-modern/build/
 installer/output/
 installer/MicrosoftEdgeWebView2Setup.exe
+launcher_startup.lsp
