@@ -6,6 +6,8 @@ AutoCAD LT 2026 리습 런처. 각 PC의 CAD런처.exe 가 실행 때마다 이 
 ## 목록 구조 (catalog.json v2)
 - `lisps[]`: id, file(lsp/파일.lsp), desc, manual(공통 안내), tools(외부 프로그램)
 - `categories[].items[]`: name(짧은 한국어 기능 이름), desc, lisp(id), command, manual, options
+  - 간단 설명서(선택): when(언제 쓰나 한 줄), steps[](사용 순서), warn(주의), before/after(실행 전·후 그림 `lsp/img/명령어_before.png`·`_after.png`).
+    하나라도 있으면 네이티브 런처 설명서 칸이 간단 버전으로 바뀌고 manual 은 '자세한 설명 보기'에 접힌다. 그림은 600×340 정도 PNG, 공개 저장소이므로 실제 도면 캡처는 정보를 지운 뒤 올린다.
 - 런처 목록 표시: `기능 이름   (리습 · 명령어)`
 
 ## 새 리습 추가 (토큰 절약: catalog.json 을 직접 읽거나 손으로 고치지 말 것)

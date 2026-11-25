@@ -15,16 +15,12 @@ var (
 	pSetWindowLongPtrW = user32.NewProc("SetWindowLongPtrW")
 	pCallWindowProcW   = user32.NewProc("CallWindowProcW")
 	pTrackMouseEvent   = user32.NewProc("TrackMouseEvent")
-	pInvalidateRect    = user32.NewProc("InvalidateRect")
-	pBeginPaint        = user32.NewProc("BeginPaint")
-	pEndPaint          = user32.NewProc("EndPaint")
 	pGetParent         = user32.NewProc("GetParent")
 	pIsWindowEnabled   = user32.NewProc("IsWindowEnabled")
 	pExcludeClipRect   = gdi32.NewProc("ExcludeClipRect")
 )
 
 const (
-	WM_PAINT         = 0x000F
 	WM_MOUSELEAVE    = 0x02A3
 	WM_LBUTTONDBLCLK = 0x0203
 	WM_LBUTTONDOWN   = 0x0201
@@ -215,7 +211,7 @@ const framePad = 3
 var framed = map[uintptr]bool{}
 
 func paintFrames(h uintptr) {
-	var ps [72]byte // PAINTSTRUCT (64비트 72바이트)
+	var ps paintStruct
 	hdc := c(pBeginPaint, h, uintptr(P(&ps)))
 	pad := int32(s(framePad))
 	for ch := range framed {
