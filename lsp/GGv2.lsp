@@ -3129,8 +3129,25 @@
 ;;;=======================================================================
 ;;; GGA 명령 (통합 실행)
 ;;;-----------------------------------------------------------------------
-;;; 순서대로 실행: GGL -> GGD -> GGM -> GGF
+;;; 순서대로 실행: GGL -> GGD -> GGM2 -> GGF, 끝나면 "0기술검토" 레이어 끄기
 ;;;=======================================================================
+
+;; GGA 마지막: *MARK-LAYER*("0기술검토") 레이어를 끈다 (현재 레이어면 먼저 "0"으로 바꿈)
+(defun fc:gga-hide-mark-layer ( / doc lyrObj)
+  (setq doc (vla-get-activedocument (vlax-get-acad-object)))
+  (setq lyrObj (vl-catch-all-apply 'vla-item (list (vla-get-layers doc) *MARK-LAYER*)))
+  (if (vl-catch-all-error-p lyrObj)
+    (princ (strcat "\n  [" *MARK-LAYER* "] 레이어가 없어 끄지 않았습니다."))
+    (progn
+      (if (= (strcase (getvar "CLAYER")) (strcase *MARK-LAYER*))
+        (setvar "CLAYER" "0")
+      )
+      (vla-put-layeron lyrObj :vlax-false)
+      (princ (strcat "\n  [" *MARK-LAYER* "] 레이어를 껐습니다."))
+    )
+  )
+  (princ)
+)
 
 (defun c:GGA ( / )
   (vl-load-com)
@@ -3142,6 +3159,7 @@
   (c:GGM2)
   (princ "\n========== [4/4] GGF 실행 ==========")
   (c:GGF)
+  (fc:gga-hide-mark-layer)
   (princ "\n\n========== GGA 완료 (GGL -> GGD -> GGM2 -> GGF) ==========")
   (sssetfirst nil nil)  ; 남아있는 선택(그립 표시) 해제
   (if (and (boundp '*GGL-REDCOUNT*) (> *GGL-REDCOUNT* 0))
