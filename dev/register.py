@@ -9,6 +9,7 @@ r"""리습 머리말(@launcher)을 읽어 catalog.json 에 등록/갱신 (catalo
 ;;; 분류: 도면 검수                  (기능별 분류를 안 적으면 이 분류)
 ;;; 설명: 리습 한 줄 설명
 ;;; 기능: 수량 대조 | MATX | 평면도·종단·자재내역 수량 비교 [| 분류]
+;;; 숨김: MATXDBG, MATXTEST          (런처 목록에 넣지 않을 명령. 괄호 안은 설명으로 무시)
 ;;; 옵션: MATX | *MATX-TOL* | 허용오차 | number | 0.5 | 도움말
 ;;; 외부프로그램: MATX뷰어 | tools/MATXView.zip | zip | MATXView.exe | *MATX-EXE* | 1.0 | | C:\MATX-Tools
 ;;; 설명서:
@@ -37,7 +38,7 @@ def okey(var):
 
 def parse(path: Path):
     text = path.read_text(encoding="utf-8-sig", errors="replace").replace("\r\n", "\n")
-    h = {"id": "", "category": "", "desc": "", "manual": "", "items": [], "tools": []}
+    h = {"id": "", "category": "", "desc": "", "manual": "", "items": [], "tools": [], "hidden": set()}
     items = {}
 
     def item(cmd):
@@ -78,6 +79,8 @@ def parse(path: Path):
             h["category"] = v
         elif k == "설명":
             h["desc"] = v
+        elif k == "숨김":  # 명령1, 명령2 (괄호 안 설명은 무시)
+            h["hidden"] |= {x.strip().upper() for x in v.split("(")[0].split(",") if x.strip()}
         elif k == "설명서":
             block = (h, "manual")
         elif k == "기능":  # 이름 | 명령어 | 설명 | 분류
@@ -141,6 +144,8 @@ def register(rel, cat):
                                for f in funcs if f not in {i["command"] for i in h["items"]}]
     for hi in want:
         cmd = hi["command"]
+        if cmd in h["hidden"]:  # 숨김 명령은 목록에 넣지 않음 (이미 있어도 그대로 둠)
+            continue
         it = existing.get(cmd)
         if it:  # 머리말에 적힌 값만 갱신 (머리말 없이 찾은 명령은 건드리지 않음)
             if hi.get("auto"):
