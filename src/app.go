@@ -183,6 +183,7 @@ func createControls() {
 	hWinCombo = mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP, 0, idWinCombo)
 
 	hUpdate = mk("BUTTON", "업데이트 확인", WS_TABSTOP, 0, idUpdate)
+	primaryBtn[hUpdate] = true // '▶ 실행' 과 같은 강조색(테라코타)으로 그림
 	hAdvanced = mk("BUTTON", "설정", WS_TABSTOP, 0, idAdvanced)
 
 	hList = mk("SysTreeView32", "", TVS_HASBUTTONS|TVS_LINESATROOT|TVS_SHOWSELALWAYS|0x0010 /*TVS_DISABLEDRAGDROP*/ |WS_TABSTOP, WS_EX_CLIENTEDGE, idList)
