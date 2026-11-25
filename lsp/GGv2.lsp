@@ -3149,8 +3149,19 @@
   (princ)
 )
 
-(defun c:GGA ( / )
+(defun c:GGA ( / doc *error*)
   (vl-load-com)
+  (setq doc (vla-get-activedocument (vlax-get-acad-object)))
+  ;; U 한 번으로 GGA 전체를 되돌릴 수 있게 하나의 되돌리기 묶음으로 처리
+  (vla-startundomark doc)
+  (defun *error* (msg)
+    (vl-catch-all-apply 'vla-endundomark (list doc))
+    (if (not (member msg '("Function cancelled" "quit / exit abort" "함수 취소됨")))
+      (princ (strcat "\n>> GGA 오류: " msg))
+    )
+    (princ "\n>> GGA 중단됨. U 를 입력하면 실행 전으로 되돌립니다.")
+    (princ)
+  )
   (princ "\n========== [1/4] GGL 실행 ==========")
   (c:GGL)
   (princ "\n========== [2/4] GGD 실행 ==========")
@@ -3162,6 +3173,8 @@
   (fc:gga-hide-mark-layer)
   (princ "\n\n========== GGA 완료 (GGL -> GGD -> GGM2 -> GGF) ==========")
   (sssetfirst nil nil)  ; 남아있는 선택(그립 표시) 해제
+  (vla-endundomark doc)
+  (princ "\n   (U 를 입력하면 GGA 실행 전으로 되돌립니다)")
   (if (and (boundp '*GGL-REDCOUNT*) (> *GGL-REDCOUNT* 0))
     (alert (strcat "종단면도 심도 및 관상부 레벨값 "
                     (itoa *GGL-REDCOUNT*) "건 확인이 필요합니다.(빨간색으로 표시됨)"))
