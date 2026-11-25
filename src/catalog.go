@@ -322,6 +322,10 @@ func showNode(n nodeRef) {
 	c(pEnableWindow, hRun, run)
 	l := n.lisp()
 	show(hTools, l != nil && len(l.Tools) > 0)
+	show(hStartup, n.kind == nkItem && l != nil && l.File != "")
+	if l != nil {
+		setCheck(hStartup, isStartup(l.ID))
+	}
 	reset := uintptr(0)
 	if len(optCtls) > 0 {
 		reset = 1

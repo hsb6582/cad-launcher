@@ -33,6 +33,7 @@ type State struct {
 	Installed  map[string]string                 `json:"installed,omitempty"` // 외부 프로그램 이름 → 설치한 버전
 	LeftW      int                               `json:"leftW,omitempty"`     // 목록 칸 폭
 	Order      map[string][]string               `json:"order,omitempty"`     // 이 PC에서 바꾼 목록 순서
+	Startup    []string                          `json:"startup,omitempty"`   // 시작하기 세트로 모든 도면에 자동 로드할 리습 id
 }
 
 var (
@@ -110,6 +111,7 @@ const (
 	idLog
 	idManual
 	idTools
+	idStartup
 	idOptBase    = 1000
 	idBrowseBase = 2000
 )
@@ -139,7 +141,7 @@ var (
 	hList, hAddCat, hAddLisp, hAddCmd, hEdit, hDel, hUp, hDown  uintptr
 	hTitle, hDesc, hOptGroup, hLblManual, hManual, hRun, hReset uintptr
 	hLog                                                        uintptr
-	hTools                                                      uintptr
+	hTools, hStartup                                            uintptr
 
 	pPostMessageW = user32.NewProc("PostMessageW")
 )
@@ -203,6 +205,7 @@ func createControls() {
 	hRun = mk("BUTTON", "▶ 실행", WS_TABSTOP|BS_OWNERDRAW, 0, idRun) // 직접 그려서 강조색(테라코타) 버튼으로 표시
 	hReset = mk("BUTTON", "옵션 기본값", WS_TABSTOP, 0, idReset)
 	hTools = mk("BUTTON", "외부 프로그램 설치", WS_TABSTOP, 0, idTools)
+	hStartup = mk("BUTTON", "모든 도면에서 자동 로드 (시작하기 세트)", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idStartup)
 
 	hLog = mk("EDIT", "", ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL, WS_EX_CLIENTEDGE, idLog)
 }
@@ -315,6 +318,7 @@ func layout() {
 	mv(hRun, rightX, mainBottom-28, 110, 30)
 	mv(hReset, rightX+118, mainBottom-28, 110, 30)
 	mv(hTools, rightX+rw-150, mainBottom-28, 150, 30)
+	mv(hStartup, rightX+236, mainBottom-24, max(rw-236-158, 60), 24)
 
 	by := mainBottom + 10
 	mv(hLog, 8, by, W-16, max(H-by-16, 40))
@@ -581,6 +585,8 @@ func onCommand(id, code int) {
 		runCurrent()
 	case id == idTools:
 		installCurrentTools()
+	case id == idStartup:
+		toggleStartup()
 	case id == idReset:
 		resetOptions()
 	case id >= idBrowseBase && id < idBrowseBase+500:
@@ -767,6 +773,9 @@ func main() {
 	}
 	createControls()
 	loadCatalog()
+	if len(st.Startup) > 0 {
+		_ = writeStartupLoader() // 경로·외부 프로그램 위치가 바뀌었을 수 있으니 매번 새로 씀
+	}
 	layout()
 	refreshTree(nodeRef{})
 	refreshWindows()

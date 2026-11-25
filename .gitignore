@@ -3,3 +3,4 @@ _backup/
 *.old
 *.new
 src-modern/build/
+launcher_startup.lsp
