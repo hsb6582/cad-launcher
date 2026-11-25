@@ -26,7 +26,6 @@ type State struct {
 	Cancel     bool                              `json:"cancel"`
 	Topmost    bool                              `json:"topmost"`
 	Values     map[string]map[string]interface{} `json:"values"`
-	Collapsed  []string                          `json:"collapsed,omitempty"`
 	AutoUpdate bool                              `json:"autoUpdate"`
 	Token      string                            `json:"token,omitempty"`
 	Synced     map[string]string                 `json:"synced,omitempty"`
@@ -34,6 +33,8 @@ type State struct {
 	LeftW      int                               `json:"leftW,omitempty"`     // 목록 칸 폭
 	Order      map[string][]string               `json:"order,omitempty"`     // 이 PC에서 바꾼 목록 순서
 	Startup    []string                          `json:"startup,omitempty"`   // 시작하기 세트로 모든 도면에 자동 로드할 리습 id
+	Theme      string                            `json:"theme,omitempty"`     // 화면 색상: dark(기본)/cream (theme.go, 전구 버튼)
+	Trust      string                            `json:"trust,omitempty"`     // AutoCAD 신뢰 위치 자동 추가: ""(아직 안 물음)/"yes"/"no" (trust.go)
 }
 
 var (
@@ -123,6 +124,8 @@ const (
 	idAdvEnc
 	idAdvSend
 	idAdvAuto
+	idAdvTrust
+	idThemeBtn
 )
 
 const WM_APP_UPDATE = 0x8001
@@ -137,7 +140,7 @@ var (
 	grey                           = map[uintptr]bool{}
 
 	hLblKw, hKeyword, hFind, hWinCombo                          uintptr
-	hUpdate, hAdvanced                                          uintptr
+	hUpdate, hAdvanced, hThemeBtn                               uintptr
 	hList, hAddCat, hAddLisp, hAddCmd, hEdit, hDel, hUp, hDown  uintptr
 	hTitle, hDesc, hOptGroup, hLblManual, hManual, hRun, hReset uintptr
 	hLog                                                        uintptr
@@ -185,9 +188,9 @@ func createControls() {
 	hUpdate = mk("BUTTON", "업데이트 확인", WS_TABSTOP, 0, idUpdate)
 	primaryBtn[hUpdate] = true // '▶ 실행' 과 같은 강조색(테라코타)으로 그림
 	hAdvanced = mk("BUTTON", "설정", WS_TABSTOP, 0, idAdvanced)
+	hThemeBtn = mk("BUTTON", "화면 색상", WS_TABSTOP, 0, idThemeBtn) // 전구 모양으로 그림 (style2.go)
 
 	hList = mk("SysTreeView32", "", TVS_HASBUTTONS|TVS_LINESATROOT|TVS_SHOWSELALWAYS|0x0010 /*TVS_DISABLEDRAGDROP*/ |WS_TABSTOP, WS_EX_CLIENTEDGE, idList)
-	c(pSetWindowTheme, hList, uintptr(P(ws("Explorer"))), 0) // 탐색기 스타일 트리(선택 표시가 더 매끈해짐)
 	c(pSendMessageW, hList, TVM_SETEXTENDEDSTYLE, TVS_EX_DOUBLEBUFFER, TVS_EX_DOUBLEBUFFER)
 	styleTree()
 	setupRecommendIcon()
@@ -272,6 +275,7 @@ func layout() {
 
 	mv(hUpdate, W-110, 41, 102, 26)
 	mv(hAdvanced, W-196, 41, 80, 26)
+	mv(hThemeBtn, W-232, 41, 32, 26)
 
 	top := 78
 	bottomH := 120
@@ -577,6 +581,8 @@ func onCommand(id, code int) {
 		refreshWindows()
 	case id == idUpdate:
 		startUpdateCheck(true)
+	case id == idThemeBtn:
+		toggleTheme()
 	case id == idAdvanced:
 		advancedDialog()
 	case id == idUp:
@@ -608,6 +614,11 @@ func wndProc(h, msg, wp, lp uintptr) uintptr {
 		return 0
 	case WM_APP_TOOLS:
 		onToolsResult()
+		return 0
+	case WM_TIMER:
+		if wp == askTimerID {
+			onAskTimer()
+		}
 		return 0
 	case WM_SIZE:
 		if hLog != 0 {
@@ -654,6 +665,10 @@ func wndProc(h, msg, wp, lp uintptr) uintptr {
 		return 0
 	case WM_CTLCOLORSTATIC:
 		return ctlColor(wp, lp)
+	case WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX:
+		return editColor(wp)
+	case WM_ERASEBKGND:
+		return eraseBg(h, wp)
 	case WM_DRAWITEM:
 		return drawButton(lp)
 	case WM_PAINT:
@@ -717,15 +732,19 @@ func main() {
 	hFont = makeFont(9, false)
 	hFontBold = makeFont(12, true)
 	hFontBtnBold = makeFont(9, true)
+	hFontIcon = makeIconFont(12)
+	setThemeColors(st.Theme) // 화면 색상 (theme.go, 기본 차콜 다크)
 	hBgBrush = c(pCreateSolidBrush, clrBg)
 	hPanelBrush = c(pCreateSolidBrush, clrPanelBg)
+	classBgBrush, classPanelBrush = hBgBrush, hPanelBrush
 
 	hInst = c(pGetModuleHandleW, 0)
 	cls := ws("CADLauncherWnd")
 	wc := wndClassEx{
 		lpfnWndProc:   syscall.NewCallback(wndProc),
 		hInstance:     hInst,
-		hIcon:         c(pLoadIconW, 0, 32512),
+		hIcon:         c(pLoadIconW, hInst, 1), // 런처 아이콘 (rsrc_windows_amd64.syso, dev/icon 에서 생성)
+		hIconSm:       c(pLoadImageW, hInst, 1, 1, 16, 16, 0),
 		hCursor:       c(pLoadCursorW, 0, 32512),
 		hbrBackground: hBgBrush,
 		lpszClassName: cls,
@@ -757,6 +776,7 @@ func main() {
 	if st.AutoUpdate {
 		startUpdateCheck(false)
 	}
+	startAskWatch() // 리습 질문을 런처 창으로 (ask.go)
 
 	var m msgT
 	for {

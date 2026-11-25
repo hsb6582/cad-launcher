@@ -123,6 +123,7 @@ func createGuide() {
 	registerGuideClass()
 	hGuide = c(pCreateWindowExW, 0, uintptr(P(guideClass)), 0,
 		WS_CHILD|WS_VSCROLL, 0, 0, 10, 10, hMain, 0, hInst, 0)
+	styleControl(hGuide)
 	framed[hGuide] = true // 3D 테두리 대신 부모가 얇은 둥근 테두리를 그림 (style2.go)
 }
 

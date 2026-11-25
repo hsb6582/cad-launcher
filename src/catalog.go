@@ -204,27 +204,23 @@ func (n nodeRef) lisp() *Lisp {
 	return nil
 }
 
-func isCollapsed(k string) bool {
-	for _, x := range st.Collapsed {
-		if x == k {
-			return true
-		}
-	}
-	return false
+// 목록 분류는 런처를 켤 때 펼친 상태로 시작한다. 단, 개발 중 분류와 '단순기능' 은 닫힌 상태로 시작.
+// 켜 둔 동안 펼치거나 닫은 분류는 기억해서, 업데이트로 목록을 다시 그려도 그대로 둔다 (파일에는 저장하지 않음).
+var collapsedNow = map[string]bool{}
+
+func defaultCollapsed(k string) bool {
+	name := strings.TrimPrefix(k, "c:")
+	return isDevCategory(name) || strings.ReplaceAll(name, " ", "") == "단순기능"
 }
 
-func setCollapsed(k string, on bool) {
-	out := st.Collapsed[:0]
-	for _, x := range st.Collapsed {
-		if x != k {
-			out = append(out, x)
-		}
+func isCollapsed(k string) bool {
+	if v, ok := collapsedNow[k]; ok {
+		return v
 	}
-	if on {
-		out = append(out, k)
-	}
-	st.Collapsed = out
+	return defaultCollapsed(k)
 }
+
+func setCollapsed(k string, on bool) { collapsedNow[k] = on }
 
 func tvInsertItem(parent uintptr, text string, state uint32) uintptr {
 	// state 에 stateRecommend 가 있으면 추천 아이콘(상태 그림 1번)을 붙임
@@ -393,6 +389,10 @@ func runCurrent() {
 			needHelper = true
 		}
 	}
+	// 리습을 로드하기 전에 런처 폴더를 AutoCAD 신뢰 위치에 추가 (trust.go)
+	if (needHelper || (l != nil && l.File != "")) && wantTrust() {
+		sb.WriteString(trustLines())
+	}
 	if needHelper {
 		if err := writeOptFile(cmdID(it.Command), vals); err != nil {
 			msgBox("옵션 파일 저장 실패\n"+err.Error(), MB_ICONERROR)
@@ -454,6 +454,9 @@ func moveNode(dir int) {
 		if j < 0 || j >= len(cat.Categories) {
 			return
 		}
+		if isDevCategory(cat.Categories[n.ci].Name) != isDevCategory(cat.Categories[j].Name) {
+			return // 개발 중 분류는 맨 아래 고정
+		}
 		cat.Categories[n.ci], cat.Categories[j] = cat.Categories[j], cat.Categories[n.ci]
 		n.ci = j
 	case nkItem:
@@ -484,7 +487,13 @@ func rankBy(order []string) func(string, int) int {
 	}
 }
 
+// 개발 중인 분류 (이름에 '개발 중' 이 들어감) - 목록 맨 아래에 고정
+func isDevCategory(name string) bool {
+	return strings.Contains(name, "개발 중") || strings.Contains(name, "개발중")
+}
+
 func applyOrder() {
+	defer devLast()
 	if len(st.Order) == 0 {
 		return
 	}
@@ -508,6 +517,13 @@ func applyOrder() {
 			return ri(ka, pos[ka]) < ri(kb, pos[kb])
 		})
 	}
+}
+
+// 이 PC에서 순서를 바꿨더라도 개발 중 분류는 항상 맨 아래로
+func devLast() {
+	sort.SliceStable(cat.Categories, func(a, b int) bool {
+		return !isDevCategory(cat.Categories[a].Name) && isDevCategory(cat.Categories[b].Name)
+	})
 }
 
 func saveOrder() {

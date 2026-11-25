@@ -4,9 +4,13 @@ AutoCAD LT 2026 리습 런처. 각 PC의 CAD런처.exe 가 실행 때마다 이 
 `lsp/`, `catalog.json`, `CAD런처.exe`, `README.md` 변경분을 자동으로 받는다. 공개 저장소이므로 도면·개인정보·토큰은 올리지 않는다.
 
 ## 브랜치: dev = 테스트, main = 배포 (가장 중요)
+- 사용자가 "개발버전에 반영"이라고 하면 `dev` 브랜치에 반영하라는 뜻이다 (작업 세션 브랜치가 따로 있어도 결과는 dev 에 올린다).
 - 평소 모든 작업은 `dev` 브랜치에 커밋하고 `git -c push.negotiate=true push origin dev` 로 올린다. 사용자의 테스트용 런처(CAD런처-테스트.exe)만 dev 를 받는다.
 - `main` 은 모든 PC가 받는 배포용이다. 사용자가 "배포해줘"처럼 분명히 지시할 때만 바꾼다. 그 전에는 main 에 push 하지 않는다.
-- 배포 절차: dev 를 main 에 merge → main 에서 배포용 exe 빌드(아래 '배포용') → 커밋·`push origin main` → main 을 다시 dev 에 merge 해서 두 브랜치를 맞춘다.
+- 배포 절차: dev 를 main 에 merge → **`python dev/release_filter.py` 로 '개발 중' 기능을 목록에서 제외(반드시)** → main 에서 배포용 exe 빌드(아래 '배포용') → 커밋·`push origin main` → main 을 다시 dev 에 merge 해서 두 브랜치를 맞춘다.
+  - '개발 중' = 분류 이름·기능 이름·리습 설명에 '개발 중'이 들어 있는 것. 배포용 catalog.json 에서만 빼고 lsp 파일은 그대로 둔다.
+  - main 을 dev 에 merge 할 때 dev 의 개발 중 항목이 지워지지 않게, merge 후 `git checkout HEAD^1 -- catalog.json` (dev 쪽 catalog 복원) → `git commit --amend --no-edit` 로 merge 커밋에 포함시킨다.
+  - 개발 중 기능을 배포에 넣으려면 머리말·catalog 에서 '[개발 중]' 표시를 먼저 지운다 (사용자 지시가 있을 때만).
 
 ## 목록 구조 (catalog.json v2)
 - `lisps[]`: id, file(lsp/파일.lsp), desc, manual(공통 안내), tools(외부 프로그램)
@@ -15,6 +19,8 @@ AutoCAD LT 2026 리습 런처. 각 PC의 CAD런처.exe 가 실행 때마다 이 
     하나라도 있으면 네이티브 런처 설명서 칸이 간단 버전으로 바뀌고 manual 은 '자세한 설명 보기'에 접힌다. 그림은 600×340 정도 PNG, 공개 저장소이므로 실제 도면 캡처는 정보를 지운 뒤 올린다.
   - recommend(선택, true): 런처 목록에서 이름 앞에 엄지척 추천 아이콘 (아이콘은 exe 안 src/assets/thumb_*.png). 엑셀 '추천' 칸에 O.
 - 런처 목록 표시: `기능 이름   (리습 · 명령어)`
+  - 분류 이름에 '개발 중'이 들어가면 런처가 목록 맨 아래에 고정한다. 목록은 런처를 켤 때 펼친 상태로 시작하고, '개발 중' 분류와 '단순기능' 만 닫힌 상태로 시작한다.
+  - 목록에서 뺄 명령은 리습 머리말 `숨김: 명령1, 명령2` 에 적는다 (register.py 가 다시 넣지 않음).
 
 ## 새 리습 추가 (토큰 절약: catalog.json 을 직접 읽거나 손으로 고치지 말 것)
 1. 리습 맨 위에 @launcher 머리말 작성 (형식은 dev/register.py 맨 위 설명). 기능 이름은 짧은 한국어.

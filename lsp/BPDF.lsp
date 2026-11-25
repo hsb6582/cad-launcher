@@ -12,10 +12,9 @@
 ;;;       글자가 없으면 "LP001_B", "LP001_C"... (도곽 밖의 글자는 무시)
 ;;;       끄려면 run-bpdf 안의 (setq auto-number T) 를 nil 로 바꾸세요.
 ;;;
-;;; 플롯 스타일: "평면도A3.ctb" 파일이 필요합니다. 이 리습 파일과 함께
-;;;       배포되는 "평면도A3.ctb"를, AutoCAD의 플롯 스타일 검색 경로
-;;;       (옵션 > 파일 탭 > "플롯 스타일 테이블 검색 경로")에 해당하는
-;;;       폴더에 미리 복사해두세요.
+;;; 플롯 스타일: "평면도A3.ctb" 파일이 필요합니다. 플롯 스타일 폴더
+;;;       (옵션 > 파일 탭 > "플롯 스타일 테이블 검색 경로")에 없으면,
+;;;       런처와 함께 받은 lsp\평면도A3.ctb 를 그 폴더로 자동 복사해서 씁니다.
 ;;;
 ;;; 사용법:
 ;;;   1) APPLOAD 명령으로 이 파일을 로드
@@ -591,6 +590,45 @@
   (mapcar 'car pairs)
 )
 
+;; ----------------------------------------------------------------------
+;; 플롯 스타일(ctb)이 이 PC 의 플롯 스타일 폴더에 없으면, 런처와 함께 받은
+;; lsp\평면도A3.ctb 를 플롯 스타일 폴더로 복사해서 쓴다. 이미 있으면 그대로 둔다.
+;; ----------------------------------------------------------------------
+(defun bpdf:split (s d / i r)
+  (while (setq i (vl-string-search d s))
+    (setq r (cons (substr s 1 i) r) s (substr s (+ i 2))))
+  (reverse (cons s r)))
+
+(defun bpdf:ensure-ctb (name / dirs found src dst root)
+  ;; 1) 플롯 스타일 검색 경로 (옵션 > 파일 > 플롯 스타일 테이블 검색 경로)
+  (if (getenv "PrinterStyleSheetDir")
+    (foreach d (bpdf:split (getenv "PrinterStyleSheetDir") ";")
+      (setq d (vl-string-right-trim "\\ " (vl-string-trim " " d)))
+      (if (/= d "") (setq dirs (cons d dirs)))))
+  (setq dirs (reverse dirs))
+  (if (null dirs)
+    (if (setq root (getvar "ROAMABLEROOTPREFIX"))
+      (setq dirs (list (strcat (vl-string-right-trim "\\" root) "\\Plotters\\Plot Styles")))))
+  (foreach d dirs
+    (if (and (not found) (findfile (strcat d "\\" name))) (setq found T)))
+  (cond
+    (found T)
+    ((null dirs)
+     (princ (strcat "\n[주의] 플롯 스타일 폴더를 찾지 못했습니다. '" name "' 를 직접 복사해 주세요.")) nil)
+    (T
+     ;; 2) 런처와 함께 받은 파일 (런처폴더\lsp\) 또는 지원 경로
+     (setq src (or (if (and (boundp '*CADLAUNCHER-EXE*) *CADLAUNCHER-EXE*)
+                     (findfile (strcat (vl-filename-directory *CADLAUNCHER-EXE*) "\\lsp\\" name)))
+                   (findfile name)))
+     (setq dst (strcat (car dirs) "\\" name))
+     (cond
+       ((null src)
+        (princ (strcat "\n[주의] '" name "' 가 플롯 스타일 폴더에 없고, 런처 lsp 폴더에서도 찾지 못했습니다.")) nil)
+       ((vl-file-copy src dst)
+        (princ (strcat "\n플롯 스타일 '" name "' 가 없어 런처의 파일을 복사했습니다: " dst)) T)
+       (T
+        (princ (strcat "\n[주의] '" name "' 복사 실패: " dst)) nil)))))
+
 (defun run-bpdf (mode / *error* old-cmdecho old-filedia old-bgplot old-ucs
                    dwg-path dwg-name out-dir
                    plotter-name paper-size paper-units orientation
@@ -648,6 +686,7 @@
   (setq orientation   "L")
   (setq plot-scale    "1=1")
   (setq ctb-name      "평면도A3.ctb")   ;; 이 파일이 플롯 스타일 검색 경로에 있어야 함
+  (bpdf:ensure-ctb ctb-name)          ;; 없으면 런처의 lsp\평면도A3.ctb 를 플롯 스타일 폴더로 복사
 
   ;; ▼▼▼ FORM 블록 관련 설정 ▼▼▼
   (setq form-block-name "FORM,576353141081")   ;; 도곽 블록 이름 (쉼표로 여러 개 지정 가능)

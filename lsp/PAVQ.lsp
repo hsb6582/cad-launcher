@@ -3,9 +3,8 @@
 ;;; 분류: 복구수량 (개발 중)
 ;;; 설명: [개발 중] 종단면도 관경 × 포장구분 연장 → 복구수량산출서 자동 작성
 ;;; 기능: [개발 중] 복구수량산출서 자동 작성 | PAVQ | 종단면도 관경×포장 길이 집계 후 복구수량산출서 엑셀 작성
-;;; 기능: [개발 중] 칼라아스콘 경계 확인 | PAVQMMA | PAVQ 없이 칼라아스콘(MMA) 경계만 도면별로 확인
-;;; 기능: [개발 중] 밴드 문자 레이어 지정 | PAVQCAL | (선택) 관경/포장 밴드 문자가 있는 레이어 지정
 ;;; 기능: [개발 중] 검토 표시 지우기 | PAVQDEL | PAVQ 가 그린 빨간 원·번호 표시 삭제
+;;; 숨김: PAVQMMA, PAVQCAL   (명령은 그대로 쓸 수 있지만 런처 목록에는 넣지 않음)
 ;;; 설명서:
 ;;;   ※ 개발 중인 기능입니다. 결과를 반드시 직접 확인하세요.
 ;;;
@@ -26,11 +25,6 @@
 ;;;   • 연결관은 자재내역 표 또는 종단 인출선 값으로 따로 합산합니다.
 ;;;   • 평면도 63mm 는 집계표에 'LP 63mm PE' 행으로 포장구분별 합산합니다.
 ;;;   • 도면번호는 MP/LP 별로 도곽 순서(좌측 상단부터)대로 매깁니다.
-;;; 기능설명서: PAVQMMA
-;;;   PAVQ 를 돌리지 않고 칼라아스콘(미끄럼방지 MMA) 경계 찾기만 도면별로 확인합니다.
-;;;   찾은 경계에 'MMA#번호 면적 / 관 길이' 를 표시합니다 (PAVQ_CHK 레이어, PAVQDEL 로 삭제).
-;;; 기능설명서: PAVQCAL
-;;;   관경/포장 밴드 문자의 레이어를 지정합니다. Enter 를 누르면 전체 레이어를 봅니다. 보통은 필요 없습니다.
 ;;; 기능설명서: PAVQDEL
 ;;;   PAVQ·PAVQMMA 가 그린 검토 표시(빨간 원, PAVQ#번호, MMA 표시)를 지웁니다.
 ;;; @end
@@ -3201,6 +3195,32 @@
   (getvar "AREA"))
 
 ;; 숫자 -> 짧은 문자 (30.00 -> "30", 1.50 -> "1.5")
+;; ------------------------------------------------------------
+;; 선택형 질문 (getkword) - CAD 런처로 실행했으면 런처가 버튼 창으로도 띄움
+;;   런처가 %TEMP%\cad_launcher_ask.txt 를 보고 질문 창을 띄우고, 고른 키워드+Enter 를 보내 줌.
+;;   캐드 명령줄에서 직접 답해도 되고, 답을 받으면(Esc 포함) 파일을 지워 런처 창도 닫힘.
+;;   choices : ((키워드 버튼이름 한줄설명) ...)   helps : 자세한 설명 줄 목록
+;; ------------------------------------------------------------
+(defun pq:ask (id title kws def choices helps prompt / p f r c h)
+  (if (and (boundp '*CADLAUNCHER-EXE*) *CADLAUNCHER-EXE* (getenv "TEMP"))
+    (progn
+      (setq p (strcat (getenv "TEMP") "\\cad_launcher_ask.txt"))
+      (if (setq f (open p "w"))
+        (progn
+          (write-line (strcat "_ASK=" id) f)
+          (write-line (strcat "TITLE=" title) f)
+          (write-line (strcat "DEFAULT=" def) f)
+          (foreach c choices
+            (write-line (strcat "CHOICE=" (car c) "|" (cadr c) "|" (caddr c)) f))
+          (foreach h helps (write-line (strcat "HELP=" h) f))
+          (close f))
+        (setq p nil))))
+  (initget kws)
+  (setq r (vl-catch-all-apply 'getkword (list prompt)))
+  (if p (vl-file-delete p))
+  (if (vl-catch-all-error-p r) (exit))   ; Esc -> 원래처럼 명령 중단
+  r)
+
 (defun pq:nz (x / s)
   (setq s (rtos x 2 2))
   (if (vl-string-search "." s)
@@ -4162,8 +4182,14 @@
       (princ "\n   M : 미끄럼방지 MMA -> 연장은 A.S.P 칸으로, 면적은 미끄럼방지(MMA) 칸으로")
       (princ "\n   A : A.S.P 로만 집계 (면적 없음)")
       (princ "\n  ---------------------------------------------------------------")
-      (initget "Color Mma Asp")
-      (setq ans (getkword "\n  표시한 경계의 포장 [칼라아스콘(C)/미끄럼방지MMA(M)/ASP(A)] <미끄럼방지MMA>: "))
+      (setq ans (pq:ask "PAVQ_PAVE" "표시한 경계의 포장 종류" "Color Mma Asp" "Mma"
+                  '(("Color" "칼라아스콘 (C)" "칼라아스콘 칸에 연장으로 그대로 집계")
+                    ("Mma" "미끄럼방지 MMA (M)" "연장은 A.S.P 칸, 면적은 미끄럼방지(MMA) 칸으로 집계")
+                    ("Asp" "A.S.P (A)" "A.S.P 로만 집계 (면적 없음, 경계는 지움)"))
+                  '("도면에 굵게 선택 표시한 경계(새로 그린 칼라아스콘 영역)를"
+                    "어떤 포장으로 집계할지 고릅니다. 캐드 화면에서 경계를 확인한 뒤 고르세요."
+                    "고른 구분은 경계 문자 괄호에 표시됩니다.")
+                  "\n  표시한 경계의 포장 [칼라아스콘(C)/미끄럼방지MMA(M)/ASP(A)] <미끄럼방지MMA>: "))
       (setq ans (cond ((= ans "Color") "C") ((= ans "Asp") "A") (T "M")))))
   ;; 고른 구분을 경계 문자 괄호에 표시 (A.S.P 는 경계를 지우므로 없음)
   (cond ((= ans "C") (pq:mma-label-set drawn "칼라아스콘"))
@@ -4189,8 +4215,13 @@
          (princ "\n       클릭해 선택 -> 선택한 도형 면적의 합 (신설관이 지나는 도형만 인정)")
          (princ "\n   W : 도형 없이 계산 -> 면적 = 종단 칼라아스콘 연장 x 폭(다음에 입력)")
          (princ "\n  ---------------------------------------------------------------")
-         (initget "Select Width")
-         (setq mode (if (= (getkword "\n  MMA 면적 [도형선택(S)/연장x폭(W)] <도형선택>: ") "Width") "W" "S"))))
+         (setq mode (if (= (pq:ask "PAVQ_MMA_AREA" "MMA 면적을 정하는 방법" "Select Width" "Select"
+                             '(("Select" "도형선택 (S)" "MMA 영역의 닫힌 폴리선을 클릭 -> 선택한 도형 면적의 합 (신설관이 지나는 도형만 인정)")
+                               ("Width" "연장 x 폭 (W)" "도형 없이 계산: 면적 = 종단 칼라아스콘 연장 x 폭 (다음에 폭 입력)"))
+                             '("MMA 경계를 자동으로 찾지 못해 면적을 정하는 방법을 고릅니다."
+                               "도형선택은 평면도에 도로경계나 직접 그린 칼라아스콘 도형이 있을 때 씁니다.")
+                             "\n  MMA 면적 [도형선택(S)/연장x폭(W)] <도형선택>: ")
+                           "Width") "W" "S"))))
       (cond
         ((= mode "A")
          (foreach c cands (setq areas (cons (list (cdr (assoc 5 (entget (car c)))) (cadr c) (car c)) areas))))

@@ -58,6 +58,13 @@ var (
 func styleWindow(h uintptr) {
 	round := int32(DWMWC_ROUND)
 	c(pDwmSetWindowAttribute, h, DWMWA_WINDOW_CORNER_PREFERENCE, uintptr(P(&round)), 4)
+	dark := uint32(0)
+	if curTheme.dark {
+		dark = 1 // 최소·최대·닫기 단추를 밝은 색으로
+	}
+	c(pDwmSetWindowAttribute, h, DWMWA_USE_IMMERSIVE_DARK_MODE, uintptr(P(&dark)), 4)
+	txt := uint32(clrText)
+	c(pDwmSetWindowAttribute, h, DWMWA_TEXT_COLOR, uintptr(P(&txt)), 4)
 	cap := uint32(clrBg)
 	c(pDwmSetWindowAttribute, h, DWMWA_CAPTION_COLOR, uintptr(P(&cap)), 4)
 	bd := uint32(clrWinBorder)
@@ -71,7 +78,15 @@ type trackMouseEvent struct {
 	hoverTime   uint32
 }
 
-var hFontBtnBold uintptr // 강조 버튼 글꼴 (9pt 굵게)
+var (
+	hFontBtnBold uintptr // 강조 버튼 글꼴 (9pt 굵게)
+	hFontIcon    uintptr // 전구 버튼 아이콘 글꼴 (Segoe MDL2 Assets, Windows 10/11 기본 글꼴)
+)
+
+func makeIconFont(pt int) uintptr {
+	height := -int(float64(pt) * scale * 96 / 72)
+	return c(pCreateFontW, uintptr(height), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, uintptr(P(ws("Segoe MDL2 Assets"))))
+}
 
 var (
 	flatBtn    = map[uintptr]bool{} // 직접 그리는 일반 버튼
@@ -162,8 +177,10 @@ func drawButton(lp uintptr) uintptr {
 		case disabled:
 			fill, border, txt = clrDisBg, clrDisBorder, clrSubText
 		case pressed:
-			fill, border = clrAccentDk, clrAccentDk
-		case hot || focus:
+			fill, border = clrAccentPress, clrAccentPress
+		case hot:
+			fill, border = clrAccentHot, clrAccentHot // 마우스를 올리면 진한 적갈색으로 확실히 바뀜
+		case focus:
 			border = clrAccentDk
 		}
 	} else {
@@ -172,9 +189,9 @@ func drawButton(lp uintptr) uintptr {
 		case disabled:
 			fill, border, txt = clrBg, clrBorder, clrSubText
 		case pressed:
-			fill, border, txt = clrPressBg, clrAccent, clrAccentDk
+			fill, border, txt = clrPressBg, clrAccent, clrHoverTxt
 		case hot:
-			fill, border, txt = clrHoverBg, clrAccent, clrAccentDk
+			fill, border, txt = clrHoverBg, clrAccent, clrHoverTxt
 		case focus:
 			border = clrAccent
 		}
@@ -183,9 +200,16 @@ func drawButton(lp uintptr) uintptr {
 
 	c(pSetBkMode, hdc, TRANSPARENT)
 	c(pSetTextColor, hdc, txt)
+	label := getText(h)
+	if h == hThemeBtn { // 전구: 다크(불 꺼짐)는 회색, 크림(불 켜짐)은 노란색
+		font, label = hFontIcon, "\uE82F"
+		if !curTheme.dark {
+			c(pSetTextColor, hdc, RGB(0xE0, 0xA1, 0x1B))
+		}
+	}
 	oldFont := c(pSelectObject, hdc, font)
 	rc := dis.rcItem
-	c(pDrawTextW, hdc, uintptr(P(ws(getText(h)))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
+	c(pDrawTextW, hdc, uintptr(P(ws(label))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
 	c(pSelectObject, hdc, oldFont)
 	return 1
 }
@@ -253,6 +277,7 @@ type nmTVCustomDraw struct {
 func styleTree() {
 	c(pSendMessageW, hList, TVM_SETITEMHEIGHT, s(24), 0)
 	c(pSendMessageW, hList, TVM_SETTEXTCOLOR, 0, clrText)
+	c(pSendMessageW, hList, TVM_SETBKCOLOR, 0, clrPanelBg)
 }
 
 func treeCustomDraw(lp uintptr) uintptr {
