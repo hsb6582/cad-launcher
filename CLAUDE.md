@@ -27,6 +27,8 @@ catalog.json 에서 해당 항목만 python 한두 줄로 수정 → `export` �
 
 ## 네이티브 우선 (src/ = CAD런처.exe)
 - 런처 코드 작업은 항상 네이티브 버전(src/)에만 한다. WebView2 버전(src-modern/, CAD런처-WebView2.exe)은 사용자가 요청할 때만 고친다.
+- `src-native2/` (CAD런처-네이티브2.exe) 는 디자인 테스트판(새 디자인은 style2.go). 사용자가 요청할 때만 고친다. 자기 exe 만 자동 업데이트하고 CAD런처.exe 는 건드리지 않는다.
+  빌드: `cd src-native2 && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w" -o ../CAD런처-네이티브2.exe .`
 - 리습(lsp/)·catalog.json 은 두 버전이 함께 받으므로 평소대로 고치면 된다.
 - 기능 차이(예: MATX/PAVQ 엑셀 자동 작성은 네이티브에만 있음)를 사용자에게 설명할 때만 WebView2 를 언급한다.
 - 대화와 중간 진행 메시지는 모두 한국어로 쓴다.
