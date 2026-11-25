@@ -89,6 +89,7 @@ var (
 	pCreateActCtxW       = kernel32.NewProc("CreateActCtxW")
 	pActivateActCtx      = kernel32.NewProc("ActivateActCtx")
 	pWideCharToMultiByte = kernel32.NewProc("WideCharToMultiByte")
+	pMultiByteToWideChar = kernel32.NewProc("MultiByteToWideChar")
 
 	pInitCommonControlsEx = comctl32.NewProc("InitCommonControlsEx")
 	pGetOpenFileNameW     = comdlg32.NewProc("GetOpenFileNameW")
@@ -416,6 +417,21 @@ func toCP949(s string) []byte {
 	out := make([]byte, n)
 	c(pWideCharToMultiByte, 949, 0, uintptr(P(&u[0])), uintptr(len(u)), uintptr(P(&out[0])), n, 0, 0)
 	return out
+}
+
+// AutoLISP의 open/write-line 으로 쓴 파일(matx-config.txt, excel_matched.csv, PAVQ_집계_*.csv 등)은
+// 한글 윈도우 코드페이지(CP949, 949)로 저장되므로, 읽을 때 UTF-8 문자열로 바꿔 줌.
+func fromCP949(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	n := c(pMultiByteToWideChar, 949, 0, uintptr(P(&b[0])), uintptr(len(b)), 0, 0)
+	if n == 0 {
+		return string(b)
+	}
+	u := make([]uint16, n)
+	c(pMultiByteToWideChar, 949, 0, uintptr(P(&b[0])), uintptr(len(b)), uintptr(P(&u[0])), n)
+	return syscall.UTF16ToString(u)
 }
 
 func s(v int) uintptr { return uintptr(int(float64(v) * scale)) }

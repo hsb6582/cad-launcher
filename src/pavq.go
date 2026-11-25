@@ -44,7 +44,9 @@ func runPavqFill(csvPath string) int {
 		pavqLog(dir, "[실패] %s 를 읽을 수 없습니다: %v", csvPath, err)
 		return 1
 	}
-	out, warnings, err := pavqBuildExcel(pavqTemplateXlsx, string(csvBytes), base)
+	// PAVQ.lsp 가 AutoLISP open/write-line 으로 쓴 파일이라 CP949(한글 윈도우 코드페이지)로
+	// 저장돼 있음 - UTF-8 문자열로 바꿔서 넘김.
+	out, warnings, err := pavqBuildExcel(pavqTemplateXlsx, fromCP949(csvBytes), base)
 	for _, w := range warnings {
 		pavqLog(dir, "[경고] %s", w)
 	}
