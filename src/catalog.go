@@ -393,6 +393,10 @@ func runCurrent() {
 			needHelper = true
 		}
 	}
+	// 리습을 로드하기 전에 런처 폴더를 AutoCAD 신뢰 위치에 추가 (trust.go)
+	if (needHelper || (l != nil && l.File != "")) && wantTrust() {
+		sb.WriteString(trustLines())
+	}
 	if needHelper {
 		if err := writeOptFile(cmdID(it.Command), vals); err != nil {
 			msgBox("옵션 파일 저장 실패\n"+err.Error(), MB_ICONERROR)

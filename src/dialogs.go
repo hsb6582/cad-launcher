@@ -271,7 +271,7 @@ func adoptLisp(p string) string {
 // 평소에는 거의 건드릴 일이 없는 설정(전송 방식·취소·항상 위·인코딩)과
 // 직접 명령 입력을 메인 화면에서 빼서 여기에 모아둔다.
 func advancedDialog() {
-	d := newDialog("설정", 480, 360)
+	d := newDialog("설정", 480, 392)
 	const lx, ex, ew = 14, 150, 310
 
 	d.label("전송 방식", lx, 18, 100)
@@ -297,18 +297,23 @@ func advancedDialog() {
 	}
 	d.note(upd, lx+20, 136, 440, 36)
 
-	d.label("옵션파일 인코딩", lx, 186, 105)
+	hTrust := d.mk("BUTTON", "런처 폴더를 AutoCAD '신뢰할 수 있는 위치'에 자동 추가", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvTrust)
+	mv(hTrust, lx, 176, 440, 22)
+	setCheck(hTrust, st.Trust != "no")
+	d.note("끄면 리습 로드가 '파일 로드 취소됨'으로 막힐 수 있습니다", lx+20, 198, 440, 20)
+
+	d.label("옵션파일 인코딩", lx, 232, 105)
 	hEnc := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvEnc)
-	mv(hEnc, ex, 182, 100, 200)
+	mv(hEnc, ex, 228, 100, 200)
 	comboFill(hEnc, encodings, indexOf(encodings, st.Encoding))
-	d.note("보통 cp949 그대로 두세요 (한글이 깨질 때만 utf-8)", ex+108, 186, ew-108, 20)
+	d.note("보통 cp949 그대로 두세요 (한글이 깨질 때만 utf-8)", ex+108, 232, ew-108, 20)
 
-	d.label("직접 명령", lx, 232, 100)
-	hFree := d.edit("", ex, 228, 230)
-	d.button("보내기", idAdvSend, ex+238, 227, 90, true)
-	d.note("목록에 없는 명령어를 바로 AutoCAD로 보냅니다", ex, 256, ew, 20)
+	d.label("직접 명령", lx, 274, 100)
+	hFree := d.edit("", ex, 270, 230)
+	d.button("보내기", idAdvSend, ex+238, 269, 90, true)
+	d.note("목록에 없는 명령어를 바로 AutoCAD로 보냅니다", ex, 298, ew, 20)
 
-	d.button("닫기", IDCANCEL, 370, 314, 95, false)
+	d.button("닫기", IDCANCEL, 370, 346, 95, false)
 
 	d.onCmd = func(id, code int) {
 		switch {
@@ -322,6 +327,12 @@ func advancedDialog() {
 			}
 		case id == idAdvCancel && code == BN_CLICKED:
 			st.Cancel = isChecked(hCancel)
+		case id == idAdvTrust && code == BN_CLICKED:
+			st.Trust = "no"
+			if isChecked(hTrust) {
+				st.Trust = "yes"
+			}
+			saveState()
 		case id == idAdvAuto && code == BN_CLICKED:
 			st.AutoUpdate = isChecked(hAuto)
 			saveState()

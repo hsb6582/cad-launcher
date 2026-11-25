@@ -34,6 +34,7 @@ type State struct {
 	LeftW      int                               `json:"leftW,omitempty"`     // 목록 칸 폭
 	Order      map[string][]string               `json:"order,omitempty"`     // 이 PC에서 바꾼 목록 순서
 	Startup    []string                          `json:"startup,omitempty"`   // 시작하기 세트로 모든 도면에 자동 로드할 리습 id
+	Trust      string                            `json:"trust,omitempty"`     // AutoCAD 신뢰 위치 자동 추가: ""(아직 안 물음)/"yes"/"no" (trust.go)
 }
 
 var (
@@ -123,6 +124,7 @@ const (
 	idAdvEnc
 	idAdvSend
 	idAdvAuto
+	idAdvTrust
 )
 
 const WM_APP_UPDATE = 0x8001
