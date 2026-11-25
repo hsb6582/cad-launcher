@@ -298,11 +298,6 @@ func onNotify(lp uintptr) uintptr {
 		if n, ok := itemNode[nm.itemNew.hItem]; ok && !building && n.kind == nkCat {
 			setCollapsed("c:"+n.category().Name, nm.action == TVE_COLLAPSE)
 		}
-	case nmDblClk:
-		if cur.kind == nkItem {
-			runCurrent()
-			return 1
-		}
 	}
 	return 0
 }
@@ -356,7 +351,7 @@ func showNode(n nodeRef) {
 		setText(hTitle, "기능을 선택하세요")
 		setText(hChip, "")
 		setText(hDesc, "")
-		setManual("왼쪽 목록에서 기능을 선택하면 설명이 여기에 표시됩니다.\n\n더블클릭하거나 ▶ 실행을 누르면 AutoCAD LT에서 실행됩니다.\n목록 이름 옆 흐린 글자는 명령어, 제목 옆 꼬리표는 (리습 · 명령어) 입니다.")
+		setManual("왼쪽 목록에서 기능을 선택하면 설명이 여기에 표시됩니다.\n\n▶ 실행을 누르면 AutoCAD LT에서 실행됩니다.\n목록 이름 옆 흐린 글자는 명령어, 제목 옆 꼬리표는 (리습 · 명령어) 입니다.")
 	}
 	c(pEnableWindow, hRun, run)
 	setGuide(guide)
