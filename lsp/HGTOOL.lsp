@@ -37,6 +37,7 @@
 ;;;   끊어 놓은 평면 신설관(주관로) 조각을 선택하면, 같은 측점에서 종단 관로를 잘라
 ;;;   구간 밖은 검은색으로 바꾸고, 구간 시/종점 수직선과 허가구간 밴드를 그립니다(0허가도면 레이어).
 ;;;   • 종단면도는 밴드(가로선 + 관경 글자)로 찾고, 평면 측점과 번호가 맞는 종단면도에 반영합니다.
+;;;   • 새로 쓰는 허가구간 문구끼리 겹치면, 짧은 구간의 문구를 위쪽으로 계단식으로 옮기고 지시선을 긋습니다.
 ;;; 기능설명서: HG3CPY
 ;;;   도곽(블록/테두리 폴리선/창 지정) 안의 객체를 지정한 삽입점에 복사합니다.
 ;;;   평면도 틀 안은 보존 레이어(평면도틀·신설관·캡·지적·지번·L)만 복사하고,
@@ -1410,11 +1411,10 @@
                          '(72 . 1) (list 11 x y 0.0) '(73 . 2))))
 )
 
-;; 밴드 1개: 수평선 + 양끝 반화살표 + 위/아래 문구
-(defun qc:band (xa xb y up dn h sty / al ah xm)
+;; 밴드 1개: 수평선 + 양끝 반화살표 (문구는 qc:bandtexts 가 배치)
+(defun qc:band (xa xb y / al ah)
   (setq al (min *QC:ARW-L* (* 0.45 (- xb xa)))
-        ah (* al (/ *QC:ARW-H* *QC:ARW-L*))
-        xm (/ (+ xa xb) 2.0))
+        ah (* al (/ *QC:ARW-H* *QC:ARW-L*)))
   (entmake (append (qc:newhdr "LINE") (list (list 10 xa y 0.0) (list 11 xb y 0.0))))
   (entmake (append (qc:newhdr "SOLID")
                    (list (list 10 xa y 0.0) (list 11 (+ xa al) (+ y ah) 0.0)
@@ -1422,8 +1422,99 @@
   (entmake (append (qc:newhdr "SOLID")
                    (list (list 10 xb y 0.0) (list 11 (- xb al) (+ y ah) 0.0)
                          (list 12 (- xb al) y 0.0) (list 13 (- xb al) y 0.0))))
-  (qc:mktxt up xm (+ y (* 1.19 h)) h sty)
-  (qc:mktxt dn xm (- y (* 1.11 h)) h sty)
+)
+
+;; 글자 폭 (textbox, 안 되면 글자 수로 어림)
+(defun qc:txtw (str h sty / b)
+  (setq b (vl-catch-all-apply 'textbox (list (list (cons 0 "TEXT") (cons 1 str) (cons 40 h) (cons 7 sty)))))
+  (if (or (vl-catch-all-error-p b) (null b))
+    (* (strlen str) h 0.9)
+    (abs (- (car (cadr b)) (car (car b)))))
+)
+
+;; 가운데 정렬 글자 상자 (x1 y1 x2 y2)
+(defun qc:tbox (str x y h sty / w)
+  (setq w (/ (qc:txtw str h sty) 2.0))
+  (list (- x w) (- y (* 0.5 h)) (+ x w) (+ y (* 0.5 h)))
+)
+
+;; 두 상자가 간격 g 안으로 겹치는지
+(defun qc:tboxhit (a b g)
+  (and a b
+       (< (- (nth 0 a) g) (nth 2 b)) (< (nth 0 b) (+ (nth 2 a) g))
+       (< (- (nth 1 a) g) (nth 3 b)) (< (nth 1 b) (+ (nth 3 a) g)))
+)
+
+;; 선분이 상자를 지나는지 (끝점이 안에 있거나 네 변 중 하나와 교차)
+(defun qc:segbox (p q bx / c)
+  (setq c (list (list (nth 0 bx) (nth 1 bx)) (list (nth 2 bx) (nth 1 bx))
+                (list (nth 2 bx) (nth 3 bx)) (list (nth 0 bx) (nth 3 bx))))
+  (or (qc:inbox p (list (car c) (caddr c)))
+      (qc:inbox q (list (car c) (caddr c)))
+      (inters p q (nth 0 c) (nth 1 c) T) (inters p q (nth 1 c) (nth 2 c) T)
+      (inters p q (nth 2 c) (nth 3 c) T) (inters p q (nth 3 c) (nth 0 c) T))
+)
+
+;; 허가구간 밴드 문구 배치 : items = ((xa xb y 윗문구 아랫문구) ...)
+;;  1) 긴 구간부터 기본 위치(선 위/아래 가운데)에 놓고, 이미 놓인 새 문구와 겹치는 구간만 옮길 대상으로 뺌
+;;  2) 옮길 구간끼리 붙어 있으면 한 무리로 보고 계단식 배치 :
+;;     오른쪽 구간이 가장 낮은 줄, 왼쪽으로 갈수록 한 줄씩 위.
+;;     윗문구/아랫문구를 두 줄로 묶어 구간 가운데의 세로 지시선 오른쪽에 붙임
+;;     (이렇게 하면 지시선이 다른 문구를 지나지 않음)
+;;  3) 그래도 이미 놓인 문구·지시선과 겹치면 그 구간만 한 줄씩 더 올림
+(defun qc:bandtexts (items h sty / g defs placed ldrs bad it xm y up dn bw r yu yd blk
+                                  ldr lp lq ok clus cur cx k xl)
+  (setq g (* 0.3 h))
+  (foreach it items
+    (setq xm (/ (+ (car it) (cadr it)) 2.0) y (caddr it) up (cadddr it) dn (nth 4 it))
+    (setq defs (cons (list it xm
+                           (if up (qc:tbox up xm (+ y (* 1.19 h)) h sty))
+                           (if dn (qc:tbox dn xm (- y (* 1.11 h)) h sty)))
+                     defs)))
+  ;; 1) 긴 구간부터 기본 위치
+  (foreach d (vl-sort defs '(lambda (a b) (> (- (cadr (car a)) (car (car a))) (- (cadr (car b)) (car (car b))))))
+    (if (vl-some '(lambda (o) (or (qc:tboxhit (caddr d) o g) (qc:tboxhit (cadddr d) o g))) placed)
+      (setq bad (cons d bad))
+      (progn
+        (setq it (car d) xm (cadr d) y (caddr it))
+        (if (nth 3 it) (qc:mktxt (nth 3 it) xm (+ y (* 1.19 h)) h sty))
+        (if (nth 4 it) (qc:mktxt (nth 4 it) xm (- y (* 1.11 h)) h sty))
+        (setq placed (append (vl-remove nil (list (caddr d) (cadddr d))) placed)))))
+  ;; 2) 옮길 구간을 왼쪽부터 무리로 묶음 (기본 상자 가로 범위가 이어지면 같은 무리)
+  (setq bad (vl-sort bad '(lambda (a b) (< (cadr a) (cadr b)))) clus nil cur nil cx nil)
+  (foreach d bad
+    (setq xl (apply 'min (mapcar 'car (vl-remove nil (list (caddr d) (cadddr d))))))
+    (if (and cur (<= xl (+ cx g)))
+      (setq cur (cons d cur))
+      (progn (if cur (setq clus (cons cur clus))) (setq cur (list d))))
+    (setq cx (max (cond (cx) (-1e99)) (apply 'max (mapcar 'caddr (vl-remove nil (list (caddr d) (cadddr d))))))))
+  (if cur (setq clus (cons cur clus)))
+  ;; 3) 무리마다 오른쪽부터 1, 2, 3 ... 줄 (cur 는 오른쪽 구간이 앞)
+  (foreach c clus
+    (setq k 0)
+    (foreach d c
+      (setq k (1+ k)
+            it (car d) xm (cadr d) y (caddr it) up (nth 3 it) dn (nth 4 it)
+            bw (max (if up (qc:txtw up h sty) 0.0) (if dn (qc:txtw dn h sty) 0.0))
+            r k ok nil)
+      (while (and (not ok) (<= r (+ k 20)))
+        (setq yu  (+ y (* 1.19 h) (* r 2.8 h))
+              yd  (- yu (* 1.3 h))
+              blk (list (+ xm (* 0.3 h)) (- yd (* 0.5 h)) (+ xm (* 0.3 h) bw) (+ yu (* 0.5 h)))
+              lp  (list xm y)
+              lq  (list xm (+ yu (* 0.5 h))))
+        (if (not (or (vl-some '(lambda (o) (or (qc:tboxhit blk o g) (qc:segbox lp lq o))) placed)
+                     (vl-some '(lambda (l) (or (qc:segbox (car l) (cadr l) blk)
+                                               (inters lp lq (car l) (cadr l) T)))
+                              ldrs)))
+          (setq ok T)
+          (setq r (1+ r))))
+      ;; 지시선 : 구간 가운데 밴드선 -> 글자 묶음 왼쪽 (묶음 높이만큼 세움)
+      (entmake (append (qc:newhdr "LINE") (list (list 10 (car lp) (cadr lp) 0.0) (list 11 (car lq) (cadr lq) 0.0))))
+      (if up (qc:mktxt up (+ (car blk) (/ bw 2.0)) yu h sty))
+      (if dn (qc:mktxt dn (+ (car blk) (/ bw 2.0)) yd h sty))
+      (setq placed (cons blk placed)
+            ldrs   (cons (list lp lq) ldrs))))
 )
 
 ;;; ==========================================================================
@@ -1741,11 +1832,15 @@
                    (equal (cond ((qc:dxf 50 ed)) (0.0)) 0.0 1e-6))
             (setq th (qc:dxf 40 ed) tsty (qc:dxf 7 ed)))))
       (setq bandy (+ (cond (bandy) ((+ basey 5.57))) *QC:BAND-OFS*))
+      ;; 밴드 선/화살표를 먼저 그리고, 글자는 서로 겹치지 않게 한꺼번에 배치
+      (setq tmp nil)
       (mapcar
         '(lambda (r x)
-           (qc:band (car x) (cadr x) bandy *QC:BAND-TXT* (qc:bandlabel (caddr r)) th tsty)
-           (setq nb (1+ nb)))
-        rngs xr)))
+           (qc:band (car x) (cadr x) bandy)
+           (setq tmp (cons (list (car x) (cadr x) bandy *QC:BAND-TXT* (qc:bandlabel (caddr r))) tmp)
+                 nb (1+ nb)))
+        rngs xr)
+      (qc:bandtexts (reverse tmp) th tsty)))
 
   (princ (strcat "\n완료: 종단관로 검은색 " (itoa np) "개, 도시가스관로 검은색 " (itoa ng)
                  "개, 수직선 " (itoa nv) "개, 허가구간 밴드 " (itoa nb) "개 작도"))
