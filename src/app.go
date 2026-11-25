@@ -96,7 +96,6 @@ const (
 	idFind
 	idWinCombo
 	idUpdate
-	idGitHub
 	idAdvanced
 	idList
 	idAddCat
@@ -116,13 +115,14 @@ const (
 	idBrowseBase = 2000
 )
 
-// 고급 설정 창(dialogs.go의 advancedDialog) 안에서만 쓰는 컨트롤 id
+// 설정 창(dialogs.go의 advancedDialog) 안에서만 쓰는 컨트롤 id
 const (
 	idAdvMethod = 500 + iota
 	idAdvCancel
 	idAdvTop
 	idAdvEnc
 	idAdvSend
+	idAdvAuto
 )
 
 const WM_APP_UPDATE = 0x8001
@@ -137,7 +137,7 @@ var (
 	grey                           = map[uintptr]bool{}
 
 	hLblKw, hKeyword, hFind, hWinCombo                          uintptr
-	hUpdate, hGitHub, hAdvanced                                 uintptr
+	hUpdate, hAdvanced                                          uintptr
 	hList, hAddCat, hAddLisp, hAddCmd, hEdit, hDel, hUp, hDown  uintptr
 	hTitle, hDesc, hOptGroup, hLblManual, hManual, hRun, hReset uintptr
 	hLog                                                        uintptr
@@ -183,8 +183,7 @@ func createControls() {
 	hWinCombo = mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP, 0, idWinCombo)
 
 	hUpdate = mk("BUTTON", "업데이트 확인", WS_TABSTOP, 0, idUpdate)
-	hGitHub = mk("BUTTON", "업데이트 설정", WS_TABSTOP, 0, idGitHub)
-	hAdvanced = mk("BUTTON", "고급 설정", WS_TABSTOP, 0, idAdvanced)
+	hAdvanced = mk("BUTTON", "설정", WS_TABSTOP, 0, idAdvanced)
 
 	hList = mk("SysTreeView32", "", TVS_HASBUTTONS|TVS_LINESATROOT|TVS_SHOWSELALWAYS|0x0010 /*TVS_DISABLEDRAGDROP*/ |WS_TABSTOP, WS_EX_CLIENTEDGE, idList)
 	c(pSetWindowTheme, hList, uintptr(P(ws("Explorer"))), 0) // 탐색기 스타일 트리(선택 표시가 더 매끈해짐)
@@ -270,9 +269,8 @@ func layout() {
 	mv(hFind, 241, 7, 75, 26)
 	mv(hWinCombo, 322, 8, max(W-330, 100), 300)
 
-	mv(hGitHub, W-108, 41, 100, 26)
-	mv(hUpdate, W-214, 41, 102, 26)
-	mv(hAdvanced, W-320, 41, 100, 26)
+	mv(hUpdate, W-110, 41, 102, 26)
+	mv(hAdvanced, W-196, 41, 80, 26)
 
 	top := 78
 	bottomH := 120
@@ -495,7 +493,7 @@ func browse(i int) {
 }
 
 // ───────────── CAD 창 / 실행 ─────────────
-// 전송 방식 · 인코딩 · 취소 · 항상 위는 '고급 설정' 창에서 바꿀 때 바로 st에 반영되므로
+// 전송 방식 · 인코딩 · 취소 · 항상 위는 '설정' 창에서 바꿀 때 바로 st에 반영되므로
 // (advancedDialog 참고) 여기서는 메인 창에 남아있는 값만 거둬들인다.
 func readSettings() {
 	st.Keyword = getText(hKeyword)
@@ -557,7 +555,7 @@ func send(text string) bool {
 	return true
 }
 
-// '고급 설정' 창의 직접 명령 입력칸에서 호출 (dialogs.go의 advancedDialog 참고)
+// '설정' 창의 직접 명령 입력칸에서 호출 (dialogs.go의 advancedDialog 참고)
 func sendFreeFrom(hEdit uintptr) {
 	t := strings.TrimRight(getText(hEdit), "\r\n")
 	if strings.TrimSpace(t) == "" {
@@ -578,8 +576,6 @@ func onCommand(id, code int) {
 		refreshWindows()
 	case id == idUpdate:
 		startUpdateCheck(true)
-	case id == idGitHub:
-		githubDialog()
 	case id == idAdvanced:
 		advancedDialog()
 	case id == idUp:

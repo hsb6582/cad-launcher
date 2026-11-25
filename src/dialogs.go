@@ -267,11 +267,11 @@ func adoptLisp(p string) string {
 	return relPath(dst)
 }
 
-// ───────────────────────── 고급 설정 창 ─────────────────────────
+// ───────────────────────── 설정 창 ─────────────────────────
 // 평소에는 거의 건드릴 일이 없는 설정(전송 방식·취소·항상 위·인코딩)과
 // 직접 명령 입력을 메인 화면에서 빼서 여기에 모아둔다.
 func advancedDialog() {
-	d := newDialog("고급 설정", 480, 300)
+	d := newDialog("설정", 480, 360)
 	const lx, ex, ew = 14, 150, 310
 
 	d.label("전송 방식", lx, 18, 100)
@@ -288,18 +288,27 @@ func advancedDialog() {
 	mv(hTop, lx, 84, 320, 22)
 	setCheck(hTop, st.Topmost)
 
-	d.label("옵션파일 인코딩", lx, 120, 105)
+	hAuto := d.mk("BUTTON", "런처를 켤 때 자동으로 업데이트 확인", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvAuto)
+	mv(hAuto, lx, 112, 320, 22)
+	setCheck(hAuto, st.AutoUpdate)
+	upd := "받는 곳: github.com/" + fixedRepo + " (" + fixedBranch + ")"
+	if localCatalogChanged() {
+		upd += "\n※ 이 PC에서 리습 목록을 수정했습니다. 다음 업데이트 때 덮어쓸지 물어봅니다."
+	}
+	d.note(upd, lx+20, 136, 440, 36)
+
+	d.label("옵션파일 인코딩", lx, 186, 105)
 	hEnc := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvEnc)
-	mv(hEnc, ex, 116, 100, 200)
+	mv(hEnc, ex, 182, 100, 200)
 	comboFill(hEnc, encodings, indexOf(encodings, st.Encoding))
-	d.note("보통 cp949 그대로 두세요 (한글이 깨질 때만 utf-8)", ex+108, 120, ew-108, 20)
+	d.note("보통 cp949 그대로 두세요 (한글이 깨질 때만 utf-8)", ex+108, 186, ew-108, 20)
 
-	d.label("직접 명령", lx, 166, 100)
-	hFree := d.edit("", ex, 162, 230)
-	d.button("보내기", idAdvSend, ex+238, 161, 90, true)
-	d.note("목록에 없는 명령어를 바로 AutoCAD로 보냅니다", ex, 190, ew, 20)
+	d.label("직접 명령", lx, 232, 100)
+	hFree := d.edit("", ex, 228, 230)
+	d.button("보내기", idAdvSend, ex+238, 227, 90, true)
+	d.note("목록에 없는 명령어를 바로 AutoCAD로 보냅니다", ex, 256, ew, 20)
 
-	d.button("닫기", IDCANCEL, 370, 254, 95, false)
+	d.button("닫기", IDCANCEL, 370, 314, 95, false)
 
 	d.onCmd = func(id, code int) {
 		switch {
@@ -313,6 +322,9 @@ func advancedDialog() {
 			}
 		case id == idAdvCancel && code == BN_CLICKED:
 			st.Cancel = isChecked(hCancel)
+		case id == idAdvAuto && code == BN_CLICKED:
+			st.AutoUpdate = isChecked(hAuto)
+			saveState()
 		case id == idAdvTop && code == BN_CLICKED:
 			st.Topmost = isChecked(hTop)
 			applyTopmost()

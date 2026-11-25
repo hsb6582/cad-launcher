@@ -296,29 +296,3 @@ func localCatalogChanged() bool {
 	s := st.Synced["catalog.json"]
 	return s != "" && gitBlobSha(catalogPath) != s
 }
-
-func githubDialog() {
-	d := newDialog("업데이트 설정", 480, 210)
-	const lx, ex = 14, 110
-	d.label("저장소", lx, 18, 90)
-	d.note("github.com/"+fixedRepo+"  ("+fixedBranch+")", ex, 18, 350, 20)
-	hAuto := d.mk("BUTTON", "런처를 켤 때 자동으로 업데이트 확인", BS_AUTOCHECKBOX|WS_TABSTOP, 0, 0)
-	mv(hAuto, ex, 48, 350, 22)
-	setCheck(hAuto, st.AutoUpdate)
-	msg := "업데이트 대상: lsp 폴더, catalog.json(리습 목록), " + exeRepoName + ", README.md"
-	if localCatalogChanged() {
-		msg += "\n※ 이 PC에서 리습 목록을 수정했습니다. 다음 업데이트 때 저장소 목록으로 덮어쓸지 물어봅니다."
-	}
-	d.note(msg, ex, 80, 350, 60)
-	d.button("확인", IDOK, 270, 166, 95, true)
-	d.button("취소", IDCANCEL, 370, 166, 95, false)
-	d.onCmd = func(id, code int) {
-		if id == IDOK {
-			st.AutoUpdate = isChecked(hAuto)
-			d.ok, d.done = true, true
-		}
-	}
-	if d.run(hAuto) {
-		saveState()
-	}
-}
