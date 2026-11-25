@@ -25,7 +25,8 @@
 ;;; 기능설명서: MATX
 ;;;   모든 도곽을 좌측 상단부터 차례로 돌며 자재내역 표를 읽어 CSV 로 모읍니다.
 ;;;   끝나면 CAD런처.exe 가 자재내역 양식을 채운 '자재내역_결과.xlsx' 를 만들고 자동으로 엽니다.
-;;;   • 매핑 규칙: MP/LP 구분, 규격이 A 호칭(예: 300A)이면 강관 규칙, LP 63mm → PE 전자류, S.TEE 부속 자동 계산, 관 수량은 엑셀 수식으로 기록
+;;;   • 매핑 규칙: MP/LP 구분, 규격이 A 호칭(예: 300A)이면 강관 규칙, LP 63mm → PE 전자류, S.TEE 부속 자동 계산(개수만큼 곱함), 관 수량은 엑셀 수식으로 기록
+;;;   • MP 도면의 S.TEE 가 2개 이상이면 스토팍/PVC TAPE 칸에 '확인 필요' 메모를 붙입니다
 ;;;   • 도곽은 FORM_ 레이어 사각형 중 표가 들어갈 만한 크기인 것만 씁니다 (표 칸막이선 등은 자동 제외)
 ;;;   • 결과 위치: 도면 폴더\MATX\
 ;;; 기능설명서: MATCAL
@@ -876,6 +877,7 @@
   )
   (setq *matx-excel-matrix* nil)
   (setq *matx-review* nil)
+  (setq *matx-notes* nil)
   (setq cfg *matx-config*)
 
   (setq frames (matx-collect-frames cfg))
@@ -957,6 +959,8 @@
   )
   ;; 엑셀에 자동 반영되지 않은 항목 목록 (사람이 확인할 것)
   (vl-catch-all-apply 'matx-write-review-csv nil)
+  ;; 엑셀 칸에 붙일 확인 메모 (예: MP S.TEE 2개 이상)
+  (vl-catch-all-apply 'matx-write-notes-csv nil)
 
   ;; excel_matched.csv 가 준비되면 CAD런처.exe 자신을 불러서 자재내역.xlsx 양식에 채워 넣고
   ;; 바로 엑셀로 연다 (CAD런처 실행 때마다 (setq *CADLAUNCHER-EXE* ...) 로 경로를 받아둠).
@@ -1412,6 +1416,31 @@
   (matx-log (strcat "[매칭] " dn " #" (nth 0 row) " " (nth 1 row) " " (nth 2 row) " - " reason))
 )
 
+(defun matx-add-note (dn xrow memo / key entry)
+  ;; 엑셀 칸(도면번호 열, xrow 행)에 붙일 메모. 같은 칸에 여러 개면 " / " 로 이어붙임
+  (setq key (cons dn xrow))
+  (setq entry (assoc key *matx-notes*))
+  (if entry
+    (setq *matx-notes* (subst (cons key (strcat (cdr entry) " / " memo)) entry *matx-notes*))
+    (setq *matx-notes* (cons (cons key memo) *matx-notes*))
+  )
+)
+
+(defun matx-write-notes-csv (/ open-result f)
+  ;; CAD런처가 읽어서 자재내역_결과.xlsx 의 해당 칸에 메모로 붙임 (도면번호,엑셀행,메모)
+  (setq open-result (matx-safe-open (strcat (matx-output-dir) "excel_notes.csv") "w"))
+  (if open-result
+    (progn
+      (setq f (car open-result))
+      (write-line "도면번호,행,메모" f)
+      (foreach n (reverse *matx-notes*)
+        (write-line (matx-csv-line (list (car (car n)) (itoa (cdr (car n))) (cdr n))) f)
+      )
+      (close f)
+    )
+  )
+)
+
 (defun matx-extract-angle (raw-name / nums)
   ;; ELBOW 품명("90%%DELBOW" 등)에서 각도 숫자 추출
   (setq nums (matx-all-numbers raw-name))
@@ -1529,11 +1558,28 @@
          (if (= pressure "MP")
            (progn
              ;; MP의 S.TEE는 스토팍류 수량 계산에 사용 (자재 자체는 무시)
+             ;; S.TEE 1개당: CZ = 큰관경/100(올림), 4100 = 그 값+1, PVC TAPE = 그 값 → S.TEE 개수만큼 곱함
              (setq stee-main (car dia))
              (setq stee-count (matx-ceil-div stee-main 100))
-             (setq result (matx-acc result ROW-STOPOK-CZ stee-count))
-             (setq result (matx-acc result ROW-STOPOK-4100 (+ stee-count 1)))
-             (setq result (matx-acc result ROW-PVC-TAPE stee-count))
+             (if (<= qty 0.0)
+               (progn
+                 (setq qty 1.0)
+                 (matx-review drawing-no row "S.TEE 수량이 비어 있어 1개로 계산함")
+               )
+             )
+             (setq result (matx-acc result ROW-STOPOK-CZ (* stee-count qty)))
+             (setq result (matx-acc result ROW-STOPOK-4100 (* (+ stee-count 1) qty)))
+             (setq result (matx-acc result ROW-PVC-TAPE (* stee-count qty)))
+             ;; MP 서비스티는 보통 1개라, 2개 이상이면 엑셀 칸에 확인 메모
+             (if (>= qty 2.0)
+               (progn
+                 (foreach r (list ROW-STOPOK-CZ ROW-STOPOK-4100 ROW-PVC-TAPE)
+                   (matx-add-note drawing-no r
+                     (strcat "확인 필요: S.TEE " spec " " (matx-fmt-num qty) "개 (MP 서비스티는 보통 1개)"))
+                 )
+                 (matx-review drawing-no row "MP S.TEE 2개 이상 - 스토팍/PVC TAPE 수량 확인 필요")
+               )
+             )
            )
            (progn
              (if (>= (length dia) 2)

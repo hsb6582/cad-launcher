@@ -280,12 +280,15 @@ func matxForceFullCalcOnLoad(workbookXML string) string {
 
 // templateXlsx(embed 된 자재내역.xlsx 원본)에 excel_matched.csv 내용을 채워서
 // 결과 xlsx 바이트를 돌려준다.
-func matxBuildExcel(templateXlsx []byte, csvText string) (outBytes []byte, warnings []string, err error) {
+// notesText 는 excel_notes.csv (도면번호,행,메모) 내용 - 없으면 "" (해당 칸에 엑셀 메모로 붙임)
+func matxBuildExcel(templateXlsx []byte, csvText string, notesText string) (outBytes []byte, warnings []string, err error) {
 	edits, warn, err := matxBuildEdits(csvText)
 	warnings = append(warnings, warn...)
 	if err != nil {
 		return nil, warnings, err
 	}
+	notes, nwarn := matxParseNotes(notesText)
+	warnings = append(warnings, nwarn...)
 	editMap := map[string]string{}
 	for _, e := range edits {
 		editMap[e.ref] = e.val
@@ -317,6 +320,10 @@ func matxBuildExcel(templateXlsx []byte, csvText string) (outBytes []byte, warni
 			}
 		case "xl/workbook.xml":
 			data = []byte(matxForceFullCalcOnLoad(string(data)))
+		case "xl/comments1.xml":
+			data = []byte(matxAddComments(string(data), notes))
+		case "xl/drawings/vmlDrawing1.vml":
+			data = []byte(matxAddNoteShapes(string(data), notes))
 		}
 		w, err := zw.Create(f.Name)
 		if err != nil {
@@ -330,4 +337,94 @@ func matxBuildExcel(templateXlsx []byte, csvText string) (outBytes []byte, warni
 		return nil, warnings, err
 	}
 	return buf.Bytes(), warnings, nil
+}
+
+// ---------- 확인 메모 (excel_notes.csv → 엑셀 칸 메모) ----------
+
+type matxNote struct {
+	ref  string // 예: "H286"
+	col  int    // 1부터 (A=1)
+	row  int
+	text string
+}
+
+// CSV 한 줄 파싱 (따옴표 칸 지원)
+func matxSplitCSV(line string) []string {
+	var out []string
+	var b strings.Builder
+	inQ := false
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case inQ && c == '"' && i+1 < len(line) && line[i+1] == '"':
+			b.WriteByte('"')
+			i++
+		case c == '"':
+			inQ = !inQ
+		case c == ',' && !inQ:
+			out = append(out, b.String())
+			b.Reset()
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return append(out, b.String())
+}
+
+func matxParseNotes(text string) (notes []matxNote, warnings []string) {
+	colOf := matxDrawingColumn()
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	for i, line := range lines {
+		if i == 0 || strings.TrimSpace(line) == "" {
+			continue // 첫 줄은 머리글
+		}
+		f := matxSplitCSV(strings.TrimRight(line, "\r"))
+		if len(f) < 3 {
+			continue
+		}
+		r, err := strconv.Atoi(strings.TrimSpace(f[1]))
+		col, ok := colOf[strings.TrimSpace(f[0])]
+		if err != nil || !ok {
+			warnings = append(warnings, "메모를 붙일 칸을 못 찾음: "+line)
+			continue
+		}
+		notes = append(notes, matxNote{ref: fmt.Sprintf("%s%d", col, r), col: colNumber(col), row: r, text: f[2]})
+	}
+	return notes, warnings
+}
+
+func matxXMLEscape(s string) string {
+	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;").Replace(s)
+}
+
+// comments1.xml 의 commentList 끝에 메모 추가
+func matxAddComments(xml string, notes []matxNote) string {
+	if len(notes) == 0 {
+		return xml
+	}
+	var b strings.Builder
+	for _, n := range notes {
+		b.WriteString(`<comment ref="` + n.ref + `" authorId="0" shapeId="0"><text><r><rPr><b/><sz val="9"/><color rgb="FFFF0000"/><rFont val="맑은 고딕"/><family val="3"/><charset val="129"/></rPr><t xml:space="preserve">` + matxXMLEscape(n.text) + `</t></r></text></comment>`)
+	}
+	if k := strings.LastIndex(xml, "</commentList>"); k >= 0 {
+		return xml[:k] + b.String() + xml[k:]
+	}
+	return xml
+}
+
+// vmlDrawing1.vml 에 메모 상자 모양 추가 (엑셀이 메모를 표시하려면 칸마다 하나씩 필요)
+func matxAddNoteShapes(vml string, notes []matxNote) string {
+	if len(notes) == 0 {
+		return vml
+	}
+	var b strings.Builder
+	for i, n := range notes {
+		// Anchor: 왼쪽열, 오프셋, 윗행, 오프셋, 오른쪽열, 오프셋, 아랫행, 오프셋 (모두 0부터)
+		b.WriteString(fmt.Sprintf(`<v:shape id="_x0000_s%d" type="#_x0000_t202" style='position:absolute;margin-left:0;margin-top:0;width:180pt;height:45pt;z-index:%d;visibility:hidden;mso-wrap-style:tight' fillcolor="infoBackground [80]" strokecolor="none [81]" o:insetmode="auto"><v:fill color2="infoBackground [80]"/><v:shadow color="none [81]" obscured="t"/><v:path o:connecttype="none"/><v:textbox style='mso-direction-alt:auto'><div style='text-align:left'></div></v:textbox><x:ClientData ObjectType="Note"><x:MoveWithCells/><x:SizeWithCells/><x:Anchor>%d, 15, %d, 2, %d, 15, %d, 16</x:Anchor><x:AutoFill>False</x:AutoFill><x:Row>%d</x:Row><x:Column>%d</x:Column></x:ClientData></v:shape>`,
+			2001+i, 100+i, n.col, n.row-1, n.col+3, n.row+3, n.row-1, n.col-1))
+	}
+	if k := strings.LastIndex(vml, "</xml>"); k >= 0 {
+		return vml[:k] + b.String() + vml[k:]
+	}
+	return vml
 }
