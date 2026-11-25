@@ -35,6 +35,8 @@ type Item struct {
 	Warn   string   `json:"warn,omitempty"`   // 주의 (한 줄)
 	Before string   `json:"before,omitempty"` // 실행 전 그림 (예: lsp/img/HG1BRK_before.png)
 	After  string   `json:"after,omitempty"`  // 실행 후 그림
+	// 추천 기능: 목록에서 이름 앞에 엄지척 아이콘
+	Recommend bool `json:"recommend,omitempty"`
 }
 
 func (it *Item) hasGuide() bool {
@@ -225,11 +227,12 @@ func setCollapsed(k string, on bool) {
 }
 
 func tvInsertItem(parent uintptr, text string, state uint32) uintptr {
+	// state 에 stateRecommend 가 있으면 추천 아이콘(상태 그림 1번)을 붙임
 	ins := tvInsert{hParent: parent, hInsertAfter: tviLast}
 	ins.item.mask = TVIF_TEXT | TVIF_STATE
 	ins.item.pszText = ws(text)
 	ins.item.state = state
-	ins.item.stateMask = TVIS_BOLD | TVIS_EXPANDED
+	ins.item.stateMask = TVIS_BOLD | TVIS_EXPANDED | TVIS_STATEIMAGEMASK
 	return c(pSendMessageW, hList, TVM_INSERTITEMW, 0, uintptr(unsafe.Pointer(&ins)))
 }
 
@@ -248,7 +251,11 @@ func refreshTree(sel nodeRef) {
 		for ii := range ct.Items {
 			in := nodeRef{nkItem, ci, ii}
 			it := &cat.Categories[ci].Items[ii]
-			hi := tvInsertItem(hc, it.Name+"   "+cmdTag(it), 0)
+			rs := uint32(0)
+			if it.Recommend {
+				rs = stateRecommend
+			}
+			hi := tvInsertItem(hc, it.Name+"   "+cmdTag(it), rs)
 			itemNode[hi], nodeItem[in] = in, hi
 		}
 	}

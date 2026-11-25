@@ -21,7 +21,7 @@ FONT = "맑은 고딕"
 MAXROW = 300
 SHEET = "기능 목록"
 COLS = [("분류", 16), ("기능 이름", 26), ("간단한 설명", 46), ("리습", 10), ("명령어", 13), ("설명서", 80),
-        ("언제 쓰나", 40), ("사용 순서", 40), ("주의", 34)]
+        ("언제 쓰나", 40), ("사용 순서", 40), ("주의", 34), ("추천", 8)]
 NCOL = len(COLS)
 CHK = NCOL + 1  # 확인 칸
 WRAP = (3, 6, 7, 8, 9)
@@ -51,7 +51,8 @@ def export():
     for ct in cat["categories"]:
         for it in ct["items"]:
             row = [ct["name"], it["name"], it.get("desc", ""), it.get("lisp", ""), it["command"].replace("\n", "\\n"), it.get("manual", ""),
-                   it.get("when", ""), "\n".join(it.get("steps", [])), it.get("warn", "")]
+                   it.get("when", ""), "\n".join(it.get("steps", [])), it.get("warn", ""),
+                   "O" if it.get("recommend") else ""]
             for i, v in enumerate(row, 1):
                 c = ws.cell(r, i, v)
                 c.font = Font(name=FONT, size=10, color="595959" if i in (4, 5) else "000000")
@@ -104,6 +105,7 @@ def export():
         ("• 기능 이름: 런처 목록에 보이는 이름.  • 간단한 설명: 이름 옆·설명서 위에 보이는 한 줄.", 10, False),
         ("• 설명서: 오른쪽 설명서 창 내용. 셀 안 줄바꿈은 Alt + Enter.", 10, False),
         ("• 언제 쓰나 / 사용 순서 / 주의: 간단 설명서. 하나라도 적으면 설명서 창이 간단 버전으로 바뀌고, 위 '설명서'는 '자세한 설명 보기'에 접힙니다.", 10, False),
+        ("• 추천: O 를 적으면 런처 목록에서 그 기능 이름 앞에 엄지척 아이콘이 붙습니다.", 10, False),
         ("  사용 순서는 셀 안에서 Alt + Enter 로 줄을 나눠 한 줄에 한 단계씩 적습니다. 실행 전/후 그림은 대화로 요청해 주세요.", 10, False),
         ("• 행 순서 = 목록 순서. 행을 잘라내서 끼워 넣으면 순서가 바뀝니다. 행을 지우면 목록에서 빠집니다.", 10, False),
         ("", 10, False),
@@ -142,7 +144,7 @@ def do_import(path):
         v = [("" if ws.cell(r, i).value is None else str(ws.cell(r, i).value).strip()) for i in range(1, NCOL + 1)]
         if not any(v):
             continue
-        cname, name, desc, lisp, cmd, man, when, steps, warn = v
+        cname, name, desc, lisp, cmd, man, when, steps, warn, rec = v
         if not name:
             errs.append(f"{r}행: 기능 이름이 비어 있습니다")
             continue
@@ -173,6 +175,8 @@ def do_import(path):
             it["steps"] = steps
         if warn:
             it["warn"] = warn
+        if rec.upper() in ("O", "○", "Y", "1", "예", "TRUE"):
+            it["recommend"] = True
         for k in ("before", "after"):  # 그림은 엑셀에 없으므로 이어받음
             if key in old and old[key].get(k):
                 it[k] = old[key][k]

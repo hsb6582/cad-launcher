@@ -49,6 +49,7 @@
             "알림창이 뜨면 빨간색으로 표시된 종단 값을 확인합니다"
           ],
           "warn": "같은 도면에서 두 번 실행하면 LP 안내문구가 중복으로 들어갑니다.",
+          "recommend": true,
           "before": "lsp/img/GGA_before.png",
           "after": "lsp/img/GGA_after.png"
         }
@@ -70,6 +71,7 @@
             "끝나면 PDF 가 저장된 폴더가 저절로 열립니다"
           ],
           "warn": "출력하는 동안에는 AutoCAD 를 건드리지 마세요.",
+          "recommend": true,
           "before": "lsp/img/BPDF_before.png",
           "after": "lsp/img/BPDF_after.png"
         },
@@ -107,6 +109,7 @@
             "자재내역_결과.xlsx 가 저절로 열립니다"
           ],
           "warn": "'확인 필요' 메모가 붙은 칸은 직접 확인하세요.",
+          "recommend": true,
           "before": "lsp/img/MATX_before.png",
           "after": "lsp/img/MATX_after.png"
         },
@@ -144,6 +147,7 @@
             "명령행 질문에 답하고, 복사본을 놓을 삽입점을 지정합니다"
           ],
           "warn": "결과가 이상하면 U 한 번으로 전체를 되돌릴 수 있습니다.",
+          "recommend": true,
           "before": "lsp/img/HG0_before.png",
           "after": "lsp/img/HG0_after.png"
         },

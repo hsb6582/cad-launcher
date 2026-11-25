@@ -190,6 +190,7 @@ func createControls() {
 	c(pSetWindowTheme, hList, uintptr(P(ws("Explorer"))), 0) // 탐색기 스타일 트리(선택 표시가 더 매끈해짐)
 	c(pSendMessageW, hList, TVM_SETEXTENDEDSTYLE, TVS_EX_DOUBLEBUFFER, TVS_EX_DOUBLEBUFFER)
 	styleTree()
+	setupRecommendIcon()
 	// 목록 편집은 엑셀(dev/catalog.xlsx) → 저장소에서 하고, 런처에서는 순서만 바꿈
 	hUp = mk("BUTTON", "▲ 위로", WS_TABSTOP, 0, idUp)
 	hDown = mk("BUTTON", "▼ 아래로", WS_TABSTOP, 0, idDown)
