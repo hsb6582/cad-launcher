@@ -179,8 +179,8 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 		return nil, nil, err
 	}
 
-	redFill := ss.addFill("FFFF0000")
-	yellowFill := ss.addFill("FFFFFF00")
+	redFill := ss.addFill(pqFillXML("FFFF0000"))
+	yellowFill := ss.addFill(pqFillXML("FFFFFF00"))
 	mmFmt, ok := pqFindNumFmt(ss, `#,##0&quot;mm&quot;`)
 	if !ok {
 		mmFmt = ss.addNumFmt(`#,##0&quot;mm&quot;`)

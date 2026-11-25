@@ -306,5 +306,5 @@ func pqFindOrAddFill(ss *pqStyleSheet, rgb string) int {
 			return i
 		}
 	}
-	return ss.addFill(rgb)
+	return ss.addFill(pqFillXML(rgb))
 }
