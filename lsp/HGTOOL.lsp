@@ -16,6 +16,7 @@
 ;;;     (다시 쓰려면 리습의 *JB:USE-ZONE* 를 T 로)
 ;;;   • 종단: Q-종단가스관로, Q-종단측점, Q-종단그래프, Q-종단TEXT 레이어 / 도곽: FORM 블록 또는 사각 테두리
 ;;;   • 종단면도는 밴드(Q-종단그래프 가로선 + 바로 위 'LP 160mm PE' 같은 관경 글자)가 있어야 인식합니다. 상세도는 제외됩니다.
+;;;     밴드 양끝에 화살표(블록·SOLID·짧은 선 무엇이든)가 있으면 확인용으로 쓰고, 없으면 명령창에 '밴드 확인 필요'를 표시합니다.
 ;;;
 ;;;   [순서]
 ;;;   1) 지적 교차 끊기(HG1BRK): 지적 선택 → 교차하는 신설관을 끊고, 지적 안 신설관을 색상 210 으로
@@ -965,6 +966,7 @@
 (setq *QC:LAY-QSTA*  "Q-종단측점")       ; 종단 측점 글자
 (setq *QC:LAY-QTXT*  "Q-종단TEXT")       ; 종단 문자 (밴드의 관경 글자 예: LP 160mm PE)
 (setq *QC:BAND-MINL* 10.0)               ; 종단면도 밴드로 볼 가로선 최소 길이
+(setq *QC:ARW-TOL*   1.0)                ; 밴드 가로선 끝 - 화살표 객체 허용 거리 (검증용)
 (setq *QC:HIDDEN*    "*HIDDEN*")         ; 제외할 선종류
 (setq *QC:STA-INT*   20.0)               ; 측점 간격(m)
 (setq *QC:STA-TXTD*  10.0)               ; 평면 측점 글자 - 주관로 최대 거리
@@ -1280,18 +1282,31 @@
   (and (wcmatch u "*LP*,*MP*") (wcmatch u "*#MM*,*#A*"))
 )
 
-;; 도곽 안 종단면도 밴드 목록 ((x1 x2 y) ...)
+;; 도곽 안 종단면도 밴드 목록 ((x1 x2 y 화살표수) ...)
 ;;  밴드 = Q-종단그래프 가로선(길이 *QC:BAND-MINL* 이상) 중 바로 위(0~4)에 Q-종단TEXT 관경 글자가 있는 것.
-;;  화살표는 블록·폴리선·SOLID 등 그리는 방식이 제각각이라 판정에 쓰지 않음.
-;;  가로 범위가 겹치고 높이 차이가 60 이내면 같은 종단면도로 보고 가장 아래 밴드 하나만 남김.
+;;  화살표는 검증용 : 가로선 양끝 *QC:ARW-TOL* 이내에 작은(크기 5 이하) Q-종단그래프 객체
+;;  (블록·SOLID·짧은 선/폴리선 무엇이든)가 있으면 그 끝은 화살표 있음. 없어도 밴드로 인정은 함.
+;;  가로 범위가 겹치고 높이 차이가 60 이내면 같은 종단면도로 보고 하나만 남김
+;;  (화살표가 많은 것 우선, 같으면 가장 아래 것).
 ;;  (상세도처럼 관경 글자만 있고 밴드 가로선이 없는 곳은 종단면도로 보지 않음)
-(defun qc:findbands (box / segs labs ed pts a res g)
+(defun qc:findbands (box / segs labs ed pts a res g arws bb)
   (foreach e (qc:collect (list '(0 . "LINE,LWPOLYLINE") (cons 8 *QC:LAY-GRAPH*)) box)
     (setq pts (qc:entpts (entget e)) a nil)
     (foreach b pts
       (if (and a (equal (cadr a) (cadr b) 1e-4) (> (abs (- (car a) (car b))) *QC:BAND-MINL*))
         (setq segs (cons (list (min (car a) (car b)) (max (car a) (car b)) (cadr a)) segs)))
       (setq a b)))
+  ;; 화살표 후보 점 : 작은 Q-종단그래프 객체의 점들 (블록은 삽입점, SOLID 는 네 꼭짓점)
+  (foreach e (qc:collect (list (cons 8 *QC:LAY-GRAPH*)) box)
+    (setq ed (entget e)
+          pts (if (= (qc:dxf 0 ed) "SOLID")
+                (mapcar '(lambda (c) (qc:pt (qc:dxf c ed))) '(10 11 12 13))
+                (qc:entpts ed)))
+    (if pts
+      (progn
+        (setq bb (qc:bbox pts))
+        (if (and (<= (- (car (cadr bb)) (car (car bb))) 5.0) (<= (- (cadr (cadr bb)) (cadr (car bb))) 5.0))
+          (setq arws (append pts arws))))))
   (foreach e (qc:collect (list '(0 . "TEXT") (cons 8 *QC:LAY-QTXT*)) box)
     (setq ed (entget e))
     (if (and (equal (cond ((qc:dxf 50 ed)) (0.0)) 0.0 1e-3) (qc:pipelabel-p (qc:dxf 1 ed)))
@@ -1300,13 +1315,22 @@
     (if (vl-some '(lambda (p) (and (>= (car p) (car sg)) (<= (car p) (cadr sg))
                                    (> (cadr p) (caddr sg)) (<= (cadr p) (+ (caddr sg) 4.0))))
                  labs)
-      (setq res (cons sg res))))
-  (foreach sg (vl-sort res '(lambda (a b) (< (caddr a) (caddr b))))
+      (setq res (cons (append sg (list (+ (qc:arwat (list (car sg) (caddr sg)) arws)
+                                          (qc:arwat (list (cadr sg) (caddr sg)) arws))))
+                      res))))
+  (foreach sg (vl-sort res '(lambda (a b) (if (= (cadddr a) (cadddr b))
+                                            (< (caddr a) (caddr b))
+                                            (> (cadddr a) (cadddr b)))))
     (if (not (vl-some '(lambda (o) (and (< (car sg) (cadr o)) (< (car o) (cadr sg))
                                         (< (abs (- (caddr sg) (caddr o))) 60.0)))
                       g))
       (setq g (cons sg g))))
   (reverse g)
+)
+
+;; 점 p 에 화살표가 있으면 1, 없으면 0
+(defun qc:arwat (p arws)
+  (if (vl-some '(lambda (q) (<= (distance p q) *QC:ARW-TOL*)) arws) 1 0)
 )
 
 ;; 밴드 하나의 종단면도 영역 ((x1 y1) (x2 y2))
@@ -1490,7 +1514,11 @@
         (setq parea (car areas)))
       (princ (strcat "\n종단면도 밴드 " (itoa (length bands)) "개 인식"
                      (if band (strcat ", 반영 : X " (rtos (car band) 2 2) " ~ " (rtos (cadr band) 2 2)
-                                      " (밴드 높이 Y " (rtos (caddr band) 2 2) ")") ""))))
+                                      " (밴드 높이 Y " (rtos (caddr band) 2 2) ", "
+                                      (cond ((= (cadddr band) 2) "양끝 화살표 확인")
+                                            ((= (cadddr band) 1) "한쪽 끝만 화살표 - 밴드 확인 필요")
+                                            (T "화살표 없음 - 관경 글자로만 인식, 밴드 확인 필요"))
+                                      ")") ""))))
     (setq parea (car areas)
           stas (mapcar '(lambda (q) (cons (car q) (cadr q))) qstas)))
   (setq best nil)
