@@ -204,13 +204,23 @@ func (n nodeRef) lisp() *Lisp {
 	return nil
 }
 
-// 목록 분류는 런처를 켤 때 모두 닫힌 상태로 시작한다.
-// 켜 둔 동안 펼친 분류는 기억해서, 업데이트로 목록을 다시 그려도 그대로 둔다 (파일에는 저장하지 않음).
-var expanded = map[string]bool{}
+// 목록 분류는 런처를 켤 때 펼친 상태로 시작한다. 단, 개발 중 분류와 '단순기능' 은 닫힌 상태로 시작.
+// 켜 둔 동안 펼치거나 닫은 분류는 기억해서, 업데이트로 목록을 다시 그려도 그대로 둔다 (파일에는 저장하지 않음).
+var collapsedNow = map[string]bool{}
 
-func isCollapsed(k string) bool { return !expanded[k] }
+func defaultCollapsed(k string) bool {
+	name := strings.TrimPrefix(k, "c:")
+	return isDevCategory(name) || strings.ReplaceAll(name, " ", "") == "단순기능"
+}
 
-func setCollapsed(k string, on bool) { expanded[k] = !on }
+func isCollapsed(k string) bool {
+	if v, ok := collapsedNow[k]; ok {
+		return v
+	}
+	return defaultCollapsed(k)
+}
+
+func setCollapsed(k string, on bool) { collapsedNow[k] = on }
 
 func tvInsertItem(parent uintptr, text string, state uint32) uintptr {
 	// state 에 stateRecommend 가 있으면 추천 아이콘(상태 그림 1번)을 붙임
