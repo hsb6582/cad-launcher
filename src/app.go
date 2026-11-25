@@ -728,7 +728,8 @@ func main() {
 	wc := wndClassEx{
 		lpfnWndProc:   syscall.NewCallback(wndProc),
 		hInstance:     hInst,
-		hIcon:         c(pLoadIconW, 0, 32512),
+		hIcon:         c(pLoadIconW, hInst, 1), // 런처 아이콘 (rsrc_windows_amd64.syso, dev/icon 에서 생성)
+		hIconSm:       c(pLoadImageW, hInst, 1, 1, 16, 16, 0),
 		hCursor:       c(pLoadCursorW, 0, 32512),
 		hbrBackground: hBgBrush,
 		lpszClassName: cls,
