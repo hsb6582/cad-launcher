@@ -456,6 +456,7 @@ func mkp(parent uintptr, class, text string, style, ex uint32, id int) uintptr {
 	if frame {
 		framed[h] = true
 	}
+	styleControl(h) // 밝은/어두운 화면 색상에 맞는 Windows 테마 (theme.go)
 	return h
 }
 

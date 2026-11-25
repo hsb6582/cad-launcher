@@ -33,6 +33,7 @@ type State struct {
 	LeftW      int                               `json:"leftW,omitempty"`     // 목록 칸 폭
 	Order      map[string][]string               `json:"order,omitempty"`     // 이 PC에서 바꾼 목록 순서
 	Startup    []string                          `json:"startup,omitempty"`   // 시작하기 세트로 모든 도면에 자동 로드할 리습 id
+	Theme      string                            `json:"theme,omitempty"`     // 화면 색상: dark(기본)/cream/gray/sage (theme.go)
 	Trust      string                            `json:"trust,omitempty"`     // AutoCAD 신뢰 위치 자동 추가: ""(아직 안 물음)/"yes"/"no" (trust.go)
 }
 
@@ -124,6 +125,7 @@ const (
 	idAdvSend
 	idAdvAuto
 	idAdvTrust
+	idAdvTheme
 )
 
 const WM_APP_UPDATE = 0x8001
@@ -188,7 +190,6 @@ func createControls() {
 	hAdvanced = mk("BUTTON", "설정", WS_TABSTOP, 0, idAdvanced)
 
 	hList = mk("SysTreeView32", "", TVS_HASBUTTONS|TVS_LINESATROOT|TVS_SHOWSELALWAYS|0x0010 /*TVS_DISABLEDRAGDROP*/ |WS_TABSTOP, WS_EX_CLIENTEDGE, idList)
-	c(pSetWindowTheme, hList, uintptr(P(ws("Explorer"))), 0) // 탐색기 스타일 트리(선택 표시가 더 매끈해짐)
 	c(pSendMessageW, hList, TVM_SETEXTENDEDSTYLE, TVS_EX_DOUBLEBUFFER, TVS_EX_DOUBLEBUFFER)
 	styleTree()
 	setupRecommendIcon()
@@ -655,6 +656,10 @@ func wndProc(h, msg, wp, lp uintptr) uintptr {
 		return 0
 	case WM_CTLCOLORSTATIC:
 		return ctlColor(wp, lp)
+	case WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX:
+		return editColor(wp)
+	case WM_ERASEBKGND:
+		return eraseBg(h, wp)
 	case WM_DRAWITEM:
 		return drawButton(lp)
 	case WM_PAINT:
@@ -718,8 +723,10 @@ func main() {
 	hFont = makeFont(9, false)
 	hFontBold = makeFont(12, true)
 	hFontBtnBold = makeFont(9, true)
+	setThemeColors(st.Theme) // 화면 색상 (theme.go, 기본 차콜 다크)
 	hBgBrush = c(pCreateSolidBrush, clrBg)
 	hPanelBrush = c(pCreateSolidBrush, clrPanelBg)
+	classBgBrush, classPanelBrush = hBgBrush, hPanelBrush
 
 	hInst = c(pGetModuleHandleW, 0)
 	cls := ws("CADLauncherWnd")

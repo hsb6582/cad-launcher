@@ -58,6 +58,13 @@ var (
 func styleWindow(h uintptr) {
 	round := int32(DWMWC_ROUND)
 	c(pDwmSetWindowAttribute, h, DWMWA_WINDOW_CORNER_PREFERENCE, uintptr(P(&round)), 4)
+	dark := uint32(0)
+	if curTheme.dark {
+		dark = 1 // 최소·최대·닫기 단추를 밝은 색으로
+	}
+	c(pDwmSetWindowAttribute, h, DWMWA_USE_IMMERSIVE_DARK_MODE, uintptr(P(&dark)), 4)
+	txt := uint32(clrText)
+	c(pDwmSetWindowAttribute, h, DWMWA_TEXT_COLOR, uintptr(P(&txt)), 4)
 	cap := uint32(clrBg)
 	c(pDwmSetWindowAttribute, h, DWMWA_CAPTION_COLOR, uintptr(P(&cap)), 4)
 	bd := uint32(clrWinBorder)
@@ -172,9 +179,9 @@ func drawButton(lp uintptr) uintptr {
 		case disabled:
 			fill, border, txt = clrBg, clrBorder, clrSubText
 		case pressed:
-			fill, border, txt = clrPressBg, clrAccent, clrAccentDk
+			fill, border, txt = clrPressBg, clrAccent, clrHoverTxt
 		case hot:
-			fill, border, txt = clrHoverBg, clrAccent, clrAccentDk
+			fill, border, txt = clrHoverBg, clrAccent, clrHoverTxt
 		case focus:
 			border = clrAccent
 		}
@@ -253,6 +260,7 @@ type nmTVCustomDraw struct {
 func styleTree() {
 	c(pSendMessageW, hList, TVM_SETITEMHEIGHT, s(24), 0)
 	c(pSendMessageW, hList, TVM_SETTEXTCOLOR, 0, clrText)
+	c(pSendMessageW, hList, TVM_SETBKCOLOR, 0, clrPanelBg)
 }
 
 func treeCustomDraw(lp uintptr) uintptr {
