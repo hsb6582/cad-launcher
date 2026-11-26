@@ -1,6 +1,6 @@
 package main
 
-// 화면 색상: 차콜 다크(기본) / 크림. 설정 버튼 옆 전구 버튼으로 바꾼다.
+// 화면 색상: 차콜 다크(기본) / 크림 / 슬레이트(#454F61). 설정 버튼 옆 전구 버튼으로 차례로 바꾼다.
 //  - 누르면 바로 바뀌고, launcher_state.json 의 "theme" 에 저장된다.
 //  - 다크에서는 체크박스·옵션 묶음 테두리를 Windows 기본(밝은) 테마 대신 직접 색으로 그리게 하고,
 //    입력칸·목록·스크롤바는 Windows 의 어두운 테마(DarkMode_Explorer / DarkMode_CFD)를 입힌다.
@@ -45,6 +45,11 @@ var themes = []theme{
 		accent: rgbHex(0xCC785C), accentDk: rgbHex(0xAD5F46), accentHot: rgbHex(0x9A4630), accentPress: rgbHex(0x7A3523), disBg: rgbHex(0xE4E0D8), disBorder: rgbHex(0xC9C4BA),
 		border: rgbHex(0xE0D9CC), winBorder: rgbHex(0xD9D2C4), hover: rgbHex(0xFBEFEA), hoverTxt: rgbHex(0xAD5F46), press: rgbHex(0xF4DFD6), sel: rgbHex(0xF6E4DC),
 		selText: rgbHex(0x7A3E2A), hot: rgbHex(0xFAF6EF), soft: rgbHex(0xF3E6DF), line: rgbHex(0xE4DFD4)},
+	{key: "slate", name: "슬레이트", dark: true, // 배경 #454F61 (사용자 지정), 강조색: 진한 파랑
+		bg: rgbHex(0x454F61), text: rgbHex(0xF3F5F9), sub: rgbHex(0xC4CBD7), panel: rgbHex(0x3A4352),
+		accent: rgbHex(0x2F6FB8), accentDk: rgbHex(0x255A96), accentHot: rgbHex(0x3E82CF), accentPress: rgbHex(0x255A96), disBg: rgbHex(0x4F596B), disBorder: rgbHex(0x5F6A7D),
+		border: rgbHex(0x5C6779), winBorder: rgbHex(0x505A6C), hover: rgbHex(0x4C5A70), hoverTxt: rgbHex(0xCFE1F6), press: rgbHex(0x42536B), sel: rgbHex(0x55667F),
+		selText: rgbHex(0xE1ECF9), hot: rgbHex(0x4B5568), soft: rgbHex(0x5C4C3A), line: rgbHex(0x505A6C)},
 }
 
 var (
@@ -173,12 +178,9 @@ func eraseBg(h, hdc uintptr) uintptr {
 	return 1
 }
 
-// 전구 버튼: 다크 ↔ 크림
+// 전구 버튼: 차콜 다크 → 크림 → 슬레이트 → 차콜 다크 … 차례로
 func toggleTheme() {
-	next := "dark"
-	if curTheme.dark {
-		next = "cream"
-	}
+	next := themes[(themeIndex(curTheme.key)+1)%len(themes)].key
 	applyTheme(next)
 	saveState()
 }

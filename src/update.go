@@ -227,6 +227,7 @@ func onUpdateResult() {
 	}
 	saveState()
 	if len(p.updates) == 0 && len(p.conflicts) == 0 {
+		setUpdateAvail(false)
 		logf("최신 상태입니다")
 		if p.interactive {
 			msgBox("모든 리습과 런처가 최신 상태입니다.", 0x40)
@@ -239,6 +240,7 @@ func onUpdateResult() {
 			todo = nil
 		}
 	}
+	setUpdateAvail(len(p.updates) > 0 && len(todo) == 0) // 안 받았으면 빨간 점으로 남김
 	if len(p.conflicts) > 0 {
 		if ask("아래 파일은 이 PC에서도 수정되었습니다.\n\n" + pathList(p.conflicts) +
 			"\nGitHub 버전으로 덮어쓸까요?\n(아니오 = 이 PC 버전 유지, 기존 파일은 _backup 에 보관)") {

@@ -196,22 +196,50 @@ func drawButton(lp uintptr) uintptr {
 			border = clrAccent
 		}
 	}
-	roundBox(hdc, dis.rcItem, fill, border, 8)
+	box := dis.rcItem
+	if h == hUpdate { // 업데이트 버튼: 위·오른쪽 여백(updPad)을 두고 그 모서리에 알림 점
+		box.top += int32(s(updPad))
+		box.right -= int32(s(updPad))
+	}
+	roundBox(hdc, box, fill, border, 8)
 
 	c(pSetBkMode, hdc, TRANSPARENT)
 	c(pSetTextColor, hdc, txt)
 	label := getText(h)
 	if h == hThemeBtn { // 전구: 다크(불 꺼짐)는 회색, 크림(불 켜짐)은 노란색
 		font, label = hFontIcon, "\uE82F"
-		if !curTheme.dark {
+		switch curTheme.key {
+		case "cream":
 			c(pSetTextColor, hdc, RGB(0xE0, 0xA1, 0x1B))
+		case "slate":
+			c(pSetTextColor, hdc, RGB(0x8E, 0xC5, 0xFF))
 		}
 	}
 	oldFont := c(pSelectObject, hdc, font)
-	rc := dis.rcItem
+	rc := box
 	c(pDrawTextW, hdc, uintptr(P(ws(label))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
 	c(pSelectObject, hdc, oldFont)
+	if h == hUpdate && updateAvail {
+		// 버튼 오른쪽 위 모서리에 걸친 빨간 점 + 둘레에 배경색 테두리
+		cx, cy := int(box.right)-int(s(2)), int(box.top)+int(s(1))
+		ring, dot := int(s(11)), int(s(8))
+		fillRoundEllipse(hdc, cx-ring/2, cy-ring/2, ring, clrBg)
+		fillRoundEllipse(hdc, cx-dot/2, cy-dot/2, dot, RGB(0xE8, 0x40, 0x40))
+	}
 	return 1
+}
+
+// 업데이트 버튼 위·오른쪽 여백 (빨간 점이 버튼 밖으로 살짝 걸치는 자리)
+const updPad = 4
+
+// 받을 업데이트가 있는데 아직 받지 않았으면 true → 업데이트 버튼에 빨간 점 (update.go)
+var updateAvail bool
+
+func setUpdateAvail(v bool) {
+	if updateAvail != v {
+		updateAvail = v
+		c(pInvalidateRect, hUpdate, 0, 0)
+	}
 }
 
 func roundBox(hdc uintptr, r rectT, fill, border uintptr, radius int) {

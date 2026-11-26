@@ -34,7 +34,7 @@ type State struct {
 	LeftW      int                               `json:"leftW,omitempty"`      // 목록 칸 폭
 	Order      map[string][]string               `json:"order,omitempty"`      // 이 PC에서 바꾼 목록 순서
 	Startup    []string                          `json:"startup,omitempty"`    // 시작하기 세트로 모든 도면에 자동 로드할 리습 id
-	Theme      string                            `json:"theme,omitempty"`      // 화면 색상: dark(기본)/cream (theme.go, 전구 버튼)
+	Theme      string                            `json:"theme,omitempty"`      // 화면 색상: dark(기본)/cream/slate (theme.go, 전구 버튼)
 	Trust      string                            `json:"trust,omitempty"`      // AutoCAD 신뢰 위치 자동 추가: ""(아직 안 물음)/"yes"/"no" (trust.go)
 	LastUpdate string                            `json:"lastUpdate,omitempty"` // 이 PC가 마지막으로 파일을 내려받은 시각 (RFC3339)
 	LastCheck  string                            `json:"lastCheck,omitempty"`  // 마지막으로 업데이트를 확인한 시각
@@ -391,7 +391,7 @@ func layout() {
 		measureTitle()
 	}
 	// 맨 위 줄: 제목 · (연결 점) 대상 CAD 창 · ↻ ······ 전구 · 설정 · 업데이트
-	mv(hUpdate, W-90, 10, 82, 26)
+	mv(hUpdate, W-90, 10-updPad, 82+updPad, 26+updPad) // 위·오른쪽 여백에 업데이트 알림 빨간 점 (style2.go)
 	mv(hAdvanced, W-160, 10, 64, 26)
 	mv(hThemeBtn, W-198, 10, 32, 26)
 	cx := titleEndX + 30
