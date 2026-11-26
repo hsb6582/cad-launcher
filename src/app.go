@@ -116,13 +116,14 @@ const (
 	idLog
 	idManual
 	idTools
-	idStartup
 	idLogToggle
 	idOptBase    = 1000
 	idBrowseBase = 2000
 )
 
 // 설정 창(dialogs.go의 advancedDialog) 안에서만 쓰는 컨트롤 id
+const idAdvStartup0 = 700 // 자동 로드 체크박스 (700, 701, ... 리습 수만큼)
+
 const (
 	idAdvMethod = 500 + iota
 	idAdvCancel
@@ -151,7 +152,7 @@ var (
 	hList, hAddCat, hAddLisp, hAddCmd, hEdit, hDel, hUp, hDown  uintptr
 	hTitle, hDesc, hOptGroup, hLblManual, hManual, hRun, hReset uintptr
 	hLog                                                        uintptr
-	hTools, hStartup                                            uintptr
+	hTools                                                      uintptr
 	hListHdr, hListCnt, hChip, hOptHdr, hStatus, hLogToggle     uintptr
 	hFontSec                                                    uintptr // 칸 제목(리습 목록·옵션·설명서) 글꼴
 
@@ -247,7 +248,6 @@ func createControls() {
 	hManual = mk("EDIT", "", ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL, WS_EX_CLIENTEDGE, idManual)
 	hRun = mk("BUTTON", "▶ 실행", WS_TABSTOP|BS_OWNERDRAW, 0, idRun) // 직접 그려서 강조색 버튼으로 표시
 	hTools = mk("BUTTON", "외부 프로그램 설치", WS_TABSTOP, 0, idTools)
-	hStartup = mk("BUTTON", "모든 도면에서 자동 로드", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idStartup)
 
 	// 아래: 마지막 결과 한 줄 + 실행 기록 펼치기
 	hStatus = mk("STATIC", "", SS_LEFT|0x0100 /*SS_NOTIFY*/ |0x4000 /*SS_ENDELLIPSIS*/, 0, 0)
@@ -463,10 +463,6 @@ func layout() {
 
 	// 아래 줄: 부가 기능 (실행 버튼은 오른쪽 위로 옮김)
 	sx := rightX
-	mv(hStartup, sx, actTop+7, 190, 24)
-	if c(pIsWindowVisible, hStartup) != 0 {
-		sx += 198
-	}
 	mv(hTools, sx, actTop+4, 140, 28)
 
 	// 맨 아래: 마지막 결과 한 줄 + 실행 기록 펼치기 / 펼친 기록 칸
@@ -766,8 +762,6 @@ func onCommand(id, code int) {
 	case id == idLogToggle:
 		st.LogOpen = !st.LogOpen
 		layout()
-	case id == idStartup:
-		toggleStartup()
 	case id == idReset:
 		resetOptions()
 	case id >= idBrowseBase && id < idBrowseBase+500:

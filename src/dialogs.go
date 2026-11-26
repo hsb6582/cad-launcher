@@ -307,7 +307,19 @@ func adoptLisp(p string) string {
 // 평소에는 거의 건드릴 일이 없는 설정(전송 방식·취소·항상 위·인코딩)과
 // 직접 명령 입력을 메인 화면에서 빼서 여기에 모아둔다.
 func advancedDialog() {
-	d := newDialogStyle("설정", 640, 600, true)
+	// 모든 도면에서 자동 로드 (리습 파일이 있는 것만, 2열)
+	type startupBox struct {
+		h  uintptr
+		id string
+	}
+	var suLisps []*Lisp
+	for i := range cat.Lisps {
+		if cat.Lisps[i].File != "" {
+			suLisps = append(suLisps, &cat.Lisps[i])
+		}
+	}
+	suRows := (len(suLisps) + 1) / 2
+	d := newDialogStyle("설정", 640, 600+60+suRows*26, true)
 	const lx, ex = 16, 160
 	head := func(t string) uintptr {
 		h := d.label(t, lx, 0, 200)
@@ -372,6 +384,19 @@ func advancedDialog() {
 	comboFill(hEnc, encodings, indexOf(encodings, st.Encoding))
 	hNoteEnc := d.note("보통 cp949 그대로 두세요 (한글이 깨질 때만 utf-8)", 0, 0, 10, 20)
 
+	hHeadSu := head("모든 도면에서 자동 로드")
+	hNoteSu := d.note("체크한 리습은 AutoCAD 시작하기 세트에 등록되어, 새로 열거나 만드는 도면마다 자동으로 로드됩니다", 0, 0, 10, 20)
+	var suBoxes []startupBox
+	for i, l := range suLisps {
+		label := l.ID
+		if nm := firstItemName(l.ID); nm != "" {
+			label += "  (" + nm + ")"
+		}
+		h := d.mk("BUTTON", label, BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvStartup0+i)
+		setCheck(h, isStartup(l.ID))
+		suBoxes = append(suBoxes, startupBox{h, l.ID})
+	}
+
 	hHeadFree := head("직접 명령")
 	hFree := d.edit("", ex, 0, 230)
 	hSend := d.button("보내기", idAdvSend, 0, 0, 90, true)
@@ -422,6 +447,16 @@ func advancedDialog() {
 		mv(hNoteEnc, ex+110, y+4, rw(ex+110), 20)
 		y += 46
 
+		mv(hHeadSu, lx, y, 300, 20)
+		y += 26
+		mv(hNoteSu, lx+20, y, rw(lx+20), 20)
+		y += 26
+		colW := max((W-lx-20-16)/2, 120)
+		for i, b := range suBoxes {
+			mv(b.h, lx+20+(i%2)*colW, y+(i/2)*26, colW-8, 22)
+		}
+		y += suRows*26 + 20
+
 		mv(hHeadFree, lx, y, 200, 20)
 		y += 28
 		ew := max(W-ex-16-98, 120)
@@ -462,6 +497,12 @@ func advancedDialog() {
 		case id == idAdvTop && code == BN_CLICKED:
 			st.Topmost = isChecked(hTop)
 			applyTopmost()
+		case id >= idAdvStartup0 && id < idAdvStartup0+len(suBoxes) && code == BN_CLICKED:
+			b := suBoxes[id-idAdvStartup0]
+			on := isChecked(b.h)
+			if !setStartup(b.id, on) {
+				setCheck(b.h, !on)
+			}
 		case id == idAdvSend && code == BN_CLICKED:
 			sendFreeFrom(hFree)
 		}
@@ -609,4 +650,16 @@ func editOptionDialog(o *Option, all []Option, self int) bool {
 		d.ok, d.done = true, true
 	}
 	return d.run(hKey)
+}
+
+// 리습 ID 를 쓰는 첫 기능 이름 (설정 창 표시용)
+func firstItemName(id string) string {
+	for _, c := range cat.Categories {
+		for _, it := range c.Items {
+			if it.Lisp == id {
+				return it.Name
+			}
+		}
+	}
+	return ""
 }

@@ -174,13 +174,13 @@ func setStartupSuite(add bool) int {
 	return changed
 }
 
-// 체크박스를 눌렀을 때
-func toggleStartup() {
-	l := cur.lisp()
+// 설정 창의 '모든 도면에서 자동 로드' 체크박스에서 호출. 실패하면 false (체크를 되돌림)
+func setStartup(id string, on bool) bool {
+	l := lispByID(id)
 	if l == nil || l.File == "" {
-		return
+		return false
 	}
-	on := isChecked(hStartup)
+	old := append([]string{}, st.Startup...)
 	var next []string
 	for _, s := range st.Startup {
 		if s != l.ID {
@@ -193,8 +193,8 @@ func toggleStartup() {
 	st.Startup = next
 	if err := writeStartupLoader(); err != nil {
 		msgBox("시작 로더 파일 저장 실패\n"+err.Error(), MB_ICONERROR)
-		setCheck(hStartup, !on)
-		return
+		st.Startup = old
+		return false
 	}
 	if len(startupKeyPaths()) == 0 {
 		msgBox("AutoCAD LT 프로필을 레지스트리에서 찾지 못했습니다.\nAutoCAD LT 를 한 번 실행한 뒤 다시 시도하거나,\nAPPLOAD > 시작하기 세트 > 내용에 아래 파일을 직접 추가하세요.\n\n"+startupLoaderPath(), MB_ICONWARNING)
@@ -208,4 +208,5 @@ func toggleStartup() {
 	} else {
 		logf("시작하기 세트에서 제외: %s", l.ID)
 	}
+	return true
 }
