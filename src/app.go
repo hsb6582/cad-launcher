@@ -409,12 +409,19 @@ func layout() {
 
 	// 오른쪽: 제목 + 꼬리표 / 설명
 	rw := max(W-rightX-8, 200)
-	tw := min(textW(hTitle, hFontBold)+6, rw-120)
+	// 실행 버튼: 오른쪽 위 (제목·설명 줄 오른쪽). 버튼이 보일 때는 제목·설명이 그 앞까지만 차지
+	const runW = 150
+	mv(hRun, rightX+rw-runW, secTop+2, runW, 46)
+	tr := rw // 제목·설명이 쓸 수 있는 폭
+	if c(pIsWindowVisible, hRun) != 0 {
+		tr = max(rw-runW-12, 120)
+	}
+	tw := max(min(textW(hTitle, hFontBold)+6, tr-120), 60)
 	mv(hTitle, rightX, secTop, tw, 28)
 	chip := getText(hChip)
 	show(hChip, chip != "")
 	mv(hChip, rightX+tw+8, secTop+5, textW(hChip, hFont)+16, 20)
-	mv(hDesc, rightX, secTop+30, rw, 20)
+	mv(hDesc, rightX, secTop+30, tr, 20)
 	y := secTop + 58
 	if len(optCtls) > 0 {
 		show(hOptGroup, true)
@@ -454,8 +461,7 @@ func layout() {
 	mv(hManual, rightX, y+28, rw, mh)
 	mv(hGuide, rightX, y+28, rw, mh)
 
-	// 실행 줄: 왼쪽 부가 기능, 오른쪽 큰 실행 버튼
-	mv(hRun, rightX+rw-150, actTop, 150, 36)
+	// 아래 줄: 부가 기능 (실행 버튼은 오른쪽 위로 옮김)
 	sx := rightX
 	mv(hStartup, sx, actTop+7, 190, 24)
 	if c(pIsWindowVisible, hStartup) != 0 {
