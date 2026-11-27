@@ -9,6 +9,7 @@ package main
 //   스크롤 막대는 scroll.go (잘 보이게 직접 그림)
 
 import (
+	"math"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -496,24 +497,20 @@ func paintItemRow(hdc uintptr, r listRow, y, cw int, sel, hot bool) {
 	case hot:
 		fillRound(hdc, x0, y+si(1), x1-x0, r.h-si(2), clrHotBg, clrHotBg, si(10))
 	}
-	// 아이콘 (둥근 사각형 + 기호)
-	isz := si(26)
-	ix, iy := x0+si(10), y+(r.h-isz)/2
-	ibg := mixClr(clrBg, clrText, 0.10)
-	gclr := clrSubText
+	// 앞 표시: 작은 동그라미 (고른 기능은 밝은 파랑, 나머지는 흐린 회색)
+	isz := si(8)
+	ix, iy := x0+si(14), y+(r.h-isz)/2
+	dot := mixClr(clrBg, clrText, 0.45)
 	if sel {
-		a, b := heroColors()
-		ibg, gclr = mixClr(a, b, 0.5), white
+		_, b := runColors(false, false)
+		dot = mixClr(b, white, 0.35)
+	} else if hot {
+		dot = mixClr(clrBg, clrText, 0.7)
 	}
-	cv := newCanvas(isz, isz, rowBg(sel, hot))
-	f := float64(isz)
-	cv.paint(func(px, py float64) float64 { return aa(sdRoundRect(px, py, 0.5, 0.5, f-0.5, f-0.5, float64(si(7)))) }, solid(ibg))
-	cv.blit(hdc, ix, iy)
-	old := c(pSelectObject, hdc, hFontGlyph)
-	c(pSetTextColor, hdc, gclr)
-	gr := rectT{int32(ix), int32(iy), int32(ix + isz), int32(iy + isz)}
-	c(pDrawTextW, hdc, uintptr(P(ws(pickGlyph(r.node)))), ^uintptr(0), uintptr(P(&gr)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
-	c(pSelectObject, hdc, old)
+	cv := newCanvas(isz+2, isz+2, rowBg(sel, hot))
+	rr := float64(isz) / 2
+	cv.paint(func(px, py float64) float64 { return aa(math.Hypot(px-rr-1, py-rr-1) - rr) }, solid(dot))
+	cv.blit(hdc, ix-1, iy-1)
 	// 오른쪽 표시: 추천(엄지척) · 즐겨찾기 별
 	rx := x1 - si(10)
 	if isFav(it) && !r.fav {
@@ -532,8 +529,8 @@ func paintItemRow(hdc uintptr, r listRow, y, cw int, sel, hot bool) {
 	if sel {
 		nclr = clrSelText
 	}
-	tx := ix + isz + si(10)
-	old = c(pSelectObject, hdc, hFont)
+	tx := ix + isz + si(12)
+	old := c(pSelectObject, hdc, hFont)
 	c(pSetTextColor, hdc, nclr)
 	tr := rectT{int32(tx), int32(y), int32(max(rx, tx+si(20))), int32(y + r.h)}
 	c(pDrawTextW, hdc, uintptr(P(ws(r.label))), ^uintptr(0), uintptr(P(&tr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|0x8000 /*DT_END_ELLIPSIS*/)
