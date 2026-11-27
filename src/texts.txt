@@ -275,6 +275,7 @@ trust.002 = "\n\n추가하지 않으면 AutoCAD 보안 설정(SECURELOAD) 때문
 update.001 = "GitHub 접근이 거부되었습니다(%d). 저장소 주소와 토큰 설정을 확인하십시오."
 update.002 = "저장소 또는 브랜치를 찾을 수 없음(404) - GitHub 설정을 확인하세요"
 update.003 = " (테스트)"
+update.030 = " (베타)"
 update.004 = "업데이트 확인 중… (%s, %s)"
 update.005 = "  … 외 "
 update.006 = "개\n"
