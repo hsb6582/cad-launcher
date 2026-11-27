@@ -395,7 +395,6 @@ func advancedDialog() {
 		return T("dialogs.107")
 	}
 	hTokState := hint(tokState())
-	hNoteTok := hint(T("dialogs.102"))
 
 	hHeadCad := head("AutoCAD")
 	hTrust := check(T("dialogs.022"), idAdvTrust, st.Trust != "no")
@@ -493,7 +492,7 @@ func advancedDialog() {
 		}
 		R.y += 6
 		tokY := R.y
-		row(R, hLblTok, hTokBtn, 120, 28, hNoteTok)
+		row(R, hLblTok, hTokBtn, 120, 28, 0)
 		mv(hTokState, R.x+lblW+130, tokY+5, colW-lblW-130, 20) // 버튼 오른쪽: 설정됨 / 설정 안 됨
 		R.y += 16
 		sec(R, hHeadCad)

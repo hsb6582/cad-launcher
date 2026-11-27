@@ -193,6 +193,15 @@ func ctlColor(hdc, ctl uintptr) uintptr {
 		c(pSetTextColor, hdc, clrSubText)
 		return chipBrush
 	}
+	if ctl == hCadState { // 연결 상태 문구: 연결됨 초록 / 못 찾음 빨강
+		c(pSetBkColor, hdc, clrBg)
+		if cadStateOn == 1 {
+			c(pSetTextColor, hdc, RGB(0x4C, 0xC3, 0x8A))
+		} else {
+			c(pSetTextColor, hdc, RGB(0xD9, 0x5C, 0x5C))
+		}
+		return hBgBrush
+	}
 	if ctl == hLog || ctl == hManual {
 		c(pSetBkColor, hdc, clrPanelBg)
 		c(pSetTextColor, hdc, clrText)
@@ -218,6 +227,7 @@ func createControls() {
 	hCadLbl = mk("STATIC", T("app.101"), SS_LEFT, 0, 0) // CAD 창 선택칸 앞 이름표 (흐린 글씨)
 	grey[hCadLbl] = true
 	hWinCombo = mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP, 0, idWinCombo)
+	hCadState = mk("STATIC", "", SS_LEFT|0x4000 /*SS_ENDELLIPSIS*/, 0, 0)
 
 	hUpdate = mk("BUTTON", T("app.002"), WS_TABSTOP, 0, idUpdate)
 	hAdvanced = mk("BUTTON", T("app.003"), WS_TABSTOP, 0, idAdvanced)
@@ -331,7 +341,30 @@ func mainBottomY(H int) int {
 
 // 맨 위 줄: '작업할 도면' 이름표 → 연결 점(titleEndX+16) → CAD 창 선택칸(titleEndX+30). layout 에서 잼
 var titleEndX = -4
-var hCadLbl uintptr
+var hCadLbl, hCadState uintptr // '작업할 도면' 이름표 / ↻ 오른쪽 연결 상태 문구
+
+// ↻ 오른쪽 연결 상태 문구: 연결됨(초록) / 못 찾음(빨강). 바뀔 때만 다시 그림
+var cadStateOn = -1
+
+func updateCadState() {
+	if hCadState == 0 {
+		return
+	}
+	on := 0
+	if cadConnected() {
+		on = 1
+	}
+	if on == cadStateOn {
+		return
+	}
+	cadStateOn = on
+	if on == 1 {
+		setText(hCadState, T("app.102"))
+	} else {
+		setText(hCadState, T("app.103"))
+	}
+	c(pInvalidateRect, hMain, 0, 1) // 연결 표시 점도 같이
+}
 
 // 대상 CAD 창 연결 표시 (초록 = 선택된 CAD 창이 살아 있음)
 func cadConnected() bool {
@@ -369,9 +402,12 @@ func layout() {
 	mv(hCadLbl, 12, 15, lw, 20)
 	titleEndX = 12 + lw - 6 // 점은 이름표 오른쪽 10px
 	cx := titleEndX + 30
-	cw := min(max(W-198-12-36-cx, 120), 640)
+	// 상태 문구 칸: 두 문구 중 긴 쪽 폭 (문구가 바뀌어도 선택칸이 출렁이지 않게)
+	stW := max(strW(T("app.102"), hFont), strW(T("app.103"), hFont)) + 6
+	cw := min(max(W-198-12-36-cx-stW-10, 120), 640)
 	mv(hWinCombo, cx, 11, cw, 300)
 	mv(hFind, cx+cw+4, 10, 30, 26)
+	mv(hCadState, cx+cw+4+30+10, 15, min(stW, max(W-198-12-(cx+cw+44), 20)), 20)
 
 	mainBottom := mainBottomY(H)
 	// 왼쪽: 리습 목록
@@ -460,6 +496,21 @@ func layout() {
 }
 
 // 컨트롤 글자 폭 (96DPI 기준)
+// 글자열 폭 (96DPI 기준) - 컨트롤 없이 잴 때
+func strW(str string, font uintptr) int {
+	t := utf16.Encode([]rune(str))
+	if len(t) == 0 {
+		return 0
+	}
+	dc := c(pGetDC, hMain)
+	old := c(pSelectObject, dc, font)
+	var sz [2]int32
+	c(pGetTextExtentPoint32W, dc, uintptr(P(&t[0])), uintptr(len(t)), uintptr(P(&sz)))
+	c(pSelectObject, dc, old)
+	c(pReleaseDC, hMain, dc)
+	return int(float64(sz[0]) / scale)
+}
+
 func textW(h, font uintptr) int {
 	t := utf16.Encode([]rune(getText(h)))
 	if len(t) == 0 {
@@ -662,7 +713,8 @@ func refreshWindows() {
 		sel = 0
 	}
 	comboFill(hWinCombo, titles, sel)
-	c(pInvalidateRect, hMain, 0, 1) // 연결 표시 점
+	cadStateOn = -1
+	updateCadState() // 연결 표시 점·상태 문구
 	if len(windows) > 0 {
 		logf(T("app.017"), len(windows))
 	} else {
@@ -717,7 +769,8 @@ func sendFreeFrom(hEdit uintptr) {
 // ───────────── 메시지 처리 ─────────────
 func onCommand(id, code int) {
 	if id == idWinCombo && code == CBN_SELCHANGE {
-		c(pInvalidateRect, hMain, 0, 1) // 연결 표시 점
+		cadStateOn = -1
+		updateCadState() // 연결 표시 점·상태 문구
 		return
 	}
 	if code != BN_CLICKED {
@@ -767,6 +820,7 @@ func wndProc(h, msg, wp, lp uintptr) uintptr {
 		return 0
 	case WM_TIMER:
 		if wp == askTimerID {
+			updateCadState() // CAD 를 닫거나 다시 열면 0.4초 안에 상태 문구가 바뀜
 			onAskTimer()
 		}
 		if wp == updTimerID && st.AutoUpdate {
