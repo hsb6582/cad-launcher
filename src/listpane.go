@@ -9,7 +9,6 @@ package main
 //   스크롤 막대는 scroll.go (잘 보이게 직접 그림)
 
 import (
-	"math"
 	"strings"
 	"syscall"
 	"time"
@@ -302,14 +301,14 @@ func buildRows() {
 		switch rows[i].kind {
 		case rowGroup:
 			if i > 0 {
-				y += si(8)
+				y += si(6)
 			}
-			rows[i].h = si(32)
+			rows[i].h = si(29)
 		case rowItem:
-			rows[i].h = si(36)
+			rows[i].h = si(29)
 		case rowCat:
 			y += int(float64(si(2)) * animF(rows[i].gkey))
-			rows[i].h = si(32)
+			rows[i].h = si(28)
 		}
 		rows[i].y = y
 		rows[i].vh = int(float64(rows[i].h)*animF(rows[i].gkey)*animF(rows[i].ckey) + 0.5)
@@ -580,20 +579,6 @@ func paintItemRow(hdc uintptr, r listRow, y, cw int, sel, hot bool) {
 	case hot:
 		fillRound(hdc, x0, y+si(1), x1-x0, r.h-si(2), clrHotBg, clrHotBg, si(10))
 	}
-	// 앞 표시: 작은 동그라미 (고른 기능은 밝은 파랑, 나머지는 흐린 회색)
-	isz := si(8)
-	ix, iy := x0+si(14), y+(r.h-isz)/2
-	dot := mixClr(clrBg, clrText, 0.45)
-	if sel {
-		_, b := runColors(false, false)
-		dot = mixClr(b, white, 0.35)
-	} else if hot {
-		dot = mixClr(clrBg, clrText, 0.7)
-	}
-	cv := newCanvas(isz+2, isz+2, rowBg(sel, hot))
-	rr := float64(isz) / 2
-	cv.paint(func(px, py float64) float64 { return aa(math.Hypot(px-rr-1, py-rr-1) - rr) }, solid(dot))
-	cv.blit(hdc, ix-1, iy-1)
 	// 오른쪽 표시: 추천(엄지척) · 즐겨찾기 별
 	rx := x1 - si(10)
 	if isFav(it) && !r.fav {
@@ -612,7 +597,7 @@ func paintItemRow(hdc uintptr, r listRow, y, cw int, sel, hot bool) {
 	if sel {
 		nclr = clrSelText
 	}
-	tx := ix + isz + si(12)
+	tx := x0 + si(14) // 기능 이름 (앞 표시 없음)
 	old := c(pSelectObject, hdc, hFont)
 	c(pSetTextColor, hdc, nclr)
 	tr := rectT{int32(tx), int32(y), int32(max(rx, tx+si(20))), int32(y + r.h)}
