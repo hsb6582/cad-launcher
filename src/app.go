@@ -219,7 +219,7 @@ func ctlColor(hdc, ctl uintptr) uintptr {
 }
 
 func createControls() {
-	hFontSec = makeFont(10, true)
+	hFontSec = makeFont(11, true) // 작업할 도면·작업 목록·기능 제목·설명서 모두 같은 크기
 	// 대상 CAD 창: 제목 옆 선택칸 + 다시 찾기(↻). 창 제목 키워드는 설정 창에서 바꿈 (입력칸은 숨겨서 값만 보관)
 	hLblKw = mk("STATIC", T("app.001"), SS_LEFT, 0, 0)
 	hKeyword = mk("EDIT", st.Keyword, ES_AUTOHSCROLL|WS_TABSTOP, WS_EX_CLIENTEDGE, idKeyword)
@@ -252,7 +252,7 @@ func createControls() {
 
 	// 오른쪽: 제목 + (리습 · 명령어) 꼬리표 / 설명 / 옵션 / 설명서 / 실행 줄
 	hTitle = mk("STATIC", "", SS_LEFT, 0, 0)
-	c(pSendMessageW, hTitle, WM_SETFONT, hFontBold, 1)
+	c(pSendMessageW, hTitle, WM_SETFONT, hFontSec, 1)
 	hChip = mk("STATIC", "", 0x0001|0x0200|0x4000 /*SS_CENTER|SS_CENTERIMAGE|SS_ENDELLIPSIS: 한 줄, 넘치면 …*/, 0, 0)
 	hDesc = mk("STATIC", "", SS_LEFT, 0, 0)
 	grey[hDesc] = true
@@ -403,7 +403,7 @@ func layout() {
 	mv(hAdvanced, W-160, 10, 64, 26)
 	mv(hThemeBtn, W-198, 10, 32, 26)
 	lw := textW(hCadLbl, hFontSec) + 4
-	mv(hCadLbl, 12, 14, lw, 22)
+	mv(hCadLbl, 12, 13, lw, 26)
 	titleEndX = 12 + lw - 6 // 점은 이름표 오른쪽 10px
 	cx := titleEndX + 30
 	// 상태 문구 칸: 두 문구 중 긴 쪽 폭 (문구가 바뀌어도 선택칸이 출렁이지 않게)
@@ -416,7 +416,7 @@ func layout() {
 	mainBottom := mainBottomY(H)
 	// 왼쪽: 리습 목록
 	hw := textW(hListHdr, hFontSec) + 8 // 글자 크기 단계에 따라 폭이 달라짐
-	mv(hListHdr, 10, secTop+4, hw, 22)
+	mv(hListHdr, 10, secTop+3, hw, 26)
 	mv(hListCnt, 12+hw, secTop+6, 60, 20)
 	mv(hUp, 8+leftW-58, secTop, 28, 26)
 	mv(hDown, 8+leftW-28, secTop, 28, 26)
@@ -437,7 +437,7 @@ func layout() {
 	if len(optCtls) > 0 {
 		show(hOptGroup, true)
 		show(hReset, true)
-		mv(hOptGroup, rightX, y+2, 80, 22)
+		mv(hOptGroup, rightX, y+1, 90, 26)
 		mv(hReset, rightX+rw-86, y, 86, 24)
 		oy := y + 30
 		for _, oc := range optCtls {
@@ -467,7 +467,7 @@ func layout() {
 		show(hReset, false)
 	}
 	actTop := mainBottom - 38 // 실행 줄
-	mv(hLblManual, rightX, y+2, 80, 22)
+	mv(hLblManual, rightX, y+1, 90, 26)
 	// 명령어·리습 꼬리표: 설명서 머리 줄 오른쪽 끝 (목록·제목에는 표시하지 않음)
 	chip := getText(hChip)
 	show(hChip, chip != "")

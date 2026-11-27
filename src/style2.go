@@ -53,6 +53,9 @@ var (
 	clrSelBg     = RGB(0xF6, 0xE4, 0xDC) // 목록 선택 항목 바탕
 	clrSelText   = RGB(0x7A, 0x3E, 0x2A) // 목록 선택 항목 글자
 	clrHotBg     = RGB(0xFA, 0xF6, 0xEF) // 목록에 마우스를 올린 항목 바탕
+	clrBtnBg     = RGB(0xFF, 0xFF, 0xFF) // 일반 버튼(실행 외) 바탕 - 창 배경보다 밝게 (theme.go)
+	clrBtnBorder = RGB(0xE0, 0xD9, 0xCC)
+	clrBtnHover  = RGB(0xFB, 0xEF, 0xEA)
 )
 
 // ───────────── 창 제목 표시줄·테두리 색 ─────────────
@@ -189,14 +192,14 @@ func drawButton(lp uintptr) uintptr {
 			border = clrAccentDk
 		}
 	} else {
-		fill, border, txt = clrPanelBg, clrBorder, clrText
+		fill, border, txt = clrBtnBg, clrBtnBorder, clrText
 		switch {
 		case disabled:
 			fill, border, txt = clrBg, clrBorder, clrSubText
 		case pressed:
 			fill, border, txt = clrPressBg, clrAccent, clrHoverTxt
 		case hot:
-			fill, border, txt = clrHoverBg, clrAccent, clrHoverTxt
+			fill, border, txt = clrBtnHover, clrAccent, clrHoverTxt
 		case focus:
 			border = clrAccent
 		}
@@ -228,7 +231,9 @@ func drawButton(lp uintptr) uintptr {
 	}
 	oldFont := c(pSelectObject, hdc, font)
 	rc := box
-	c(pDrawTextW, hdc, uintptr(P(ws(label))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
+	if h != hFavBtn || !drawGlyphCentered(hdc, label, box) {
+		c(pDrawTextW, hdc, uintptr(P(ws(label))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
+	}
 	c(pSelectObject, hdc, oldFont)
 	if h == hUpdate && updateAvail {
 		// 버튼 오른쪽 위 모서리에 걸친 빨간 점 + 둘레에 배경색 테두리
@@ -433,4 +438,40 @@ func drawGroupRow(cd *nmTVCustomDraw, n nodeRef) {
 	tr := rectT{x, rc.top, band.right - int32(s(6)), rc.bottom}
 	c(pDrawTextW, hdc, uintptr(P(ws(name))), ^uintptr(0), uintptr(P(&tr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|0x8000 /*DT_END_ELLIPSIS*/)
 	c(pSelectObject, hdc, old)
+}
+
+// ───────────── 글자 하나(별 등)를 버튼 정중앙에 ─────────────
+// DrawText 의 가운데 맞춤은 글꼴의 줄 높이 기준이라 ★ 처럼 기호 글자는 위아래·좌우로 치우친다.
+// 글자의 실제 잉크 영역(GetGlyphOutline 치수)을 재서 그 가운데가 상자 가운데에 오도록 찍는다.
+var (
+	pGetGlyphOutlineW = gdi32.NewProc("GetGlyphOutlineW")
+	pTextOutW         = gdi32.NewProc("TextOutW")
+	pSetTextAlign     = gdi32.NewProc("SetTextAlign")
+)
+
+type glyphMetrics struct {
+	blackBoxX, blackBoxY uint32
+	originX, originY     int32
+	cellIncX, cellIncY   int16
+}
+
+func drawGlyphCentered(hdc uintptr, label string, box rectT) bool {
+	r := []rune(label)
+	if len(r) != 1 {
+		return false
+	}
+	var gm glyphMetrics
+	mat := [4]int32{1 << 16, 0, 0, 1 << 16} // MAT2 단위 행렬 (FIXED: 정수부가 위 16비트)
+	if c(pGetGlyphOutlineW, hdc, uintptr(r[0]), 0 /*GGO_METRICS*/, uintptr(P(&gm)), 0, 0, uintptr(P(&mat))) == 0xFFFFFFFF {
+		return false
+	}
+	cx := (int(box.left) + int(box.right)) / 2
+	cy := (int(box.top) + int(box.bottom)) / 2
+	x := cx - int(gm.originX) - int(gm.blackBoxX)/2
+	y := cy + int(gm.originY) - int(gm.blackBoxY)/2 // 글자 기준선 (originY 는 기준선에서 잉크 위쪽까지)
+	old := c(pSetTextAlign, hdc, 24 /*TA_BASELINE|TA_LEFT*/)
+	s := ws(label)
+	c(pTextOutW, hdc, uintptr(x), uintptr(y), uintptr(P(s)), 1)
+	c(pSetTextAlign, hdc, old)
+	return true
 }
