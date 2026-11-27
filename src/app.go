@@ -238,7 +238,7 @@ func createControls() {
 	// 오른쪽: 제목 + (리습 · 명령어) 꼬리표 / 설명 / 옵션 / 설명서 / 실행 줄
 	hTitle = mk("STATIC", "", SS_LEFT, 0, 0)
 	c(pSendMessageW, hTitle, WM_SETFONT, hFontBold, 1)
-	hChip = mk("STATIC", "", 0x0001 /*SS_CENTER*/, 0, 0)
+	hChip = mk("STATIC", "", 0x0001|0x0200|0x4000 /*SS_CENTER|SS_CENTERIMAGE|SS_ENDELLIPSIS: 한 줄, 넘치면 …*/, 0, 0)
 	hDesc = mk("STATIC", "", SS_LEFT, 0, 0)
 	grey[hDesc] = true
 	hOptGroup = mk("STATIC", T("app.006"), SS_LEFT, 0, 0)
@@ -426,6 +426,7 @@ func layout() {
 	show(hChip, chip != "")
 	chipW := min(textW(hChip, hFont)+16, max(rw-90, 40))
 	mv(hChip, rightX+rw-chipW, y+3, chipW, 20)
+	c(pInvalidateRect, hChip, 0, 1) // 폭·위치가 바뀌면 예전 글자 조각이 남지 않게 전체를 다시 그림
 	mh := max(actTop-12-(y+28), 40)
 	mv(hManual, rightX, y+28, rw, mh)
 	mv(hGuide, rightX, y+28, rw, mh)
