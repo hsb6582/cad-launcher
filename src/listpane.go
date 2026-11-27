@@ -32,6 +32,16 @@ type listRow struct {
 	vh    int    // 지금 보이는 높이 (펼치기·접기 애니메이션 중에는 h 보다 작음)
 	gkey  string // 이 줄을 감춘 상위 분류(또는 즐겨찾기) 접기 키
 	ckey  string // 이 줄을 감춘 중간 분류 접기 키
+	step  int    // 세부 단계 "1) …" : 1 = 중간 단계(├), 2 = 마지막 단계(└), 0 = 아님
+}
+
+// "1) 지적 교차 끊기" 처럼 숫자) 로 시작하는 기능 = 바로 위 기능의 세부 단계
+func isStepName(name string) bool {
+	i := 0
+	for i < len(name) && name[i] >= '0' && name[i] <= '9' {
+		i++
+	}
+	return i > 0 && i < len(name) && name[i] == ')'
 }
 
 // ───────────── 펼치기·접기 애니메이션 ─────────────
@@ -316,6 +326,15 @@ func buildRows() {
 		rows[i].y = y
 		rows[i].vh = int(float64(rows[i].h)*animF(rows[i].gkey)*animF(rows[i].ckey) + 0.5)
 		y += rows[i].vh
+	}
+	// 세부 단계 표시: 연속된 "숫자)" 기능 중 마지막은 └, 나머지는 ├
+	for i := range rows {
+		if rows[i].kind == rowItem && isStepName(rows[i].label) {
+			rows[i].step = 2
+			if i+1 < len(rows) && rows[i+1].kind == rowItem && isStepName(rows[i+1].label) {
+				rows[i].step = 1
+			}
+		}
 	}
 	lrows = rows
 	lsb.total = y + si(6)
@@ -605,6 +624,17 @@ func paintItemRow(hdc uintptr, r listRow, y, cw int, sel, hot bool) {
 		nclr = clrSelText
 	}
 	tx := x0 + si(12) // 기능 이름
+	if r.step > 0 {   // 세부 단계: ├ / └ 연결선을 그리고 이름을 한 칸 더 들여씀
+		lc := mixClr(clrSubText, clrBg, 0.25)
+		ex, my := tx+si(4), y+r.h/2
+		bot := my + 1
+		if r.step == 1 {
+			bot = y + r.h // 아래 단계로 이어짐
+		}
+		fillBox(hdc, ex, y, 1, bot-y, lc)  // 세로
+		fillBox(hdc, ex, my, si(9), 1, lc) // 가로
+		tx = ex + si(14)
+	}
 	old := c(pSelectObject, hdc, hFont)
 	c(pSetTextColor, hdc, nclr)
 	tr := rectT{int32(tx), int32(y), int32(max(rx, tx+si(20))), int32(y + r.h)}
