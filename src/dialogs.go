@@ -382,7 +382,11 @@ func advancedDialog() {
 	}
 	var hNoteLocal uintptr
 	if localCatalogChanged() {
-		hNoteLocal = hint(strings.TrimPrefix(T("dialogs.015"), "\n"))
+		k := "dialogs.015"
+		if lockedRelease() {
+			k = "dialogs.112" // 배포용: 다음 확인 때 원래대로 되돌림
+		}
+		hNoteLocal = hint(strings.TrimPrefix(T(k), "\n"))
 	}
 
 	// GitHub 토큰 (선택): 설정 창에는 상태만 보이고, 입력은 [토큰 설정…] 버튼으로 여는 작은 창에서

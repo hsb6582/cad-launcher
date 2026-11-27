@@ -226,6 +226,12 @@ func init() {
 
 func branch() string { return fixedBranch }
 
+// 배포용(main)은 목록 순서 말고는 이 PC에서 고칠 수 없다:
+// 리습·목록(catalog.json)·README 를 이 PC에서 직접 고쳐도, 업데이트 확인 때 묻지 않고 저장소 내용으로 되돌린다
+// (고친 파일은 _backup 에 보관). 테스트용(dev)은 지금처럼 덮어쓸지 묻는다.
+// 목록 순서는 launcher_state.json 에 따로 저장되므로 영향 없음.
+func lockedRelease() bool { return fixedBranch == "main" }
+
 func fetchPlan(interactive bool) *updatePlan {
 	plan := &updatePlan{interactive: interactive}
 	repo := fixedRepo
@@ -319,6 +325,11 @@ func onUpdateResult() {
 		st.GitHubDate = p.ghDate
 	}
 	saveState()
+	if lockedRelease() && len(p.conflicts) > 0 { // 배포용: 이 PC에서 고친 파일은 묻지 않고 원래대로
+		n := applyUpdates(p.conflicts, true)
+		logf(T("update.029"), n)
+		p.conflicts = nil
+	}
 	if len(p.updates) == 0 && len(p.conflicts) == 0 {
 		setUpdateAvail(false)
 		logf("%s", T("update.009"))
@@ -350,11 +361,12 @@ func onUpdateResult() {
 		}
 	}
 	if len(todo) > 0 {
-		applyUpdates(todo)
+		applyUpdates(todo, false)
 	}
 }
 
-func applyUpdates(files []remoteFile) {
+// quiet: 배포용 되돌리기처럼 안내창 없이 (기록만 남김). 받은 파일 수를 돌려준다.
+func applyUpdates(files []remoteFile, quiet bool) int {
 	backup := filepath.Join(appDir, "_backup", time.Now().Format("20060102-150405"))
 	okN, exeUpdated, catUpdated := 0, false, false
 	for _, f := range files {
@@ -428,8 +440,11 @@ func applyUpdates(files []remoteFile) {
 			c(pPostMessageW, hMain, WM_CLOSE, 0, 0)
 		}
 	} else if okN > 0 {
-		msgBox(itoa(okN)+T("update.025"), 0x40)
+		if !quiet {
+			msgBox(itoa(okN)+T("update.025"), 0x40)
+		}
 	}
+	return okN
 }
 
 // 로컬에서 고친 목록(catalog.json)을 동기화 기록과 비교해 안내
