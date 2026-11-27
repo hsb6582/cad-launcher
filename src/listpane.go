@@ -11,6 +11,7 @@ package main
 import (
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -27,7 +28,80 @@ type listRow struct {
 	fav   bool   // 즐겨찾기 묶음 머리 / 그 안의 바로가기
 	sub   bool   // 중간 분류 아래 기능 (한 칸 들여씀)
 	node  nodeRef
-	y, h  int // 내용 좌표 (장치 픽셀)
+	y, h  int    // 내용 좌표 (장치 픽셀), h = 원래 높이
+	vh    int    // 지금 보이는 높이 (펼치기·접기 애니메이션 중에는 h 보다 작음)
+	gkey  string // 이 줄을 감춘 상위 분류(또는 즐겨찾기) 접기 키
+	ckey  string // 이 줄을 감춘 중간 분류 접기 키
+	step  int    // 세부 단계 "1) …" : 1 = 중간 단계(├), 2 = 마지막 단계(└), 0 = 아님
+}
+
+// "1) 지적 교차 끊기" 처럼 숫자) 로 시작하는 기능 = 바로 위 기능의 세부 단계
+func isStepName(name string) bool {
+	i := 0
+	for i < len(name) && name[i] >= '0' && name[i] <= '9' {
+		i++
+	}
+	return i > 0 && i < len(name) && name[i] == ')'
+}
+
+// ───────────── 펼치기·접기 애니메이션 ─────────────
+// 머리를 누르면 그 아래 줄들의 높이가 0↔원래 높이로 부드럽게 변한다 (약 0.18초, 처음 빠르고 끝에 느려짐)
+type listAnim struct {
+	start time.Time
+	open  bool
+}
+
+const (
+	animDur     = 180 * time.Millisecond
+	animTimerID = 7
+)
+
+var (
+	lanims             = map[string]listAnim{}
+	pKillTimer         = user32.NewProc("KillTimer")
+	pSaveDC            = gdi32.NewProc("SaveDC")
+	pRestoreDC         = gdi32.NewProc("RestoreDC")
+	pIntersectClipRect = gdi32.NewProc("IntersectClipRect")
+)
+
+// 키 하나의 펼침 비율 (0 = 접힘 ~ 1 = 펼침). 애니메이션이 없으면 1
+func animF(k string) float64 {
+	a, ok := lanims[k]
+	if k == "" || !ok {
+		return 1
+	}
+	p := float64(time.Since(a.start)) / float64(animDur)
+	if p > 1 {
+		p = 1
+	}
+	e := 1 - (1-p)*(1-p)*(1-p) // 끝에 느려짐
+	if a.open {
+		return e
+	}
+	return 1 - e
+}
+
+// 접는 중인 묶음은 애니메이션이 끝날 때까지 줄을 남겨 둔다
+func isOpen(k string) bool {
+	_, anim := lanims[k]
+	return !isCollapsed(k) || anim
+}
+
+func startListAnim(k string, open bool) {
+	lanims[k] = listAnim{start: time.Now(), open: open}
+	c(pSetTimer, hList, animTimerID, 15, 0)
+}
+
+func onListAnimTimer() {
+	for k, a := range lanims {
+		if time.Since(a.start) >= animDur {
+			delete(lanims, k)
+		}
+	}
+	if len(lanims) == 0 {
+		c(pKillTimer, hList, animTimerID)
+	}
+	refilterList()
 }
 
 const (
@@ -37,22 +111,24 @@ const (
 )
 
 var (
-	lrows       []listRow
-	lsel        = -1 // 고른 행
-	lhot        = -1 // 마우스가 올라간 행
-	lsb         vscroll
-	lmode       = lmAll
-	listClass   = ws("CADListPane")
-	hSearch     uintptr
-	hChipAll    uintptr
-	hChipFav    uintptr
-	hChipRec    uintptr
-	hFontGrp    uintptr // 상위 분류 머리 (작은 굵은 글씨)
-	hFontGlyph  uintptr // 기능 아이콘 기호
-	curFav      bool    // 지금 고른 항목이 즐겨찾기 묶음 안에 있음
-	selFavNext  bool    // 다음 refreshTree 때 즐겨찾기 묶음 쪽을 선택
-	listMouseIn bool
-	pPolyline   = gdi32.NewProc("Polyline")
+	lrows                  []listRow
+	lsel                   = -1 // 고른 행
+	lhot                   = -1 // 마우스가 올라간 행
+	lsb                    vscroll
+	lmode                  = lmAll
+	listClass              = ws("CADListPane")
+	hSearch                uintptr
+	hChipAll               uintptr
+	hChipFav               uintptr
+	hChipRec               uintptr
+	hFontGrp               uintptr // 상위 분류 머리 (작은 굵은 글씨)
+	hFontGlyph             uintptr // 기능 아이콘 기호
+	curFav                 bool    // 지금 고른 항목이 즐겨찾기 묶음 안에 있음
+	selFavNext             bool    // 다음 refreshTree 때 즐겨찾기 묶음 쪽을 선택
+	listMouseIn            bool
+	pPolyline              = gdi32.NewProc("Polyline")
+	hFontGrpS              uintptr
+	pSetTextCharacterExtra = gdi32.NewProc("SetTextCharacterExtra")
 )
 
 const (
@@ -102,6 +178,7 @@ func createListPane() {
 	c(pRegisterClassExW, uintptr(P(&wc)))
 	hList = c(pCreateWindowExW, 0, uintptr(P(listClass)), 0, WS_CHILD|WS_VISIBLE|WS_TABSTOP, 0, 0, 10, 10, hMain, idList, hInst, 0)
 	hFontGrp = makeFont(10, true)
+	hFontGrpS = makeFont(8, true) // 상위 분류 머리 (작은 굵은 글씨)
 	hFontGlyph = makeIconFont(10)
 
 	// 검색칸은 쓰지 않음 (hSearch = 0 → 검색어 없음)
@@ -159,10 +236,11 @@ func buildRows() {
 	var rows []listRow
 	if !filtering {
 		if refs := favRefs(); len(refs) > 0 {
-			rows = append(rows, listRow{kind: rowGroup, label: T("fav.001"), key: "f:", fav: true})
-			if !isCollapsed("f:") {
+			// 노란 별은 따로 그리므로 문구 앞 ★ 는 뗌 (별이 두 개로 보이지 않게)
+			rows = append(rows, listRow{kind: rowGroup, label: strings.TrimSpace(strings.TrimPrefix(T("fav.001"), "★")), key: "f:", fav: true})
+			if isOpen("f:") {
 				for _, n := range refs {
-					rows = append(rows, listRow{kind: rowItem, label: n.item().Name, node: n, fav: true})
+					rows = append(rows, listRow{kind: rowItem, label: n.item().Name, node: n, fav: true, gkey: "f:"})
 				}
 			}
 		}
@@ -205,20 +283,28 @@ func buildRows() {
 			continue
 		}
 		rows = append(rows, listRow{kind: rowGroup, label: g.label, key: g.key})
-		if !filtering && isCollapsed(g.key) {
+		if !filtering && !isOpen(g.key) {
 			continue
+		}
+		gk := g.key
+		if filtering {
+			gk = ""
 		}
 		for _, cp := range g.cats {
 			name := cat.Categories[cp.ci].Name
+			ck := ""
 			if !g.top {
-				ck := "c:" + name
-				rows = append(rows, listRow{kind: rowCat, label: name, key: ck})
-				if !filtering && isCollapsed(ck) {
+				ck = "c:" + name
+				rows = append(rows, listRow{kind: rowCat, label: name, key: ck, gkey: gk})
+				if !filtering && !isOpen(ck) {
 					continue
+				}
+				if filtering {
+					ck = ""
 				}
 			}
 			for _, n := range cp.items {
-				rows = append(rows, listRow{kind: rowItem, label: n.item().Name, node: n, sub: !g.top})
+				rows = append(rows, listRow{kind: rowItem, label: n.item().Name, node: n, sub: !g.top, gkey: gk, ckey: ck})
 			}
 		}
 	}
@@ -228,17 +314,27 @@ func buildRows() {
 		switch rows[i].kind {
 		case rowGroup:
 			if i > 0 {
-				y += si(8)
+				y += si(10)
 			}
-			rows[i].h = si(32)
+			rows[i].h = si(24)
 		case rowItem:
-			rows[i].h = si(36)
+			rows[i].h = si(28)
 		case rowCat:
-			y += si(2)
-			rows[i].h = si(32)
+			y += int(float64(si(2)) * animF(rows[i].gkey))
+			rows[i].h = si(28)
 		}
 		rows[i].y = y
-		y += rows[i].h
+		rows[i].vh = int(float64(rows[i].h)*animF(rows[i].gkey)*animF(rows[i].ckey) + 0.5)
+		y += rows[i].vh
+	}
+	// 세부 단계 표시: 연속된 "숫자)" 기능 중 마지막은 └, 나머지는 ├
+	for i := range rows {
+		if rows[i].kind == rowItem && isStepName(rows[i].label) {
+			rows[i].step = 2
+			if i+1 < len(rows) && rows[i+1].kind == rowItem && isStepName(rows[i+1].label) {
+				rows[i].step = 1
+			}
+		}
 	}
 	lrows = rows
 	lsb.total = y + si(6)
@@ -318,7 +414,7 @@ func ensureRowVisible(i int) {
 func rowAt(y int) int {
 	y += lsb.pos
 	for i, r := range lrows {
-		if y >= r.y && y < r.y+r.h {
+		if y >= r.y && y < r.y+r.vh {
 			return i
 		}
 	}
@@ -348,7 +444,9 @@ func activateRow(i int) {
 		if searchText() != "" || lmode != lmAll {
 			return // 걸러 보는 중에는 늘 펼침
 		}
-		setCollapsed(r.key, !isCollapsed(r.key))
+		open := isCollapsed(r.key) // 지금 접혀 있으면 펼침
+		setCollapsed(r.key, !open)
+		startListAnim(r.key, open)
 		refilterList()
 	}
 }
@@ -432,46 +530,51 @@ func paintList(hdc uintptr, W, H int) {
 	}
 	for i, r := range lrows {
 		y := r.y - lsb.pos
-		if y+r.h < 0 || y > H {
+		if y+r.h < 0 || y > H || r.vh <= 0 {
 			continue
 		}
 		hot := i == lhot
+		clip := r.vh < r.h // 펼치기·접기 중: 보이는 높이만큼만 그림
+		if clip {
+			c(pSaveDC, hdc)
+			c(pIntersectClipRect, hdc, 0, uintptr(y), uintptr(W), uintptr(y+r.vh))
+		}
 		switch r.kind {
-		case rowGroup: // 상위 분류: 진한 띠 + 굵은 흰 글씨
-			band := groupBandClr()
+		case rowGroup: // 상위 분류: 띠 없이 작은 회색 굵은 글씨 + 넓은 글자 간격 (제목처럼)
+			clr := clrSubText
 			if hot && !filtering {
-				band = mixClr(band, clrText, 0.08)
+				clr = clrText
 			}
-			fillRound(hdc, si(2), y, cw-si(2), r.h, band, band, si(8))
-			x := si(12)
+			x := si(10)
 			if r.fav {
-				_, sh := textSize(hdc, hFontGrp, "★")
-				drawTextAt(hdc, hFontGrp, favStarClr, x, y+(r.h-sh)/2, "★")
-				x += si(18)
+				_, sh := textSize(hdc, hFontGrpS, "★")
+				drawTextAt(hdc, hFontGrpS, favStarClr, x, y+(r.h-sh)/2, "★")
+				x += si(16)
 			}
-			_, th := textSize(hdc, hFontGrp, r.label)
-			drawTextAt(hdc, hFontGrp, groupTextClr(), x, y+(r.h-th)/2, r.label)
+			old := c(pSetTextCharacterExtra, hdc, uintptr(si(2)))
+			_, th := textSize(hdc, hFontGrpS, r.label)
+			drawTextAt(hdc, hFontGrpS, clr, x, y+(r.h-th)/2, r.label)
+			c(pSetTextCharacterExtra, hdc, old)
 			if !filtering {
-				drawChevron(hdc, cw-si(14), y+r.h/2, !isCollapsed(r.key), groupTextClr())
+				drawChevron(hdc, cw-si(14), y+r.h/2, !isCollapsed(r.key), clr)
 			}
-		case rowCat: // 중간 분류: 파란 세로 띠 + 흰 글씨
+		case rowCat: // 중간 분류: 띠 없이 왼쪽 펼침 화살표 + 굵은 글씨
 			if hot && !filtering {
-				fillRound(hdc, si(6), y+si(1), cw-si(8), r.h-si(2), clrHotBg, clrHotBg, si(8))
+				fillRound(hdc, si(4), y+si(1), cw-si(4), r.h-si(2), clrHotBg, clrHotBg, si(6))
 			}
-			bar, _ := runColors(false, false)
-			fillRound(hdc, si(12), y+(r.h-si(16))/2, si(3), si(16), bar, bar, si(3))
-			_, th := textSize(hdc, hFontBtnBold, r.label)
+			if !filtering {
+				drawChevron(hdc, si(14), y+r.h/2, !isCollapsed(r.key), clrSubText)
+			}
 			old := c(pSelectObject, hdc, hFontBtnBold)
 			c(pSetTextColor, hdc, clrText)
-			tr := rectT{int32(si(24)), int32(y), int32(cw - si(26)), int32(y + r.h)}
+			tr := rectT{int32(si(26)), int32(y), int32(cw - si(8)), int32(y + r.h)}
 			c(pDrawTextW, hdc, uintptr(P(ws(r.label))), ^uintptr(0), uintptr(P(&tr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|0x8000)
 			c(pSelectObject, hdc, old)
-			_ = th
-			if !filtering {
-				drawChevron(hdc, cw-si(14), y+r.h/2, !isCollapsed(r.key), clrSubText)
-			}
 		case rowItem:
 			paintItemRow(hdc, r, y, cw, i == lsel, hot)
+		}
+		if clip {
+			c(pRestoreDC, hdc, ^uintptr(0)) // -1: 바로 전 SaveDC 로
 		}
 	}
 	lsb.paint(hdc, W, H)
@@ -483,35 +586,25 @@ func paintItemRow(hdc uintptr, r listRow, y, cw int, sel, hot bool) {
 		return
 	}
 	x0, x1 := si(4), cw-si(2)
+	gx := si(14) // 중간 분류 아래 기능: 화살표 아래로 내려오는 얇은 세로 안내선
 	if r.sub {
-		x0 = si(20) // 중간 분류 아래는 한 칸 들여씀
+		x0 = gx
 	}
 	switch {
 	case sel:
-		fillRound(hdc, x0, y+si(1), x1-x0, r.h-si(2), clrSelBg, clrSelBg, si(10))
-		bar, _ := runColors(false, false)
-		fillRound(hdc, x0, y+si(8), si(3), r.h-si(16), bar, bar, si(3))
+		fillRound(hdc, x0, y+si(1), x1-x0, r.h-si(2), clrSelBg, clrSelBg, si(8))
+		fillBox(hdc, x0, y+si(1), si(4), r.h-si(2), clrSelBg) // 안내선 쪽 모서리는 각지게
 	case hot:
-		fillRound(hdc, x0, y+si(1), x1-x0, r.h-si(2), clrHotBg, clrHotBg, si(10))
+		fillRound(hdc, x0, y+si(1), x1-x0, r.h-si(2), clrHotBg, clrHotBg, si(8))
 	}
-	// 아이콘 (둥근 사각형 + 기호)
-	isz := si(26)
-	ix, iy := x0+si(10), y+(r.h-isz)/2
-	ibg := mixClr(clrBg, clrText, 0.10)
-	gclr := clrSubText
-	if sel {
-		a, b := heroColors()
-		ibg, gclr = mixClr(a, b, 0.5), white
+	if r.sub || sel {
+		lc, lw := guideLineClr(), 1
+		if sel {
+			_, b := runColors(false, false)
+			lc, lw = mixClr(b, white, 0.35), si(2) // 고른 기능: 밝은 파랑으로 굵게
+		}
+		fillBox(hdc, x0, y, lw, r.h, lc)
 	}
-	cv := newCanvas(isz, isz, rowBg(sel, hot))
-	f := float64(isz)
-	cv.paint(func(px, py float64) float64 { return aa(sdRoundRect(px, py, 0.5, 0.5, f-0.5, f-0.5, float64(si(7)))) }, solid(ibg))
-	cv.blit(hdc, ix, iy)
-	old := c(pSelectObject, hdc, hFontGlyph)
-	c(pSetTextColor, hdc, gclr)
-	gr := rectT{int32(ix), int32(iy), int32(ix + isz), int32(iy + isz)}
-	c(pDrawTextW, hdc, uintptr(P(ws(pickGlyph(r.node)))), ^uintptr(0), uintptr(P(&gr)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
-	c(pSelectObject, hdc, old)
 	// 오른쪽 표시: 추천(엄지척) · 즐겨찾기 별
 	rx := x1 - si(10)
 	if isFav(it) && !r.fav {
@@ -530,8 +623,19 @@ func paintItemRow(hdc uintptr, r listRow, y, cw int, sel, hot bool) {
 	if sel {
 		nclr = clrSelText
 	}
-	tx := ix + isz + si(10)
-	old = c(pSelectObject, hdc, hFont)
+	tx := x0 + si(12) // 기능 이름
+	if r.step > 0 {   // 세부 단계: ├ / └ 연결선을 그리고 이름을 한 칸 더 들여씀
+		lc := mixClr(clrSubText, clrBg, 0.25)
+		ex, my := tx+si(4), y+r.h/2
+		bot := my + 1
+		if r.step == 1 {
+			bot = y + r.h // 아래 단계로 이어짐
+		}
+		fillBox(hdc, ex, y, 1, bot-y, lc)  // 세로
+		fillBox(hdc, ex, my, si(9), 1, lc) // 가로
+		tx = ex + si(14)
+	}
+	old := c(pSelectObject, hdc, hFont)
 	c(pSetTextColor, hdc, nclr)
 	tr := rectT{int32(tx), int32(y), int32(max(rx, tx+si(20))), int32(y + r.h)}
 	c(pDrawTextW, hdc, uintptr(P(ws(r.label))), ^uintptr(0), uintptr(P(&tr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|0x8000 /*DT_END_ELLIPSIS*/)
@@ -557,6 +661,7 @@ func setListHot(i int) {
 }
 
 func listProc(h, msg, wp, lp uintptr) uintptr {
+	defer guardCrash() // 오류가 나면 crash.log 에 기록 (crash.go)
 	switch msg {
 	case WM_ERASEBKGND:
 		return 1
@@ -576,6 +681,11 @@ func listProc(h, msg, wp, lp uintptr) uintptr {
 		return 0
 	case WM_SIZE:
 		listRelayout()
+		return 0
+	case WM_TIMER:
+		if wp == animTimerID {
+			onListAnimTimer()
+		}
 		return 0
 	case 0x0087: // WM_GETDLGCODE: 위·아래 화살표는 목록이 받음
 		return 0x0001 // DLGC_WANTARROWS
@@ -670,12 +780,12 @@ func listProc(h, msg, wp, lp uintptr) uintptr {
 	return c(pDefWindowProcW, h, msg, wp, lp)
 }
 
-// 상위 분류 띠: 창 바탕보다 진하게 / 글자: 흰색 (크림 화면은 진한 글씨에 옅은 띠)
+// 명암 계단 (시안 24번): 상위 분류 띠가 가장 진하고, 중간 분류 띠는 그 중간, 기능 줄은 창 바탕
 func groupBandClr() uintptr {
 	if curTheme.dark {
-		return mixClr(clrBg, 0, 0.32)
+		return mixClr(clrBg, 0, 0.50)
 	}
-	return mixClr(clrBg, 0, 0.10)
+	return mixClr(clrBg, 0, 0.16)
 }
 
 func groupTextClr() uintptr {
@@ -683,4 +793,20 @@ func groupTextClr() uintptr {
 		return white
 	}
 	return clrText
+}
+
+// 중간 분류: 세로줄 / 글자 / 띠 색
+func catColors() (bar, txt, bg uintptr) {
+	if curTheme.dark {
+		return clrSubText, mixClr(clrText, white, 0.3), mixClr(clrBg, 0, 0.22)
+	}
+	return clrSubText, clrText, mixClr(clrBg, 0, 0.07)
+}
+
+// 기능 줄 왼쪽 안내선 색 (바탕보다 살짝 밝게/진하게)
+func guideLineClr() uintptr {
+	if curTheme.dark {
+		return mixClr(clrBg, white, 0.16)
+	}
+	return mixClr(clrBg, 0, 0.14)
 }

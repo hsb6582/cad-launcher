@@ -140,7 +140,7 @@ func updateFavBtn() {
 	c(pInvalidateRect, hFavBtn, 0, 1)
 }
 
-// 목록 오른쪽 클릭 (listpane.go 가 그 기능을 고른 뒤 부름): [▶ 실행 / 즐겨찾기 / 위로·아래로 옮기기]
+// 목록 오른쪽 클릭 (listpane.go 가 그 기능을 고른 뒤 부름): [▶ 실행 / 즐겨찾기]
 func onTreeRClick() {
 	var scr [2]int32
 	c(pGetCursorPos, uintptr(P(&scr)))
@@ -156,9 +156,6 @@ func onTreeRClick() {
 		favLabel = T("fav.006")
 	}
 	c(pAppendMenuW, m, 0, 2, uintptr(P(ws(favLabel))))
-	c(pAppendMenuW, m, 0x800, 0, 0)
-	c(pAppendMenuW, m, 0, 3, uintptr(P(ws(T("list.009")))))
-	c(pAppendMenuW, m, 0, 4, uintptr(P(ws(T("list.010")))))
 	// 메뉴 왼쪽 그림: 실행 = 파란 재생 삼각형, 즐겨찾기 추가 = 노란 별, 빼기 = 노란 빈 별
 	setMenuIcon(m, 1, menuIcon(iconPlay))
 	if isFav(it) {
@@ -173,10 +170,6 @@ func onTreeRClick() {
 		runCurrent()
 	case 2:
 		toggleFav(it)
-	case 3:
-		moveNode(-1)
-	case 4:
-		moveNode(1)
 	}
 }
 

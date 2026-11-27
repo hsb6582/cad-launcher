@@ -239,7 +239,6 @@ func createControls() {
 
 	// 왼쪽: '작업 목록' 제목 + 개수 + 순서 바꾸기(▲▼)
 	// 왼쪽: 검색칸 + 보기 버튼(전체/즐겨찾기/추천) + 직접 그리는 목록 (listpane.go)
-	// 순서 바꾸기는 목록 오른쪽 클릭 메뉴 (이 PC에만 저장)
 	hListHdr = mk("STATIC", T("app.005"), SS_LEFT, 0, 0)
 	hListCnt = mk("STATIC", "", SS_LEFT, 0, 0)
 	hUp = mk("BUTTON", "▲", WS_TABSTOP, 0, idUp)
@@ -253,10 +252,10 @@ func createControls() {
 	show(hAddCat, false)
 
 	// 오른쪽: 제목 + (리습 · 명령어) 꼬리표 / 설명 / 옵션 / 설명서 / 실행 줄
-	hTitle = mk("STATIC", "", SS_LEFT|0x4000 /*SS_ENDELLIPSIS*/, 0, 0)
+	hTitle = mk("STATIC", "", SS_LEFT|0x0200 /*SS_CENTERIMAGE: 위아래 가운데*/ |0x4000 /*SS_ENDELLIPSIS*/, 0, 0)
 	hFontTitle = makeFont(15, true)
 	c(pSendMessageW, hTitle, WM_SETFONT, hFontTitle, 1)
-	hChip = mk("STATIC", "", 0x0001|0x0200|0x4000 /*SS_CENTER|SS_CENTERIMAGE|SS_ENDELLIPSIS: 한 줄, 넘치면 …*/, 0, 0)
+	hChip = mk("STATIC", "", 0x000D /*SS_OWNERDRAW: 명령어·리습 붙은 꼬리표로 직접 그림 (ui2.go)*/, 0, 0)
 	hDesc = mk("STATIC", "", SS_LEFT, 0, 0)
 	grey[hDesc] = true
 	hOptGroup = mk("STATIC", T("app.006"), SS_LEFT, 0, 0)
@@ -270,7 +269,7 @@ func createControls() {
 	hFavBtn = mk("BUTTON", "☆", WS_TABSTOP, 0, idFav)                    // 설명서 머리 줄 즐겨찾기 별 (favorites.go)
 	show(hFavBtn, false)
 	hTools = mk("BUTTON", T("app.010"), WS_TABSTOP, 0, idTools)
-	hStartup = mk("BUTTON", T("app.011"), BS_OWNERDRAW|WS_TABSTOP, 0, idStartup) // 켜고 끄는 스위치로 그림 (ui2.go)
+	hStartup = mk("BUTTON", T("app.011"), BS_AUTOCHECKBOX|WS_TABSTOP, 0, idStartup) // 토글 스위치로 그림 (toggle.go)
 
 	// 아래: 마지막 결과 한 줄 + 실행 기록 펼치기
 	hStatus = mk("STATIC", "", SS_LEFT|0x0100 /*SS_NOTIFY*/ |0x4000 /*SS_ENDELLIPSIS*/, 0, 0)
@@ -380,9 +379,35 @@ func cadConnected() bool {
 	return i >= 0 && i < len(windows) && c(pIsWindow, windows[i].h) != 0
 }
 
+// 아래 실행 막대 (layout 에서 위치를 정함, 96DPI 기준)
+var barTop int
+
+const barH = 56
+
+// 실행 막대 바탕: 창 바탕보다 한 톤 진하게
+func barBgClr() uintptr {
+	if curTheme.dark {
+		return mixClr(clrBg, 0, 0.16)
+	}
+	return mixClr(clrBg, 0, 0.04)
+}
+
+// 실행 막대 안 컨트롤은 막대 바탕색 위에 그림
+func ctlBg(h uintptr) uintptr {
+	if h != 0 && (h == hRun || h == hFavBtn || h == hStartup || h == hTools) {
+		return barBgClr()
+	}
+	return clrBg
+}
+
 // 맨 위 줄 아래·상태 줄 위 구분선 + 오른쪽 머리의 기능 아이콘 (ui2.go)
 func paintHeader(hdc uintptr) {
 	W, H := clientSize()
+	if barTop > 0 { // 아래 실행 막대 바탕 + 위 선
+		bx := int(s(8+leftW+5)) + 1
+		fillBox(hdc, bx, int(s(barTop)), int(s(W))-bx, int(s(barTop+barH))-int(s(barTop)), barBgClr())
+		fillBox(hdc, bx, int(s(barTop)), int(s(W))-bx, 1, clrBorder)
+	}
 	br := c(pCreateSolidBrush, clrBorder)
 	for _, ln := range []rectT{
 		{0, int32(s(hdrH)), int32(s(W)), int32(s(hdrH)) + 1},                                          // 제목 줄 아래
@@ -411,27 +436,11 @@ func layout() {
 	// 왼쪽: 리습 목록
 	layoutListPane(mainBottom) // 검색칸 / 보기 버튼 / 목록 (listpane.go)
 
-	// 오른쪽 머리: [아이콘] 제목 / 설명 / 명령어·리습 꼬리표 ········ ☆ [▶ 실행]
+	// 오른쪽 위: 기능 제목만 (실행·별·꼬리표·자동 로드는 아래 실행 막대로)
 	rw := max(W-rightX-8, 200)
-	ix := rightX // 제목은 왼쪽 끝부터 (아이콘·설명 문구는 뺌)
-	const runW, runH = 160 + 2*runPadX, 58 + runPadTop + runPadBot
-	mv(hRun, rightX+rw-runW+runPadX, secTop-1, runW, runH) // 그림자 여백만큼 바깥으로
-	tr := rightX + rw - ix                                 // 제목·설명이 쓸 수 있는 폭
-	if c(pIsWindowVisible, hRun) != 0 {
-		tr = max(tr-160-16, 120)
-	}
-	if c(pIsWindowVisible, hFavBtn) != 0 {
-		mv(hFavBtn, rightX+rw-160-12-30, secTop+15, 30, 28)
-		tr = max(tr-36, 100)
-	}
-	mv(hTitle, ix, secTop-2, tr, 30)
+	mv(hTitle, rightX, secTop-1, rw, 30)
 	show(hDesc, false)
-	chip := getText(hChip)
-	show(hChip, chip != "")
-	chipW := min(textW(hChip, hFont)+16, tr)
-	mv(hChip, ix, secTop+33, chipW, 20)
-	c(pInvalidateRect, hChip, 0, 1) // 폭·위치가 바뀌면 예전 글자 조각이 남지 않게 전체를 다시 그림
-	y := secTop + 72                // 실행 버튼 아래부터
+	y := secTop + 40
 	if len(optCtls) > 0 {
 		show(hOptGroup, true)
 		show(hReset, true)
@@ -444,7 +453,7 @@ func layout() {
 			cw := 240
 			switch oc.opt.Type {
 			case "check":
-				mv(oc.ctrl, x+155, oy+2, 24, 22)
+				mv(oc.ctrl, x+155, oy+1, swTrackW+4, 24) // 토글 스위치
 			case "choice":
 				mv(oc.ctrl, x+155, oy, cw, 300)
 			default:
@@ -464,19 +473,35 @@ func layout() {
 		show(hOptGroup, false)
 		show(hReset, false)
 	}
-	actTop := mainBottom - 38 // 아래 줄 (자동 로드 스위치·외부 프로그램 설치)
-	mh := max(actTop-6-y, 40)
+	// 아래 실행 막대: [자동 로드 스위치] [외부 프로그램 설치] ····· [명령어·리습] [☆] [▶ 실행]
+	barTop = mainBottom + 8 - barH
+	mh := max(barTop-8-y, 40)
 	mv(hManual, rightX, y, rw, mh)
 	mv(hGuide, rightX, y, rw, mh)
-
-	// 아래 줄: 자동 로드 스위치 + 외부 프로그램 설치
+	cy := barTop + barH/2
 	sx := rightX
-	swW := 36 + 10 + strW(getText(hStartup), hFont) + 8
-	mv(hStartup, sx, actTop+6, swW, 26)
+	swW := swTrackW + swGap + strW(getText(hStartup), hFont) + 8
+	mv(hStartup, sx, cy-13, swW, 26)
 	if c(pIsWindowVisible, hStartup) != 0 {
 		sx += swW + 14
 	}
-	mv(hTools, sx, actTop+4, 140, 28)
+	mv(hTools, sx, cy-14, 140, 28)
+	if c(pIsWindowVisible, hTools) != 0 {
+		sx += 140 + 10
+	}
+	const runVisW, runVisH = 140, 38 // 보이는 버튼 크기 (그림자 여백 빼고)
+	rx := rightX + rw
+	mv(hRun, rx-runVisW-runPadX, cy-runVisH/2-runPadTop, runVisW+2*runPadX, runVisH+runPadTop+runPadBot)
+	rx -= runVisW + 10
+	if c(pIsWindowVisible, hFavBtn) != 0 {
+		mv(hFavBtn, rx-32, cy-15, 32, 30)
+		rx -= 32 + 10
+	}
+	pairs := chipPairs()
+	show(hChip, len(pairs) > 0)
+	chipW := min(chipTagsW(pairs), max(rx-sx, 60))
+	mv(hChip, rx-chipW, cy-13, chipW, 26)
+	c(pInvalidateRect, hChip, 0, 1) // 폭·위치가 바뀌면 예전 글자 조각이 남지 않게 전체를 다시 그림
 
 	// 맨 아래: 마지막 결과 한 줄 + 실행 기록 펼치기 / 펼친 기록 칸
 	show(hLog, st.LogOpen)
@@ -819,8 +844,6 @@ func onCommand(id, code int) {
 		st.LogOpen = !st.LogOpen
 		layout()
 	case id == idStartup:
-		startupOn = !startupOn // 스위치 (ui2.go) - toggleStartup 이 isChecked 로 읽음
-		c(pInvalidateRect, hStartup, 0, 0)
 		toggleStartup()
 	case id == idReset:
 		resetOptions()
@@ -830,8 +853,12 @@ func onCommand(id, code int) {
 }
 
 func wndProc(h, msg, wp, lp uintptr) uintptr {
+	defer guardCrash() // 오류가 나면 crash.log 에 기록 (crash.go)
 	switch msg {
 	case WM_COMMAND:
+		if (wp>>16)&0xFFFF == BN_CLICKED && isToggle(lp) {
+			toggleFlip(lp) // 토글 스위치: 처리하기 전에 켬/끔을 뒤집음
+		}
 		onCommand(int(wp&0xFFFF), int((wp>>16)&0xFFFF))
 		return 0
 	case WM_NOTIFY:
@@ -971,6 +998,7 @@ func main() {
 	optPath = filepath.Join(tmp, "cad_launcher_opt.txt")
 	_ = os.Remove(exePath + ".old") // 지난 자체 업데이트의 잔여 파일
 	loadState()
+	setupCrashLog() // 오류로 꺼지면 crash.log 에 원인 기록 (crash.go)
 
 	c(pSetProcessDPIAware)
 	enableVisualStyles()
@@ -1024,6 +1052,7 @@ func main() {
 	layout()
 	refreshTree(nodeRef{})
 	refreshWindows()
+	noticeCrashLog()
 	if st.Topmost {
 		applyTopmost()
 	}
@@ -1041,7 +1070,7 @@ func main() {
 		if r <= 0 {
 			break
 		}
-		if c(pIsDialogMessageW, hMain, uintptr(P(&m))) != 0 {
+		if eatEscape(&m) || c(pIsDialogMessageW, hMain, uintptr(P(&m))) != 0 {
 			continue
 		}
 		c(pTranslateMessage, uintptr(P(&m)))

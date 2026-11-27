@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"unicode/utf16"
 	"unsafe"
 )
@@ -450,12 +451,19 @@ func mk(class, text string, style, ex uint32, id int) uintptr {
 }
 
 func mkp(parent uintptr, class, text string, style, ex uint32, id int) uintptr {
+	toggle := class == "BUTTON" && style&0xF == BS_AUTOCHECKBOX // 체크박스 → 토글 스위치 (toggle.go)
+	if toggle {
+		style = style&^0xF | BS_OWNERDRAW
+	}
 	style, flat, primary := ownerDrawStyle(class, style)
 	frame := ex&WS_EX_CLIENTEDGE != 0
 	ex &^= WS_EX_CLIENTEDGE // 3D 테두리 대신 부모 창이 얇은 둥근 테두리를 그림 (style2.go)
 	h := c(pCreateWindowExW, uintptr(ex), uintptr(P(ws(class))), uintptr(P(ws(text))),
 		uintptr(style|WS_CHILD|WS_VISIBLE), 0, 0, 10, 10, parent, uintptr(id), hInst, 0)
 	c(pSendMessageW, h, WM_SETFONT, hFont, 1)
+	if toggle {
+		toggles[h] = &toggleState{}
+	}
 	if flat {
 		hookButton(h, primary)
 	}
@@ -475,15 +483,17 @@ func mv(h uintptr, x, y, w, hh int) {
 }
 
 func isChecked(h uintptr) bool {
-	if h != 0 && h == hStartup { // 직접 그리는 스위치 (ui2.go)
-		return startupOn
+	if t := toggles[h]; t != nil { // 토글 스위치 (toggle.go)
+		return t.on
 	}
 	return c(pSendMessageW, h, BM_GETCHECK, 0, 0) == 1
 }
 func setCheck(h uintptr, b bool) {
-	if h != 0 && h == hStartup {
-		startupOn = b
-		c(pInvalidateRect, h, 0, 0)
+	if t := toggles[h]; t != nil {
+		if t.on != b {
+			t.on, t.start = b, time.Time{}
+			c(pInvalidateRect, h, 0, 0)
+		}
 		return
 	}
 	v := uintptr(0)
@@ -629,3 +639,16 @@ var _ = fmt.Sprint
 var _ = os.Getenv
 var _ = filepath.Join
 var _ = strconv.Itoa
+
+// ESC 키로 런처 창·대화상자가 닫히지 않게 (메시지 반복문에서 먼저 버림).
+// 펼친 선택 목록(콤보)은 ESC 로 접을 수 있게 둔다. 취소·닫기 버튼은 그대로 동작.
+func eatEscape(m *msgT) bool {
+	if m.message != WM_KEYDOWN || m.wParam != VK_ESCAPE {
+		return false
+	}
+	f := c(pGetFocus)
+	if f != 0 && className(f) == "ComboBox" && c(pSendMessageW, f, 0x0157 /*CB_GETDROPPEDSTATE*/, 0, 0) != 0 {
+		return false
+	}
+	return true
+}

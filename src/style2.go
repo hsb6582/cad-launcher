@@ -125,6 +125,7 @@ func hookButton(h uintptr, primary bool) {
 }
 
 func btnProc(h, msg, wp, lp uintptr) uintptr {
+	defer guardCrash() // 오류가 나면 crash.log 에 기록 (crash.go)
 	switch msg {
 	case WM_MOUSEMOVE:
 		if hotBtn != h {
@@ -144,7 +145,13 @@ func btnProc(h, msg, wp, lp uintptr) uintptr {
 		c(pInvalidateRect, h, 0, 0)
 	case WM_LBUTTONDBLCLK:
 		msg = WM_LBUTTONDOWN // 빠르게 두 번 눌러도 두 번 다 클릭으로 (▲ 위로 등)
+	case WM_TIMER:
+		if wp == toggleTimerID {
+			toggleTick(h)
+			return 0
+		}
 	case WM_DESTROY:
+		delete(toggles, h)
 		old := oldProc[h]
 		delete(oldProc, h)
 		delete(flatBtn, h)
@@ -165,6 +172,10 @@ func drawButton(lp uintptr) uintptr {
 		drawCadItem(dis)
 		return 1
 	}
+	if h != 0 && h == hChip { // 명령어·리습 꼬리표 (ui2.go)
+		drawChipTags(dis)
+		return 1
+	}
 	if h != hRun && !flatBtn[h] {
 		return 0
 	}
@@ -176,12 +187,12 @@ func drawButton(lp uintptr) uintptr {
 		drawRunButton(dis)
 		return 1
 	}
-	if h == hStartup { // 자동 로드 스위치 (ui2.go)
+	if isToggle(h) { // 체크박스 → 토글 스위치 (toggle.go)
 		drawSwitch(dis)
 		return 1
 	}
 	hdc := dis.hDC
-	c(pFillRect, hdc, uintptr(P(&dis.rcItem)), hBgBrush) // 둥근 모서리 바깥은 창 배경색
+	fillBox(hdc, int(dis.rcItem.left), int(dis.rcItem.top), int(dis.rcItem.right-dis.rcItem.left), int(dis.rcItem.bottom-dis.rcItem.top), ctlBg(h)) // 둥근 모서리 바깥은 바탕색 (실행 막대 안이면 막대색)
 
 	disabled := dis.itemState&ODS_DISABLED != 0
 	pressed := dis.itemState&ODS_SELECTED != 0

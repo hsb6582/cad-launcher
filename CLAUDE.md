@@ -11,7 +11,7 @@ AutoCAD LT 2026 리습 런처 '전자제도 도우미'(전자제도_도우미.ex
 - 배포 절차: dev 를 main 에 merge → **`python dev/release_filter.py` 로 '개발 중' 기능을 목록에서 제외(반드시, 거르기 전 전체 목록은 catalog_full.json 으로 저장됨)** → main 에서 배포용 exe·베타 exe 빌드(아래 '배포용'·'베타용') → 커밋·`push origin main` → main 을 다시 dev 에 merge 해서 두 브랜치를 맞춘다.
   - 베타(전자제도_도우미-베타.exe, 제목 '(베타)'): main 을 받되 목록은 catalog_full.json('개발 중' 포함)을 받아 그 PC의 catalog.json 으로 쓴다. 배포 때마다 함께 빌드한다.
   - '개발 중' = 분류 이름·기능 이름·리습 설명에 '개발 중'이 들어 있는 것. 배포용 catalog.json 에서만 빼고 lsp 파일은 그대로 둔다.
-  - main 을 dev 에 merge 할 때 dev 의 개발 중 항목이 지워지지 않게, merge 후 `git checkout HEAD^1 -- catalog.json` (dev 쪽 catalog 복원) → `git commit --amend --no-edit` 로 merge 커밋에 포함시킨다.
+  - main 을 dev 에 merge 할 때 dev 의 개발 중 항목이 지워지지 않게, **`git merge --no-ff main`** (빨리감기가 되면 HEAD^1 이 옛 main 이 되므로 반드시 --no-ff) 후 `git checkout HEAD^1 -- catalog.json` (dev 쪽 catalog 복원) → `git commit --amend --no-edit` 로 merge 커밋에 포함시킨다.
   - **실행파일 이름은 사용자가 바꾸기 전까지 `전자제도_도우미.exe` (테스트용 `전자제도_도우미-테스트.exe`, 베타용 `전자제도_도우미-베타.exe`)뿐이다.**
     옛 이름 복사본(전자제도도우미*.exe, CAD런처*.exe)은 만들지 않는다 (dev·main 모두에서 지웠다).
   - **아직 실제 PC 배포 전이다** (사용자가 "실제로 배포했다"고 알려 줄 때까지). 그래서 옛 이름 전환은 신경 쓰지 않는다.
@@ -25,9 +25,9 @@ AutoCAD LT 2026 리습 런처 '전자제도 도우미'(전자제도_도우미.ex
   - 간단 설명서(선택): when(언제 쓰나 한 줄), steps[](사용 순서), warn(주의), before/after(실행 전·후 그림 `lsp/img/명령어_before.png`·`_after.png`).
     하나라도 있으면 네이티브 런처 설명서 칸이 간단 버전으로 바뀌고 manual 은 '자세한 설명 보기'에 접힌다. 그림은 600×340 정도 PNG, 공개 저장소이므로 실제 도면 캡처는 정보를 지운 뒤 올린다.
   - recommend(선택, true): 런처 목록에서 이름 오른쪽에 엄지척 추천 아이콘('추천' 보기 버튼으로 모아 보기) (아이콘은 exe 안 src/assets/thumb_*.png). 엑셀 '추천' 칸에 O.
-- 런처 목록·제목에는 `기능 이름`만 표시. 명령어·리습 파일은 오른쪽 기능 제목·설명 아래 꼬리표(`명령어  GLC    리습  GLC.lsp`)에만.
+- 런처 목록·제목에는 `기능 이름`만 표시. 명령어·리습 파일은 오른쪽 아래 실행 막대(자동 로드 스위치 · 꼬리표 · ☆ · 실행 버튼)의 꼬리표(`명령어  GLC    리습  GLC.lsp`)에만.
   - 분류 이름에 '개발 중'이 들어가면 런처가 상위 분류 안 맨 아래에 고정한다.
-  - 왼쪽 목록(src/listpane.go, 직접 그림): 전체/즐겨찾기/추천 보기 + 상위 분류(진한 띠) → 중간 분류(파란 세로 띠) → 기능. '개발 중'·'단순기능' 분류는 닫힌 채 시작, 넘치면 스크롤. 순서 바꾸기는 오른쪽 클릭 메뉴.
+  - 왼쪽 목록(src/listpane.go, 직접 그림): 전체/즐겨찾기/추천 보기 + 상위 분류(작은 회색 제목) → 중간 분류(펼침 화살표 + 굵은 글씨) → 기능(왼쪽 얇은 안내선). '개발 중'·'단순기능' 분류는 닫힌 채 시작, 넘치면 스크롤. 오른쪽 클릭 메뉴는 실행·즐겨찾기만.
   - 목록에서 뺄 명령은 리습 머리말 `숨김: 명령1, 명령2` 에 적는다 (register.py 가 다시 넣지 않음).
 
 ## 새 리습 추가 (토큰 절약: catalog.json 을 직접 읽거나 손으로 고치지 말 것)
@@ -56,6 +56,7 @@ catalog.json 에서 해당 항목만 python 한두 줄로 수정 → `export` �
 - 테스트용 (dev 에서 평소): `cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w -X main.fixedBranch=dev -X main.exeRepoName=전자제도_도우미-테스트.exe" -o ../전자제도_도우미-테스트.exe .`
 - 배포용 (배포 지시 때 main 에서만): `cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w" -o ../전자제도_도우미.exe .`
 - 베타용 (배포 때 main 에서 함께): `cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w -X main.exeRepoName=전자제도_도우미-베타.exe -X main.catalogRepoName=catalog_full.json" -o ../전자제도_도우미-베타.exe .`
+- 런처가 오류로 꺼지면 런처 폴더 crash.log 에 원인(호출 경로·GDI/USER 개수)이 남는다 (src/crash.go). 사용자가 보내 주면 그걸로 원인을 찾는다.
 - dev 에서는 전자제도_도우미.exe(배포용)를 다시 빌드하지 않는다. 코드를 안 바꿨으면 exe 를 다시 빌드하지 않는다. Windows에서 실행 테스트는 못 하므로 사용자에게 확인을 부탁한다.
 
 ## 네이티브 우선 (src/ = 전자제도_도우미.exe)
