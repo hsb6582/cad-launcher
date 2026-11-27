@@ -792,6 +792,9 @@ func wndProc(h, msg, wp, lp uintptr) uintptr {
 		if wp == askTimerID {
 			onAskTimer()
 		}
+		if wp == updTimerID && st.AutoUpdate {
+			startUpdateCheck(false)
+		}
 		return 0
 	case WM_SIZE:
 		if hLog != 0 {
@@ -951,8 +954,9 @@ func main() {
 	c(pShowWindow, hMain, SW_SHOWNORMAL)
 	c(pUpdateWindow, hMain)
 	if st.AutoUpdate {
-		startUpdateCheck(false)
+		startUpdateCheck(false) // 묻지 않고 받을 것이 있으면 업데이트 버튼에 빨간 점만
 	}
+	c(pSetTimer, hMain, updTimerID, updEvery, 0) // 켜 둔 동안 1시간마다 조용히 확인 (update.go)
 	startAskWatch() // 리습 질문을 런처 창으로 (ask.go)
 
 	var m msgT

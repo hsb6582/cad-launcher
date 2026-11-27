@@ -176,6 +176,14 @@ func fetchPlan(interactive bool) *updatePlan {
 	return plan
 }
 
+// 자동 확인 주기: 런처를 켜 둔 동안 1시간마다 (설정의 '업데이트 자동 확인'이 켜져 있을 때)
+const (
+	updTimerID = 78
+	updEvery   = 60 * 60 * 1000 // ms
+)
+
+// interactive=false (켤 때·1시간마다 자동 확인): 묻는 창 없이 받을 것이 있으면 빨간 점만 띄운다.
+// interactive=true (업데이트 버튼): 받을 파일 목록을 보여 주고 묻는다.
 func startUpdateCheck(interactive bool) {
 	if updating {
 		return
@@ -234,13 +242,20 @@ func onUpdateResult() {
 		}
 		return
 	}
+	if !p.interactive { // 자동 확인: 묻지 않고 빨간 점으로만 알림 (이 PC에서 고친 파일만 다른 경우는 점 없음)
+		setUpdateAvail(len(p.updates) > 0)
+		if len(p.updates) > 0 {
+			logf(T("update.026"), len(p.updates))
+		}
+		return
+	}
 	todo := p.updates
 	if len(p.updates) > 0 {
 		if !ask(T("update.011") + pathList(p.updates) + T("update.012")) {
 			todo = nil
 		}
 	}
-	setUpdateAvail(len(p.updates) > 0 && len(todo) == 0) // 안 받았으면 빨간 점으로 남김
+	setUpdateAvail(len(p.updates) > 0 && len(todo) == 0) // 새 버전을 안 받았으면 빨간 점 유지
 	if len(p.conflicts) > 0 {
 		if ask(T("update.013") + pathList(p.conflicts) +
 			T("update.014")) {
