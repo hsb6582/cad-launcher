@@ -96,6 +96,8 @@ var (
 	gTotal     int   // 내용 전체 높이 (픽셀)
 	gToggle    rectT // '자세한 설명' 줄 (내용 좌표)
 	gPicRects  [2]rectT
+	gsb        vscroll // 직접 그리는 스크롤 막대 (scroll.go)
+	gMouseIn   bool
 	guideClass = ws("CADGuidePane")
 	picCache   = map[string]*picEntry{}
 )
@@ -124,7 +126,7 @@ func createGuide() {
 	hFontNum = makeFont(9, true)
 	registerGuideClass()
 	hGuide = c(pCreateWindowExW, 0, uintptr(P(guideClass)), 0,
-		WS_CHILD|WS_VSCROLL, 0, 0, 10, 10, hMain, 0, hInst, 0)
+		WS_CHILD, 0, 0, 10, 10, hMain, 0, hInst, 0) // 스크롤 막대는 직접 그림 (scroll.go)
 	styleControl(hGuide) // 새 화면: 테두리 없이 창 바탕 위에 카드처럼 그림
 }
 
@@ -153,17 +155,11 @@ func guideRelayout() {
 	}
 	W, H := guideClient()
 	dc := c(pGetDC, hGuide)
-	gTotal = guideRender(dc, W, false)
+	gTotal = guideRender(dc, W-si(sbW), false)
 	c(pReleaseDC, hGuide, dc)
-	if mx := max(gTotal-H, 0); gScroll > mx {
-		gScroll = mx
-	}
-	if gScroll < 0 {
-		gScroll = 0
-	}
-	sc := scrollInfo{fMask: 0x1 | 0x2 | 0x4, nMax: int32(max(gTotal-1, 0)), nPage: uint32(H), nPos: int32(gScroll)} // RANGE|PAGE|POS|DISABLENOSCROLL
-	sc.cbSize = uint32(unsafe.Sizeof(sc))
-	c(pSetScrollInfo, hGuide, 1 /*SB_VERT*/, uintptr(P(&sc)), 1)
+	gsb.total, gsb.view, gsb.pos = gTotal, H, gScroll
+	gsb.clamp()
+	gScroll = gsb.pos
 	c(pInvalidateRect, hGuide, 0, 0)
 }
 
@@ -485,7 +481,8 @@ func guideProc(h, msg, wp, lp uintptr) uintptr {
 		bmp := c(pCreateCompatibleBitmap, hdc, uintptr(max(W, 1)), uintptr(max(H, 1)))
 		old := c(pSelectObject, mem, bmp)
 		fillBox(mem, 0, 0, W, H, clrBg)
-		guideRender(mem, W, true)
+		guideRender(mem, W-si(sbW), true)
+		gsb.paint(mem, W, H)
 		c(pBitBlt, hdc, 0, 0, uintptr(W), uintptr(H), mem, 0, 0, SRCCOPY)
 		c(pSelectObject, mem, old)
 		c(pDeleteObject, bmp)
@@ -519,9 +516,45 @@ func guideProc(h, msg, wp, lp uintptr) uintptr {
 		delta := int(int16(wp >> 16))
 		guideScrollTo(gScroll - delta*si(40)/120)
 		return 0
+	case WM_MOUSEMOVE:
+		x, y := int(int16(lp&0xFFFF)), int(int16((lp>>16)&0xFFFF))
+		if !gMouseIn {
+			gMouseIn = true
+			trackLeave(h)
+		}
+		W, H := guideClient()
+		if gsb.drag {
+			gsb.mouseDrag(H, y)
+			guideScrollTo(gsb.pos)
+		} else if hb := gsb.inBar(W, x); hb != gsb.hot {
+			gsb.hot = hb
+			c(pInvalidateRect, h, 0, 0)
+		}
+		return 0
+	case WM_LBUTTONUP:
+		if gsb.drag {
+			gsb.drag = false
+			c(pReleaseCaptM)
+			c(pInvalidateRect, h, 0, 0)
+		}
+		return 0
+	case WM_CAPTURECHANGED:
+		gsb.drag = false
+		return 0
+	case WM_MOUSELEAVE:
+		gMouseIn, gsb.hot = false, false
+		c(pInvalidateRect, h, 0, 0)
+		return 0
 	case 0x0201: // WM_LBUTTONDOWN
-		x, y := int(int16(lp&0xFFFF)), int(int16((lp>>16)&0xFFFF))+gScroll
 		c(pSetFocus, h) // 마우스 휠이 이 칸으로 오도록
+		if W, H := guideClient(); gsb.mouseDown(W, H, int(int16(lp&0xFFFF)), int(int16((lp>>16)&0xFFFF))) {
+			if gsb.drag {
+				c(pSetCaptureM, h)
+			}
+			guideScrollTo(gsb.pos)
+			return 0
+		}
+		x, y := int(int16(lp&0xFFFF)), int(int16((lp>>16)&0xFFFF))+gScroll
 		if inRect(gToggle, x, y) {
 			gOpen = !gOpen
 			guideRelayout()

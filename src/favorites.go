@@ -21,10 +21,6 @@ var (
 const nmRClick = -5 // NM_RCLICK
 
 var (
-	favHandle  = map[uintptr]bool{}    // 즐겨찾기 묶음 안의 트리 항목
-	favNode    = map[nodeRef]uintptr{} // 기능 → 즐겨찾기 묶음 안의 트리 항목
-	curFav     bool                    // 지금 고른 항목이 즐겨찾기 묶음 안에 있음
-	selFavNext bool                    // 다음 refreshTree 때 즐겨찾기 묶음 쪽을 선택
 	hFavBtn    uintptr                 // 설명서 머리 줄 별 버튼
 	favStarClr = RGB(0xF5, 0xBE, 0x3C) // 노란 별
 )
@@ -79,32 +75,6 @@ func pruneFavs() {
 	if len(keep) != len(st.Favorites) {
 		st.Favorites = keep
 		saveState()
-	}
-}
-
-// refreshTree 맨 앞에서: '★ 즐겨찾기' 묶음과 바로가기 항목
-func insertFavTree() {
-	favHandle, favNode = map[uintptr]bool{}, map[nodeRef]uintptr{}
-	refs := favRefs()
-	if len(refs) == 0 {
-		return
-	}
-	state := uint32(TVIS_BOLD)
-	if !isCollapsed("f:") {
-		state |= TVIS_EXPANDED
-	}
-	hg := tvInsertItem(tviRoot, T("fav.001"), state)
-	itemNode[hg] = nodeRef{nkFavGroup, 0, 0}
-	for _, n := range refs {
-		it := n.item()
-		rs := uint32(0)
-		if it.Recommend {
-			rs = stateRecommend
-		}
-		h := tvInsertItem(hg, it.Name, rs)
-		itemNode[h] = n // 같은 기능을 가리킴 (원래 분류 쪽 nodeItem 은 그대로)
-		favHandle[h] = true
-		favNode[n] = h
 	}
 }
 
@@ -170,27 +140,14 @@ func updateFavBtn() {
 	c(pInvalidateRect, hFavBtn, 0, 1)
 }
 
-// 목록 오른쪽 클릭: 그 항목을 고르고 [▶ 실행 / 즐겨찾기에 추가·빼기] 메뉴
+// 목록 오른쪽 클릭 (listpane.go 가 그 기능을 고른 뒤 부름): [▶ 실행 / 즐겨찾기 / 위로·아래로 옮기기]
 func onTreeRClick() {
-	var pt [2]int32
-	c(pGetCursorPos, uintptr(P(&pt)))
-	scr := pt
-	c(pScreenToClient, hList, uintptr(P(&pt)))
-	ht := struct {
-		pt    [2]int32
-		flags uint32
-		item  uintptr
-	}{pt: pt}
-	h := c(pSendMessageW, hList, TVM_HITTEST, 0, uintptr(unsafe.Pointer(&ht)))
-	if h == 0 {
+	var scr [2]int32
+	c(pGetCursorPos, uintptr(P(&scr)))
+	it := cur.item()
+	if it == nil {
 		return
 	}
-	c(pSendMessageW, hList, TVM_SELECTITEM, TVGN_CARET, h)
-	n, ok := itemNode[h]
-	if !ok || n.kind != nkItem {
-		return
-	}
-	it := n.item()
 	m := c(pCreatePopupMenu)
 	c(pAppendMenuW, m, 0 /*MF_STRING*/, 1, uintptr(P(ws(T("fav.002")))))
 	c(pAppendMenuW, m, 0x800 /*MF_SEPARATOR*/, 0, 0)
@@ -199,6 +156,9 @@ func onTreeRClick() {
 		favLabel = T("fav.006")
 	}
 	c(pAppendMenuW, m, 0, 2, uintptr(P(ws(favLabel))))
+	c(pAppendMenuW, m, 0x800, 0, 0)
+	c(pAppendMenuW, m, 0, 3, uintptr(P(ws(T("list.009")))))
+	c(pAppendMenuW, m, 0, 4, uintptr(P(ws(T("list.010")))))
 	// 메뉴 왼쪽 그림: 실행 = 파란 재생 삼각형, 즐겨찾기 추가 = 노란 별, 빼기 = 노란 빈 별
 	setMenuIcon(m, 1, menuIcon(iconPlay))
 	if isFav(it) {
@@ -213,6 +173,10 @@ func onTreeRClick() {
 		runCurrent()
 	case 2:
 		toggleFav(it)
+	case 3:
+		moveNode(-1)
+	case 4:
+		moveNode(1)
 	}
 }
 

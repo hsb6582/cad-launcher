@@ -238,17 +238,17 @@ func createControls() {
 	hThemeBtn = mk("BUTTON", T("app.004"), WS_TABSTOP, 0, idThemeBtn) // 전구 모양으로 그림 (style2.go)
 
 	// 왼쪽: '작업 목록' 제목 + 개수 + 순서 바꾸기(▲▼)
+	// 왼쪽: 검색칸 + 보기 버튼(전체/즐겨찾기/추천) + 직접 그리는 목록 (listpane.go)
+	// 순서 바꾸기는 목록 오른쪽 클릭 메뉴 (이 PC에만 저장)
 	hListHdr = mk("STATIC", T("app.005"), SS_LEFT, 0, 0)
-	c(pSendMessageW, hListHdr, WM_SETFONT, hFontSec, 1)
 	hListCnt = mk("STATIC", "", SS_LEFT, 0, 0)
-	grey[hListCnt] = true
-	hList = mk("SysTreeView32", "", TVS_HASBUTTONS|TVS_LINESATROOT|TVS_SHOWSELALWAYS|0x0010 /*TVS_DISABLEDRAGDROP*/ |WS_TABSTOP, WS_EX_CLIENTEDGE, idList)
-	c(pSendMessageW, hList, TVM_SETEXTENDEDSTYLE, TVS_EX_DOUBLEBUFFER, TVS_EX_DOUBLEBUFFER)
-	styleTree()
-	setupRecommendIcon()
-	// 목록 편집은 엑셀(dev/catalog.xlsx) → 저장소에서 하고, 런처에서는 순서만 바꿈 (이 PC에만 저장)
 	hUp = mk("BUTTON", "▲", WS_TABSTOP, 0, idUp)
 	hDown = mk("BUTTON", "▼", WS_TABSTOP, 0, idDown)
+	for _, h := range []uintptr{hListHdr, hListCnt, hUp, hDown} {
+		show(h, false)
+	}
+	setupRecommendIcon()
+	createListPane()
 	hAddCat = mk("STATIC", "", SS_LEFT, 0, 0) // (예전 '순서는 이 PC에만 저장' 안내 자리, 쓰지 않음)
 	show(hAddCat, false)
 
@@ -410,12 +410,7 @@ func layout() {
 
 	mainBottom := mainBottomY(H)
 	// 왼쪽: 리습 목록
-	hw := textW(hListHdr, hFontSec) + 8 // 글자 크기 단계에 따라 폭이 달라짐
-	mv(hListHdr, 10, secTop+3, hw, 26)
-	mv(hListCnt, 12+hw, secTop+6, 60, 20)
-	mv(hUp, 8+leftW-58, secTop, 28, 26)
-	mv(hDown, 8+leftW-28, secTop, 28, 26)
-	mv(hList, 8, listTop, leftW, max(mainBottom-listTop, 60))
+	layoutListPane(mainBottom) // 검색칸 / 보기 버튼 / 목록 (listpane.go)
 
 	// 오른쪽 머리: [아이콘] 제목 / 설명 / 명령어·리습 꼬리표 ········ ☆ [▶ 실행]
 	rw := max(W-rightX-8, 200)
@@ -770,6 +765,11 @@ func sendFreeFrom(hEdit uintptr) {
 
 // ───────────── 메시지 처리 ─────────────
 func onCommand(id, code int) {
+	if id == idSearch && code == 0x0300 /*EN_CHANGE*/ { // 검색: 글자를 칠 때마다 목록을 거름
+		lsb.pos = 0
+		refilterList()
+		return
+	}
 	if id == idWinCombo && code == CBN_SELCHANGE {
 		cadStateOn = -1
 		updateCadState() // 연결 표시 점·상태 문구
@@ -780,9 +780,24 @@ func onCommand(id, code int) {
 	}
 	switch {
 	case id == IDOK: // Enter: 목록이나 실행 버튼에 있을 때만 실행 (입력칸에서 누른 Enter 는 무시)
-		if f := c(pGetFocus); (f == hList || f == hRun) && c(pIsWindowEnabled, hRun) != 0 {
+		f := c(pGetFocus)
+		if f == hSearch { // 검색칸에서 Enter: 첫 번째 결과를 고르고 목록으로 (한 번 더 Enter 면 실행)
+			for i := range lrows {
+				if lrows[i].kind == rowItem {
+					selectRow(i)
+					c(pSetFocus, hList)
+					break
+				}
+			}
+		} else if (f == hList || f == hRun) && c(pIsWindowEnabled, hRun) != 0 {
 			runCurrent()
 		}
+	case id == idChipAll:
+		setListMode(lmAll)
+	case id == idChipFav:
+		setListMode(lmFav)
+	case id == idChipRec:
+		setListMode(lmRec)
 	case id == idFind:
 		refreshWindows()
 	case id == idUpdate:

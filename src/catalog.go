@@ -13,7 +13,6 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf16"
-	"unsafe"
 )
 
 type Lisp struct {
@@ -245,128 +244,8 @@ func (n nodeRef) lisp() *Lisp {
 	return nil
 }
 
-// 목록 분류는 런처를 켤 때 펼친 상태로 시작한다. 단, 개발 중 분류와 '단순기능' 은 닫힌 상태로 시작.
-// 켜 둔 동안 펼치거나 닫은 분류는 기억해서, 업데이트로 목록을 다시 그려도 그대로 둔다 (파일에는 저장하지 않음).
-var collapsedNow = map[string]bool{}
-
-func defaultCollapsed(k string) bool {
-	if strings.HasPrefix(k, "g:") || k == "f:" {
-		return false // 상위 분류는 펼친 채 시작
-	}
-	name := strings.TrimPrefix(k, "c:")
-	return isDevCategory(name) || strings.ReplaceAll(name, " ", "") == "단순기능"
-}
-
-func isCollapsed(k string) bool {
-	if v, ok := collapsedNow[k]; ok {
-		return v
-	}
-	return defaultCollapsed(k)
-}
-
-func setCollapsed(k string, on bool) { collapsedNow[k] = on }
-
-func tvInsertItem(parent uintptr, text string, state uint32) uintptr {
-	// state 에 stateRecommend 가 있으면 추천 아이콘(상태 그림 1번)을 붙임
-	ins := tvInsert{hParent: parent, hInsertAfter: tviLast}
-	ins.item.mask = TVIF_TEXT | TVIF_STATE
-	ins.item.pszText = ws(text)
-	ins.item.state = state
-	ins.item.stateMask = TVIS_BOLD | TVIS_EXPANDED | TVIS_STATEIMAGEMASK
-	return c(pSendMessageW, hList, TVM_INSERTITEMW, 0, uintptr(unsafe.Pointer(&ins)))
-}
-
-func refreshTree(sel nodeRef) {
-	building = true
-	c(pSendMessageW, hList, TVM_DELETEITEM, 0, tviRoot)
-	itemNode, nodeItem = map[uintptr]nodeRef{}, map[nodeRef]uintptr{}
-	insertFavTree() // 맨 위 '★ 즐겨찾기' (있을 때만)
-	// 상위 분류 → 분류 → 기능 (상위 분류가 없는 분류는 맨 위 단계에)
-	groupNode := map[string]uintptr{}
-	for gi, g := range groupNames {
-		gn := nodeRef{nkGroup, gi, 0}
-		state := uint32(TVIS_BOLD)
-		if !isCollapsed("g:" + g) {
-			state |= TVIS_EXPANDED
-		}
-		hg := tvInsertItem(tviRoot, g, state)
-		itemNode[hg], nodeItem[gn] = gn, hg
-		groupNode[g] = hg
-	}
-	for ci, ct := range cat.Categories {
-		cn := nodeRef{nkCat, ci, 0}
-		state := uint32(TVIS_BOLD)
-		if !isCollapsed("c:" + ct.Name) {
-			state |= TVIS_EXPANDED
-		}
-		parent := tviRoot
-		if hg := groupNode[ct.Group]; hg != 0 {
-			parent = hg
-		}
-		hc := tvInsertItem(parent, ct.Name, state)
-		itemNode[hc], nodeItem[cn] = cn, hc
-		for ii := range ct.Items {
-			in := nodeRef{nkItem, ci, ii}
-			it := &cat.Categories[ci].Items[ii]
-			rs := uint32(0)
-			if it.Recommend {
-				rs = stateRecommend
-			}
-			hi := tvInsertItem(hc, it.Name, rs)
-			itemNode[hi], nodeItem[in] = in, hi
-		}
-	}
-	building = false
-	n := 0
-	for _, ct := range cat.Categories {
-		n += len(ct.Items)
-	}
-	setText(hListCnt, itoa(n)+T("catalog.005"))
-	h := nodeItem[sel]
-	if selFavNext && favNode[sel] != 0 {
-		h = favNode[sel] // 즐겨찾기 묶음에서 고르던 중이면 그쪽을 다시 선택
-	}
-	selFavNext = false
-	if h != 0 {
-		c(pSendMessageW, hList, TVM_SELECTITEM, TVGN_CARET, h)
-		c(pSendMessageW, hList, TVM_ENSUREVISIBLE, 0, h)
-	} else {
-		showNode(nodeRef{})
-	}
-}
-
-func onNotify(lp uintptr) uintptr {
-	hdr := (*nmhdr)(unsafe.Pointer(lp))
-	if hdr.hwndFrom != hList {
-		return 0
-	}
-	switch int32(hdr.code) {
-	case nmCustomDraw:
-		return treeCustomDraw(lp)
-	case tvnSelChanged:
-		if !building {
-			h := (*nmTreeView)(unsafe.Pointer(lp)).itemNew.hItem
-			curFav = favHandle[h]
-			showNode(itemNode[h])
-		}
-	case nmRClick: // 오른쪽 클릭 메뉴 (favorites.go)
-		onTreeRClick()
-		return 1
-	case tvnItemExpanded:
-		nm := (*nmTreeView)(unsafe.Pointer(lp))
-		if n, ok := itemNode[nm.itemNew.hItem]; ok && !building {
-			switch n.kind {
-			case nkCat:
-				setCollapsed("c:"+n.category().Name, nm.action == TVE_COLLAPSE)
-			case nkGroup:
-				setCollapsed("g:"+groupNames[n.ci], nm.action == TVE_COLLAPSE)
-			case nkFavGroup:
-				setCollapsed("f:", nm.action == TVE_COLLAPSE)
-			}
-		}
-	}
-	return 0
-}
+// 목록(왼쪽 칸)은 listpane.go 에서 직접 그린다
+func onNotify(lp uintptr) uintptr { return 0 }
 
 func showNode(n nodeRef) {
 	cur = n

@@ -67,7 +67,12 @@ func pngIcon(data []byte) (uintptr, int) {
 	return hi, w
 }
 
-// 목록(트리)에 추천 아이콘 목록을 붙인다 (createControls 에서 한 번)
+// 추천 아이콘 (목록이 직접 그림, listpane.go)
+var (
+	recIcon  uintptr
+	recIconW int
+)
+
 func setupRecommendIcon() {
 	want := int(16*scale + 0.5)
 	best := 16
@@ -80,15 +85,7 @@ func setupRecommendIcon() {
 	if err != nil {
 		return
 	}
-	hi, w := pngIcon(data)
-	if hi == 0 {
-		return
-	}
-	il := c(pImageListCreate, uintptr(w), uintptr(w), 0x20 /*ILC_COLOR32*/, 2, 0)
-	c(pImageListReplaceIcon, il, ^uintptr(0), hi) // 0번: 쓰지 않는 자리 (상태 그림 0 = 그림 없음)
-	c(pImageListReplaceIcon, il, ^uintptr(0), hi) // 1번: 추천
-	c(pDestroyIcon, hi)
-	c(pSendMessageW, hList, TVM_SETIMAGELIST, TVSIL_STATE, il)
+	recIcon, recIconW = pngIcon(data)
 }
 
 func abs(x int) int {

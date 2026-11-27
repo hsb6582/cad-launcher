@@ -7,7 +7,6 @@ package main
 //  - 목록 선택 표시를 파란색 대신 연한 테라코타로
 
 import (
-	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -169,6 +168,10 @@ func drawButton(lp uintptr) uintptr {
 	if h != hRun && !flatBtn[h] {
 		return 0
 	}
+	if isChip(h) { // 목록 보기 버튼 (listpane.go)
+		drawChip(dis)
+		return 1
+	}
 	if h == hRun { // 그라데이션·그림자 실행 버튼 (ui2.go)
 		drawRunButton(dis)
 		return 1
@@ -322,140 +325,11 @@ func paintFrames(h uintptr) {
 	c(pEndPaint, h, uintptr(P(&ps)))
 }
 
-// ───────────── 목록(트리) 선택 색 ─────────────
-type nmTVCustomDraw struct {
-	hdr        nmhdr
-	drawStage  uint32
-	hdc        uintptr
-	rc         rectT
-	itemSpec   uintptr
-	itemState  uint32
-	itemlParam uintptr
-	clrText    uint32
-	clrTextBk  uint32
-	level      int32
-}
-
+// 목록 색 (화면 색상을 바꿀 때) - 목록은 listpane.go 가 직접 그림
 func styleTree() {
-	c(pSendMessageW, hList, TVM_SETITEMHEIGHT, s(24), 0)
-	c(pSendMessageW, hList, TVM_SETTEXTCOLOR, 0, clrText)
-	c(pSendMessageW, hList, TVM_SETBKCOLOR, 0, clrPanelBg)
-}
-
-func treeCustomDraw(lp uintptr) uintptr {
-	cd := (*nmTVCustomDraw)(unsafe.Pointer(lp))
-	switch cd.drawStage {
-	case CDDS_PREPAINT:
-		return CDRF_NOTIFYITEM
-	case CDDS_ITEMPREPAINT:
-		if n, ok := itemNode[cd.itemSpec]; ok && (n.kind == nkGroup || n.kind == nkFavGroup) {
-			drawGroupRow(cd, n) // 상위 분류·즐겨찾기 묶음: 줄 전체를 직접 그림
-			return 0x04         // CDRF_SKIPDEFAULT
-		}
-		switch {
-		case cd.itemState&CDIS_SELECTED != 0:
-			cd.itemState &^= CDIS_SELECTED | CDIS_FOCUS | CDIS_HOT // 탐색기 테마의 파란 선택 표시 대신
-			cd.clrText = uint32(clrSelText)
-			cd.clrTextBk = uint32(clrSelBg)
-		case cd.itemState&CDIS_HOT != 0:
-			cd.itemState &^= CDIS_HOT
-			cd.clrTextBk = uint32(clrHotBg)
-		}
-		if n, ok := itemNode[cd.itemSpec]; ok && n.kind == nkItem && !favHandle[cd.itemSpec] && isFav(n.item()) {
-			return 0x10 // CDRF_NOTIFYPOSTPAINT: 이름 뒤 작은 별
-		}
-		return 0 // 목록에는 기능 이름만 (명령어는 설명서 머리 줄에 표시)
-	case 0x10002: // CDDS_ITEMPOSTPAINT
-		// 즐겨찾기 기능: 원래 분류 쪽 이름 뒤에 작은 노란 별
-		var r struct {
-			h    uintptr
-			_, _ int32
-		}
-		r.h = cd.itemSpec
-		if c(pSendMessageW, hList, 0x1104 /*TVM_GETITEMRECT*/, 1, uintptr(unsafe.Pointer(&r))) == 0 {
-			break
-		}
-		rc := (*rectT)(unsafe.Pointer(&r))
-		old := c(pSelectObject, cd.hdc, hFont)
-		c(pSetBkMode, cd.hdc, TRANSPARENT)
-		c(pSetTextColor, cd.hdc, favStarClr)
-		tr := rectT{rc.right + int32(s(4)), rc.top, cd.rc.right, rc.bottom}
-		c(pDrawTextW, cd.hdc, uintptr(P(ws("★"))), ^uintptr(0), uintptr(P(&tr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX)
-		c(pSelectObject, cd.hdc, old)
+	if hList != 0 {
+		c(pInvalidateRect, hList, 0, 0)
 	}
-	return CDRF_DODEFAULT
-}
-
-// ───────────── 상위 분류·즐겨찾기 묶음 줄 (줄 전체를 직접 그림) ─────────────
-var (
-	pPolyline  = gdi32.NewProc("Polyline")
-	hFontGroup uintptr // 상위 분류 글꼴 (다른 줄보다 조금 큰 굵은 글씨)
-)
-
-func drawGroupRow(cd *nmTVCustomDraw, n nodeRef) {
-	if hFontGroup == 0 {
-		hFontGroup = makeFont(11, true)
-	}
-	hdc, rc := cd.hdc, cd.rc
-	// 줄 바탕 → 띠 (양옆 4px 여백, 위아래 2px)
-	bg := c(pCreateSolidBrush, clrPanelBg)
-	c(pFillRect, hdc, uintptr(P(&rc)), bg)
-	c(pDeleteObject, bg)
-	band := rc
-	band.left += int32(s(4))
-	band.right -= int32(s(4))
-	band.top += int32(s(2))
-	band.bottom -= int32(s(2))
-	fill, txt := clrHotBg, clrText
-	switch {
-	case cd.itemState&CDIS_SELECTED != 0:
-		fill, txt = clrSelBg, clrSelText
-	case cd.itemState&CDIS_HOT != 0:
-		fill = clrHoverBg
-	}
-	roundBox(hdc, band, fill, fill, 6)
-	// 띠 왼쪽 세로줄: 상위 분류는 강조색, 즐겨찾기는 노랑
-	barClr := clrAccent
-	if n.kind == nkFavGroup {
-		barClr = favStarClr
-	}
-	bar := rectT{band.left, band.top, band.left + int32(s(3)), band.bottom}
-	br := c(pCreateSolidBrush, barClr)
-	c(pFillRect, hdc, uintptr(P(&bar)), br)
-	c(pDeleteObject, br)
-	// 펼침 화살표 (펼침 ∨ / 접힘 ›) - 트리의 원래 펼침 단추 자리
-	expanded := c(pSendMessageW, hList, 0x1127 /*TVM_GETITEMSTATE*/, cd.itemSpec, TVIS_EXPANDED)&TVIS_EXPANDED != 0
-	cx, cy := int32(band.left)+int32(s(9)), (rc.top+rc.bottom)/2 // 원래 펼침 단추를 누르는 자리 안쪽
-	w := int32(s(4))
-	var pts [3][2]int32
-	if expanded {
-		pts = [3][2]int32{{cx - w, cy - w/2}, {cx, cy + w/2}, {cx + w, cy - w/2}}
-	} else {
-		pts = [3][2]int32{{cx - w/2, cy - w}, {cx + w/2, cy}, {cx - w/2, cy + w}}
-	}
-	pen := c(pCreatePen, PS_SOLID, uintptr(s(2)), txt)
-	op := c(pSelectObject, hdc, pen)
-	c(pPolyline, hdc, uintptr(P(&pts[0])), 3)
-	c(pSelectObject, hdc, op)
-	c(pDeleteObject, pen)
-	// 이름 (즐겨찾기는 노란 별 + 이름)
-	x := cx + int32(s(12))
-	old := c(pSelectObject, hdc, hFontGroup)
-	c(pSetBkMode, hdc, TRANSPARENT)
-	name := ""
-	if n.kind == nkFavGroup {
-		c(pSetTextColor, hdc, favStarClr)
-		sr := rectT{x, rc.top, band.right, rc.bottom}
-		c(pDrawTextW, hdc, uintptr(P(ws("★"))), ^uintptr(0), uintptr(P(&sr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX)
-		x += int32(s(strW("★", hFontGroup) + 6))
-		name = strings.TrimSpace(strings.TrimPrefix(T("fav.001"), "★"))
-	} else if n.ci < len(groupNames) {
-		name = groupNames[n.ci]
-	}
-	c(pSetTextColor, hdc, txt)
-	tr := rectT{x, rc.top, band.right - int32(s(6)), rc.bottom}
-	c(pDrawTextW, hdc, uintptr(P(ws(name))), ^uintptr(0), uintptr(P(&tr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|0x8000 /*DT_END_ELLIPSIS*/)
-	c(pSelectObject, hdc, old)
 }
 
 // ───────────── 글자 하나(별 등)를 버튼 정중앙에 ─────────────
