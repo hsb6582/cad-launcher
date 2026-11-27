@@ -247,7 +247,7 @@ func (d *dialog) run(focus uintptr) bool {
 			c(pPostQuitMessage, 0)
 			break
 		}
-		if c(pIsDialogMessageW, d.h, uintptr(P(&m))) != 0 {
+		if eatEscape(&m) || c(pIsDialogMessageW, d.h, uintptr(P(&m))) != 0 {
 			continue
 		}
 		c(pTranslateMessage, uintptr(P(&m)))

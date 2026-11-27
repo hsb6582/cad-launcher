@@ -456,11 +456,12 @@ func paintList(hdc uintptr, W, H int) {
 			if !filtering {
 				drawChevron(hdc, cw-si(14), y+r.h/2, !isCollapsed(r.key), groupTextClr())
 			}
-		case rowCat: // 중간 분류: 밝은 파랑 세로 띠 + 같은 색 굵은 글씨 (기능 이름 흰 글씨와 구분)
+		case rowCat: // 중간 분류: 중간 명암 띠 + 밝은 회색 세로줄 + 밝은 글씨 (명암 계단: 상위 > 중간 > 기능)
+			bar, txt, bg := catColors()
 			if hot && !filtering {
-				fillRound(hdc, si(6), y+si(1), cw-si(8), r.h-si(2), clrHotBg, clrHotBg, si(8))
+				bg = mixClr(bg, clrText, 0.06)
 			}
-			bar, txt := catColors()
+			fillRound(hdc, si(4), y+si(1), cw-si(4), r.h-si(2), bg, bg, si(8))
 			fillRound(hdc, si(12), y+(r.h-si(16))/2, si(3), si(16), bar, bar, si(3))
 			_, th := textSize(hdc, hFontBtnBold, r.label)
 			old := c(pSelectObject, hdc, hFontBtnBold)
@@ -668,12 +669,12 @@ func listProc(h, msg, wp, lp uintptr) uintptr {
 	return c(pDefWindowProcW, h, msg, wp, lp)
 }
 
-// 상위 분류 띠: 창 바탕보다 진하게 / 글자: 흰색 (크림 화면은 진한 글씨에 옅은 띠)
+// 명암 계단 (시안 24번): 상위 분류 띠가 가장 진하고, 중간 분류 띠는 그 중간, 기능 줄은 창 바탕
 func groupBandClr() uintptr {
 	if curTheme.dark {
-		return mixClr(clrBg, 0, 0.32)
+		return mixClr(clrBg, 0, 0.50)
 	}
-	return mixClr(clrBg, 0, 0.10)
+	return mixClr(clrBg, 0, 0.16)
 }
 
 func groupTextClr() uintptr {
@@ -683,12 +684,10 @@ func groupTextClr() uintptr {
 	return clrText
 }
 
-// 중간 분류 세로줄·글자 색: 어두운 화면은 밝은 파랑, 크림 화면은 진한 테라코타 (바탕과 대비)
-func catColors() (bar, txt uintptr) {
-	_, b := runColors(false, false)
+// 중간 분류: 세로줄 / 글자 / 띠 색
+func catColors() (bar, txt, bg uintptr) {
 	if curTheme.dark {
-		bar = mixClr(b, white, 0.5)
-		return bar, mixClr(b, white, 0.55)
+		return clrSubText, mixClr(clrText, white, 0.3), mixClr(clrBg, 0, 0.22)
 	}
-	return b, mixClr(b, 0, 0.15)
+	return clrSubText, clrText, mixClr(clrBg, 0, 0.07)
 }

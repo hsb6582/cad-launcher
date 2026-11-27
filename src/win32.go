@@ -629,3 +629,16 @@ var _ = fmt.Sprint
 var _ = os.Getenv
 var _ = filepath.Join
 var _ = strconv.Itoa
+
+// ESC 키로 런처 창·대화상자가 닫히지 않게 (메시지 반복문에서 먼저 버림).
+// 펼친 선택 목록(콤보)은 ESC 로 접을 수 있게 둔다. 취소·닫기 버튼은 그대로 동작.
+func eatEscape(m *msgT) bool {
+	if m.message != WM_KEYDOWN || m.wParam != VK_ESCAPE {
+		return false
+	}
+	f := c(pGetFocus)
+	if f != 0 && className(f) == "ComboBox" && c(pSendMessageW, f, 0x0157 /*CB_GETDROPPEDSTATE*/, 0, 0) != 0 {
+		return false
+	}
+	return true
+}

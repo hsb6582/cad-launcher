@@ -1041,7 +1041,7 @@ func main() {
 		if r <= 0 {
 			break
 		}
-		if c(pIsDialogMessageW, hMain, uintptr(P(&m))) != 0 {
+		if eatEscape(&m) || c(pIsDialogMessageW, hMain, uintptr(P(&m))) != 0 {
 			continue
 		}
 		c(pTranslateMessage, uintptr(P(&m)))
