@@ -36,7 +36,7 @@ type State struct {
 	Favorites  []string                          `json:"favorites,omitempty"`  // 즐겨찾기 기능 (리습|명령어, favorites.go)
 	Startup    []string                          `json:"startup,omitempty"`    // 시작하기 세트로 모든 도면에 자동 로드할 리습 id
 	FontLevel  int                               `json:"fontLevel,omitempty"`  // 글자 크기 1~5단계 (0 = 기본 3단계, 설정 창)
-	Theme      string                            `json:"theme,omitempty"`      // 화면 색상: dark(기본)/cream/slate (theme.go, 전구 버튼)
+	Theme      string                            `json:"theme,omitempty"`      // 화면 색상: dark/cream/slate(기본, 켤 때 고정) (theme.go, 전구 버튼)
 	Trust      string                            `json:"trust,omitempty"`      // AutoCAD 신뢰 위치 자동 추가: ""(아직 안 물음)/"yes"/"no" (trust.go)
 	LastUpdate string                            `json:"lastUpdate,omitempty"` // 이 PC가 마지막으로 파일을 내려받은 시각 (RFC3339)
 	LastCheck  string                            `json:"lastCheck,omitempty"`  // 마지막으로 업데이트를 확인한 시각
@@ -1017,7 +1017,8 @@ func main() {
 	hFontBtnBold = makeFont(9, true)
 	hFontRun = makeFont(13, true)
 	hFontIcon = makeIconFont(12)
-	setThemeColors(st.Theme) // 화면 색상 (theme.go, 기본 차콜 다크)
+	st.Theme = startTheme // 화면 색상: 켤 때마다 슬레이트(중간색)로 고정 (theme.go)
+	setThemeColors(st.Theme)
 	hBgBrush = c(pCreateSolidBrush, clrBg)
 	hPanelBrush = c(pCreateSolidBrush, clrPanelBg)
 	classBgBrush, classPanelBrush = hBgBrush, hPanelBrush
