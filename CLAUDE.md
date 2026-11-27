@@ -11,10 +11,9 @@ AutoCAD LT 2026 리습 런처 '전자제도 도우미'(전자제도_도우미.ex
 - 배포 절차: dev 를 main 에 merge → **`python dev/release_filter.py` 로 '개발 중' 기능을 목록에서 제외(반드시)** → main 에서 배포용 exe 빌드(아래 '배포용') → 커밋·`push origin main` → main 을 다시 dev 에 merge 해서 두 브랜치를 맞춘다.
   - '개발 중' = 분류 이름·기능 이름·리습 설명에 '개발 중'이 들어 있는 것. 배포용 catalog.json 에서만 빼고 lsp 파일은 그대로 둔다.
   - main 을 dev 에 merge 할 때 dev 의 개발 중 항목이 지워지지 않게, merge 후 `git checkout HEAD^1 -- catalog.json` (dev 쪽 catalog 복원) → `git commit --amend --no-edit` 로 merge 커밋에 포함시킨다.
-  - **옛 이름 복사본 (이름 변경 전환용)**: 각 PC 프로그램은 저장소에서 자기 파일 이름을 찾아 업데이트한다.
-    그래서 배포 때 새로 빌드한 전자제도_도우미.exe 를 옛 이름 `전자제도도우미.exe`, `CAD런처.exe` 로도 복사해 main 에 함께 올린다.
-    dev 도 테스트 exe 를 빌드할 때마다 `전자제도도우미-테스트.exe`, `CAD런처-테스트.exe` 로 복사해 둔다.
-    모든 PC가 넘어온 뒤 사용자에게 물어 지운다.
+  - **실행파일 이름은 사용자가 바꾸기 전까지 `전자제도_도우미.exe` (테스트용 `전자제도_도우미-테스트.exe`) 하나뿐이다.**
+    옛 이름 복사본(전자제도도우미*.exe, CAD런처*.exe)은 만들지 않는다 (dev 에서는 지웠다).
+    main 에는 아직 옛 이름 exe 가 남아 있으므로, 다음 배포 때 지우기 전에 사용자에게 먼저 확인한다 (옛 이름으로 업데이트하는 PC가 있으면 그 PC는 exe 업데이트가 끊김).
   - 개발 중 기능을 배포에 넣으려면 머리말·catalog 에서 '[개발 중]' 표시를 먼저 지운다 (사용자 지시가 있을 때만).
 
 ## 목록 구조 (catalog.json v2)
