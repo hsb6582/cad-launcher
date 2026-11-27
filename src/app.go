@@ -239,7 +239,6 @@ func createControls() {
 
 	// 왼쪽: '작업 목록' 제목 + 개수 + 순서 바꾸기(▲▼)
 	// 왼쪽: 검색칸 + 보기 버튼(전체/즐겨찾기/추천) + 직접 그리는 목록 (listpane.go)
-	// 순서 바꾸기는 목록 오른쪽 클릭 메뉴 (이 PC에만 저장)
 	hListHdr = mk("STATIC", T("app.005"), SS_LEFT, 0, 0)
 	hListCnt = mk("STATIC", "", SS_LEFT, 0, 0)
 	hUp = mk("BUTTON", "▲", WS_TABSTOP, 0, idUp)
