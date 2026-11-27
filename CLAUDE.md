@@ -11,7 +11,7 @@ AutoCAD LT 2026 리습 런처 '전자제도 도우미'(전자제도_도우미.ex
 - 배포 절차: dev 를 main 에 merge → **`python dev/release_filter.py` 로 '개발 중' 기능을 목록에서 제외(반드시, 거르기 전 전체 목록은 catalog_full.json 으로 저장됨)** → main 에서 배포용 exe·베타 exe 빌드(아래 '배포용'·'베타용') → 커밋·`push origin main` → main 을 다시 dev 에 merge 해서 두 브랜치를 맞춘다.
   - 베타(전자제도_도우미-베타.exe, 제목 '(베타)'): main 을 받되 목록은 catalog_full.json('개발 중' 포함)을 받아 그 PC의 catalog.json 으로 쓴다. 배포 때마다 함께 빌드한다.
   - '개발 중' = 분류 이름·기능 이름·리습 설명에 '개발 중'이 들어 있는 것. 배포용 catalog.json 에서만 빼고 lsp 파일은 그대로 둔다.
-  - main 을 dev 에 merge 할 때 dev 의 개발 중 항목이 지워지지 않게, merge 후 `git checkout HEAD^1 -- catalog.json` (dev 쪽 catalog 복원) → `git commit --amend --no-edit` 로 merge 커밋에 포함시킨다.
+  - main 을 dev 에 merge 할 때 dev 의 개발 중 항목이 지워지지 않게, **`git merge --no-ff main`** (빨리감기가 되면 HEAD^1 이 옛 main 이 되므로 반드시 --no-ff) 후 `git checkout HEAD^1 -- catalog.json` (dev 쪽 catalog 복원) → `git commit --amend --no-edit` 로 merge 커밋에 포함시킨다.
   - **실행파일 이름은 사용자가 바꾸기 전까지 `전자제도_도우미.exe` (테스트용 `전자제도_도우미-테스트.exe`, 베타용 `전자제도_도우미-베타.exe`)뿐이다.**
     옛 이름 복사본(전자제도도우미*.exe, CAD런처*.exe)은 만들지 않는다 (dev·main 모두에서 지웠다).
   - **아직 실제 PC 배포 전이다** (사용자가 "실제로 배포했다"고 알려 줄 때까지). 그래서 옛 이름 전환은 신경 쓰지 않는다.
