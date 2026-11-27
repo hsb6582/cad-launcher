@@ -252,7 +252,7 @@ func createControls() {
 	show(hAddCat, false)
 
 	// 오른쪽: 제목 + (리습 · 명령어) 꼬리표 / 설명 / 옵션 / 설명서 / 실행 줄
-	hTitle = mk("STATIC", "", SS_LEFT|0x4000 /*SS_ENDELLIPSIS*/, 0, 0)
+	hTitle = mk("STATIC", "", SS_LEFT|0x0200 /*SS_CENTERIMAGE: 위아래 가운데*/ |0x4000 /*SS_ENDELLIPSIS*/, 0, 0)
 	hFontTitle = makeFont(15, true)
 	c(pSendMessageW, hTitle, WM_SETFONT, hFontTitle, 1)
 	hChip = mk("STATIC", "", 0x0001|0x0200|0x4000 /*SS_CENTER|SS_CENTERIMAGE|SS_ENDELLIPSIS: 한 줄, 넘치면 …*/, 0, 0)
@@ -410,22 +410,24 @@ func layout() {
 	// 왼쪽: 리습 목록
 	layoutListPane(mainBottom) // 검색칸 / 보기 버튼 / 목록 (listpane.go)
 
-	// 오른쪽 머리: [아이콘] 제목 / 설명 / 명령어·리습 꼬리표 ········ ☆ [▶ 실행]
+	// 오른쪽 머리 한 줄: 제목 ················ ☆ [▶ 실행]  (셋 다 같은 가운데 높이에 맞춤)
 	rw := max(W-rightX-8, 200)
-	ix := rightX // 제목은 왼쪽 끝부터 (아이콘·설명 문구는 뺌)
-	const runW, runH = 160 + 2*runPadX, 58 + runPadTop + runPadBot
-	mv(hRun, rightX+rw-runW+runPadX, secTop-1, runW, runH) // 그림자 여백만큼 바깥으로
-	tr := rightX + rw - ix                                 // 제목·설명이 쓸 수 있는 폭
+	ix := rightX
+	const runVisW, runVisH = 150, 46 // 보이는 버튼 크기 (그림자 여백 빼고)
+	const runW, runH = runVisW + 2*runPadX, runVisH + runPadTop + runPadBot
+	mid := secTop + runVisH/2                                      // 머리 줄 가운데 높이 (왼쪽 보기 버튼 줄과 위를 맞춤)
+	mv(hRun, rightX+rw-runW+runPadX, secTop-runPadTop, runW, runH) // 그림자 여백만큼 바깥으로
+	tr := rightX + rw - ix                                         // 제목이 쓸 수 있는 폭
 	if c(pIsWindowVisible, hRun) != 0 {
-		tr = max(tr-160-16, 120)
+		tr = max(tr-runVisW-14, 120)
 	}
 	if c(pIsWindowVisible, hFavBtn) != 0 {
-		mv(hFavBtn, rightX+rw-160-12-30, secTop+15, 30, 28)
-		tr = max(tr-36, 100)
+		mv(hFavBtn, rightX+rw-runVisW-10-30, mid-14, 30, 28)
+		tr = max(tr-40, 100)
 	}
-	mv(hTitle, ix, secTop-2, tr, 30)
+	mv(hTitle, ix, mid-15, tr, 30)
 	show(hDesc, false)
-	y := secTop + 72 // 실행 버튼 아래부터
+	y := secTop + runVisH + 12 // 머리 줄 바로 아래부터
 	if len(optCtls) > 0 {
 		show(hOptGroup, true)
 		show(hReset, true)
