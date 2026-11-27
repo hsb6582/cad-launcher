@@ -17,7 +17,7 @@ import (
 const (
 	rowGroup = iota // 상위 분류 머리 (key 로 접기/펼치기)
 	rowItem         // 기능
-	rowMore         // 세부 기능 더 보기 / 접기
+	rowCat          // 중간 분류 (key c:분류이름 으로 접기/펼치기)
 )
 
 type listRow struct {
@@ -25,6 +25,7 @@ type listRow struct {
 	label string
 	key   string // 접기 키 (g:상위분류, c:분류, f: 즐겨찾기)
 	fav   bool   // 즐겨찾기 묶음 머리 / 그 안의 바로가기
+	sub   bool   // 중간 분류 아래 기능 (한 칸 들여씀)
 	node  nodeRef
 	y, h  int // 내용 좌표 (장치 픽셀)
 }
@@ -41,7 +42,6 @@ var (
 	lhot        = -1 // 마우스가 올라간 행
 	lsb         vscroll
 	lmode       = lmAll
-	showMore    bool // 세부 기능 펼침
 	listClass   = ws("CADListPane")
 	hSearch     uintptr
 	hChipAll    uintptr
@@ -81,7 +81,7 @@ func isCollapsed(k string) bool {
 	if v, ok := collapsedNow[k]; ok {
 		return v
 	}
-	if strings.HasPrefix(k, "c:") { // 상위 분류 없이 맨 위에 놓인 분류는 머리로 보여 줌 → 펼친 채
+	if strings.HasPrefix(k, "t:") { // 상위 분류 없이 맨 위에 놓인 분류는 상위 분류 머리로 보여 줌 → 펼친 채
 		return false
 	}
 	return defaultCollapsed(k)
@@ -101,7 +101,7 @@ func createListPane() {
 	wc.cbSize = uint32(unsafe.Sizeof(wc))
 	c(pRegisterClassExW, uintptr(P(&wc)))
 	hList = c(pCreateWindowExW, 0, uintptr(P(listClass)), 0, WS_CHILD|WS_VISIBLE|WS_TABSTOP, 0, 0, 10, 10, hMain, idList, hInst, 0)
-	hFontGrp = makeFont(8, true)
+	hFontGrp = makeFont(10, true)
 	hFontGlyph = makeIconFont(10)
 
 	// 검색칸은 쓰지 않음 (hSearch = 0 → 검색어 없음)
@@ -167,9 +167,14 @@ func buildRows() {
 			}
 		}
 	}
+	type catPart struct {
+		ci    int
+		items []nodeRef
+	}
 	type grp struct {
 		label, key string
-		items      []nodeRef
+		top        bool // 상위 분류 없는 분류 (중간 분류 줄 없이 기능을 바로)
+		cats       []*catPart
 	}
 	var groups []*grp
 	byKey := map[string]*grp{}
@@ -177,29 +182,43 @@ func buildRows() {
 		ct := &cat.Categories[ci]
 		label, key := ct.Group, "g:"+ct.Group
 		if ct.Group == "" {
-			label, key = ct.Name, "c:"+ct.Name
+			label, key = ct.Name, "t:"+ct.Name
 		}
 		g := byKey[key]
 		if g == nil {
-			g = &grp{label: label, key: key}
+			g = &grp{label: label, key: key, top: ct.Group == ""}
 			byKey[key] = g
 			groups = append(groups, g)
 		}
+		cp := &catPart{ci: ci}
 		for ii := range ct.Items {
-			if !itemMatches(&ct.Items[ii], q) {
-				continue
+			if itemMatches(&ct.Items[ii], q) {
+				cp.items = append(cp.items, nodeRef{nkItem, ci, ii})
 			}
-			g.items = append(g.items, nodeRef{nkItem, ci, ii})
+		}
+		if len(cp.items) > 0 {
+			g.cats = append(g.cats, cp)
 		}
 	}
 	for _, g := range groups {
-		if len(g.items) == 0 {
+		if len(g.cats) == 0 {
 			continue
 		}
 		rows = append(rows, listRow{kind: rowGroup, label: g.label, key: g.key})
-		if filtering || !isCollapsed(g.key) {
-			for _, n := range g.items {
-				rows = append(rows, listRow{kind: rowItem, label: n.item().Name, node: n})
+		if !filtering && isCollapsed(g.key) {
+			continue
+		}
+		for _, cp := range g.cats {
+			name := cat.Categories[cp.ci].Name
+			if !g.top {
+				ck := "c:" + name
+				rows = append(rows, listRow{kind: rowCat, label: name, key: ck})
+				if !filtering && isCollapsed(ck) {
+					continue
+				}
+			}
+			for _, n := range cp.items {
+				rows = append(rows, listRow{kind: rowItem, label: n.item().Name, node: n, sub: !g.top})
 			}
 		}
 	}
@@ -211,12 +230,12 @@ func buildRows() {
 			if i > 0 {
 				y += si(8)
 			}
-			rows[i].h = si(28)
+			rows[i].h = si(32)
 		case rowItem:
-			rows[i].h = si(38)
-		case rowMore:
-			y += si(8)
 			rows[i].h = si(36)
+		case rowCat:
+			y += si(2)
+			rows[i].h = si(32)
 		}
 		rows[i].y = y
 		y += rows[i].h
@@ -325,20 +344,12 @@ func activateRow(i int) {
 	switch r := lrows[i]; r.kind {
 	case rowItem:
 		selectRow(i)
-	case rowGroup:
+	case rowGroup, rowCat:
 		if searchText() != "" || lmode != lmAll {
-			return // 찾는 중에는 늘 펼침
+			return // 걸러 보는 중에는 늘 펼침
 		}
 		setCollapsed(r.key, !isCollapsed(r.key))
 		refilterList()
-	case rowMore:
-		showMore = !showMore
-		refilterList()
-		if showMore { // 펼친 세부 기능이 보이도록 맨 아래로
-			_, H := listClient()
-			lsb.pos = lsb.total - H
-			lsb.clamp()
-		}
 	}
 }
 
@@ -426,35 +437,41 @@ func paintList(hdc uintptr, W, H int) {
 		}
 		hot := i == lhot
 		switch r.kind {
-		case rowGroup:
-			x := si(8)
-			if r.fav {
-				drawTextAt(hdc, hFontGrp, favStarClr, x, y+(r.h-si(14))/2, "★")
-				x += si(16)
-			}
-			clr := clrSubText
+		case rowGroup: // 상위 분류: 진한 띠 + 굵은 흰 글씨
+			band := groupBandClr()
 			if hot && !filtering {
-				clr = clrText
+				band = mixClr(band, clrText, 0.08)
+			}
+			fillRound(hdc, si(2), y, cw-si(2), r.h, band, band, si(8))
+			x := si(12)
+			if r.fav {
+				_, sh := textSize(hdc, hFontGrp, "★")
+				drawTextAt(hdc, hFontGrp, favStarClr, x, y+(r.h-sh)/2, "★")
+				x += si(18)
 			}
 			_, th := textSize(hdc, hFontGrp, r.label)
-			drawTextAt(hdc, hFontGrp, clr, x, y+(r.h-th)/2, r.label)
+			drawTextAt(hdc, hFontGrp, groupTextClr(), x, y+(r.h-th)/2, r.label)
 			if !filtering {
-				drawChevron(hdc, cw-si(14), y+r.h/2, !isCollapsed(r.key), clr)
+				drawChevron(hdc, cw-si(14), y+r.h/2, !isCollapsed(r.key), groupTextClr())
+			}
+		case rowCat: // 중간 분류: 파란 세로 띠 + 흰 글씨
+			if hot && !filtering {
+				fillRound(hdc, si(6), y+si(1), cw-si(8), r.h-si(2), clrHotBg, clrHotBg, si(8))
+			}
+			bar, _ := runColors(false, false)
+			fillRound(hdc, si(12), y+(r.h-si(16))/2, si(3), si(16), bar, bar, si(3))
+			_, th := textSize(hdc, hFontBtnBold, r.label)
+			old := c(pSelectObject, hdc, hFontBtnBold)
+			c(pSetTextColor, hdc, clrText)
+			tr := rectT{int32(si(24)), int32(y), int32(cw - si(26)), int32(y + r.h)}
+			c(pDrawTextW, hdc, uintptr(P(ws(r.label))), ^uintptr(0), uintptr(P(&tr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|0x8000)
+			c(pSelectObject, hdc, old)
+			_ = th
+			if !filtering {
+				drawChevron(hdc, cw-si(14), y+r.h/2, !isCollapsed(r.key), clrSubText)
 			}
 		case rowItem:
 			paintItemRow(hdc, r, y, cw, i == lsel, hot)
-		case rowMore:
-			fillBox(hdc, si(8), y, cw-si(16), 1, clrLine)
-			clr := guideLinkColor()
-			if hot {
-				clr = clrText
-			}
-			sign := "＋ "
-			if showMore {
-				sign = "－ "
-			}
-			_, th := textSize(hdc, hFont, r.label)
-			drawTextAt(hdc, hFont, clr, si(12), y+(r.h-th)/2+si(2), sign+r.label)
 		}
 	}
 	lsb.paint(hdc, W, H)
@@ -466,6 +483,9 @@ func paintItemRow(hdc uintptr, r listRow, y, cw int, sel, hot bool) {
 		return
 	}
 	x0, x1 := si(4), cw-si(2)
+	if r.sub {
+		x0 = si(20) // 중간 분류 아래는 한 칸 들여씀
+	}
 	switch {
 	case sel:
 		fillRound(hdc, x0, y+si(1), x1-x0, r.h-si(2), clrSelBg, clrSelBg, si(10))
@@ -648,4 +668,19 @@ func listProc(h, msg, wp, lp uintptr) uintptr {
 		}
 	}
 	return c(pDefWindowProcW, h, msg, wp, lp)
+}
+
+// 상위 분류 띠: 창 바탕보다 진하게 / 글자: 흰색 (크림 화면은 진한 글씨에 옅은 띠)
+func groupBandClr() uintptr {
+	if curTheme.dark {
+		return mixClr(clrBg, 0, 0.32)
+	}
+	return mixClr(clrBg, 0, 0.10)
+}
+
+func groupTextClr() uintptr {
+	if curTheme.dark {
+		return white
+	}
+	return clrText
 }
