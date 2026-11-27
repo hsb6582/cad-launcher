@@ -159,7 +159,8 @@ func buildRows() {
 	var rows []listRow
 	if !filtering {
 		if refs := favRefs(); len(refs) > 0 {
-			rows = append(rows, listRow{kind: rowGroup, label: T("fav.001"), key: "f:", fav: true})
+			// 노란 별은 따로 그리므로 문구 앞 ★ 는 뗌 (별이 두 개로 보이지 않게)
+			rows = append(rows, listRow{kind: rowGroup, label: strings.TrimSpace(strings.TrimPrefix(T("fav.001"), "★")), key: "f:", fav: true})
 			if !isCollapsed("f:") {
 				for _, n := range refs {
 					rows = append(rows, listRow{kind: rowItem, label: n.item().Name, node: n, fav: true})
@@ -458,7 +459,8 @@ func paintList(hdc uintptr, W, H int) {
 			if hot && !filtering {
 				fillRound(hdc, si(6), y+si(1), cw-si(8), r.h-si(2), clrHotBg, clrHotBg, si(8))
 			}
-			bar, _ := runColors(false, false)
+			_, bar := runColors(false, false)
+			bar = mixClr(bar, white, 0.5) // 중간 분류 세로줄: 밝은 파랑
 			fillRound(hdc, si(12), y+(r.h-si(16))/2, si(3), si(16), bar, bar, si(3))
 			_, th := textSize(hdc, hFontBtnBold, r.label)
 			old := c(pSelectObject, hdc, hFontBtnBold)
