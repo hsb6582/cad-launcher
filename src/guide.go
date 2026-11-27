@@ -49,8 +49,10 @@ const (
 )
 
 var (
-	clrSoft = RGB(0xF3, 0xE6, 0xDF) // 주의 상자 바탕
-	clrLine = RGB(0xE4, 0xDF, 0xD4) // 구분선·그림 테두리
+	clrSoft    = RGB(0xFF, 0xF4, 0xDC) // 주의 상자 바탕 (테마별 값은 theme.go)
+	clrWarnBar = RGB(0xE0, 0xA0, 0x30) // 주의 상자 왼쪽 띠
+	clrWarnTxt = RGB(0x6B, 0x4A, 0x12) // 주의 상자 글자
+	clrLine    = RGB(0xE4, 0xDF, 0xD4) // 구분선·그림 테두리
 )
 
 type guideDoc struct {
@@ -372,11 +374,12 @@ func guideRender(hdc uintptr, W int, draw bool) int {
 	// 4) 주의
 	if d.warn != "" {
 		t := "※ " + d.warn
-		th := gText(hdc, hFont, clrText, x+si(12), 0, w-si(24), t, false)
+		th := gText(hdc, hFont, clrWarnTxt, x+si(14), 0, w-si(26), t, false)
 		bh := th + si(16)
 		if draw {
 			fillRound(hdc, x, y, w, bh, clrSoft, clrSoft, si(8))
-			gText(hdc, hFont, clrText, x+si(12), y+si(8), w-si(24), t, true)
+			fillRound(hdc, x, y, si(4), bh, clrWarnBar, clrWarnBar, si(3)) // 왼쪽 노란 띠
+			gText(hdc, hFont, clrWarnTxt, x+si(14), y+si(8), w-si(26), t, true)
 		}
 		y += bh + si(12)
 	}
