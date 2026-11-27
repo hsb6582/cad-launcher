@@ -96,6 +96,8 @@ var (
 	gTotal     int   // 내용 전체 높이 (픽셀)
 	gToggle    rectT // '자세한 설명' 줄 (내용 좌표)
 	gPicRects  [2]rectT
+	gsb        vscroll // 직접 그리는 스크롤 막대 (scroll.go)
+	gMouseIn   bool
 	guideClass = ws("CADGuidePane")
 	picCache   = map[string]*picEntry{}
 )
@@ -124,9 +126,8 @@ func createGuide() {
 	hFontNum = makeFont(9, true)
 	registerGuideClass()
 	hGuide = c(pCreateWindowExW, 0, uintptr(P(guideClass)), 0,
-		WS_CHILD|WS_VSCROLL, 0, 0, 10, 10, hMain, 0, hInst, 0)
-	styleControl(hGuide)
-	framed[hGuide] = true // 3D 테두리 대신 부모가 얇은 둥근 테두리를 그림 (style2.go)
+		WS_CHILD, 0, 0, 10, 10, hMain, 0, hInst, 0) // 스크롤 막대는 직접 그림 (scroll.go)
+	styleControl(hGuide) // 새 화면: 테두리 없이 창 바탕 위에 카드처럼 그림
 }
 
 // doc 이 nil 이면 원래 글상자(hManual)를 보여 준다
@@ -154,17 +155,11 @@ func guideRelayout() {
 	}
 	W, H := guideClient()
 	dc := c(pGetDC, hGuide)
-	gTotal = guideRender(dc, W, false)
+	gTotal = guideRender(dc, W-si(sbW), false)
 	c(pReleaseDC, hGuide, dc)
-	if mx := max(gTotal-H, 0); gScroll > mx {
-		gScroll = mx
-	}
-	if gScroll < 0 {
-		gScroll = 0
-	}
-	sc := scrollInfo{fMask: 0x1 | 0x2 | 0x4 | 0x8, nMax: int32(max(gTotal-1, 0)), nPage: uint32(H), nPos: int32(gScroll)} // RANGE|PAGE|POS|DISABLENOSCROLL
-	sc.cbSize = uint32(unsafe.Sizeof(sc))
-	c(pSetScrollInfo, hGuide, 1 /*SB_VERT*/, uintptr(P(&sc)), 1)
+	gsb.total, gsb.view, gsb.pos = gTotal, H, gScroll
+	gsb.clamp()
+	gScroll = gsb.pos
 	c(pInvalidateRect, hGuide, 0, 0)
 }
 
@@ -274,8 +269,8 @@ func guideRender(hdc uintptr, W int, draw bool) int {
 		return 0
 	}
 	c(pSetBkMode, hdc, TRANSPARENT)
-	pad := si(12)
-	x, w := pad, max(W-2*pad, si(60))
+	pad := si(2)
+	x, w := pad, max(W-2*pad-si(4), si(60))
 	top := -gScroll
 	if !draw {
 		top = 0
@@ -287,26 +282,53 @@ func guideRender(hdc uintptr, W int, draw bool) int {
 		y += gText(hdc, hFontMid, clrText, x, y, w, d.when, draw) + si(10)
 	}
 
-	// 2) 사용 순서
-	for i, stp := range d.steps {
-		tx := x + si(40)
-		th := gText(hdc, hFont, clrText, tx, 0, w-si(50), stp, false)
-		rh := max(th+si(14), si(34))
-		if draw {
-			fillRound(hdc, x, y, w, rh, guideStepBg(), guideStepBg(), si(8))
-			cy := y + rh/2
-			fillRoundEllipse(hdc, x+si(9), cy-si(11), si(22), clrAccent)
-			old := c(pSelectObject, hdc, hFontNum)
-			c(pSetTextColor, hdc, clrAccentTxt)
-			rc := rectT{int32(x + si(9)), int32(cy - si(11)), int32(x + si(31)), int32(cy + si(11))}
-			c(pDrawTextW, hdc, uintptr(P(ws(itoa(i+1)))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
-			c(pSelectObject, hdc, old)
-			gText(hdc, hFont, clrText, tx, y+(rh-th)/2, w-si(50), stp, true)
+	// 2) 사용 순서: 2~4단계는 가로 카드 (번호 → 글), 넓이가 모자라거나 많으면 세로 줄
+	if ns := len(d.steps); ns >= 2 && ns <= 4 && w >= si(150*ns) {
+		gap := si(10)
+		cw := (w - gap*(ns-1)) / ns
+		in := si(14)
+		iw := cw - 2*in
+		num := si(26)
+		th := 0
+		for _, stp := range d.steps {
+			th = max(th, gText(hdc, hFont, clrText, 0, 0, iw, stp, false))
 		}
-		y += rh + si(6)
-	}
-	if len(d.steps) > 0 {
-		y += si(6)
+		ch := in + num + si(10) + th + in
+		for i, stp := range d.steps {
+			cx := x + i*(cw+gap)
+			if draw {
+				fillRound(hdc, cx, y, cw, ch, guideStepBg(), guideStepBg(), si(14))
+				fillRoundEllipse(hdc, cx+in, y+in, num, clrAccent)
+				old := c(pSelectObject, hdc, hFontNum)
+				c(pSetTextColor, hdc, clrAccentTxt)
+				rc := rectT{int32(cx + in), int32(y + in), int32(cx + in + num), int32(y + in + num)}
+				c(pDrawTextW, hdc, uintptr(P(ws(itoa(i+1)))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
+				c(pSelectObject, hdc, old)
+				gText(hdc, hFont, clrText, cx+in, y+in+num+si(10), iw, stp, true)
+			}
+		}
+		y += ch + si(12)
+	} else {
+		for i, stp := range d.steps {
+			tx := x + si(40)
+			th := gText(hdc, hFont, clrText, tx, 0, w-si(50), stp, false)
+			rh := max(th+si(14), si(34))
+			if draw {
+				fillRound(hdc, x, y, w, rh, guideStepBg(), guideStepBg(), si(8))
+				cy := y + rh/2
+				fillRoundEllipse(hdc, x+si(9), cy-si(11), si(22), clrAccent)
+				old := c(pSelectObject, hdc, hFontNum)
+				c(pSetTextColor, hdc, clrAccentTxt)
+				rc := rectT{int32(x + si(9)), int32(cy - si(11)), int32(x + si(31)), int32(cy + si(11))}
+				c(pDrawTextW, hdc, uintptr(P(ws(itoa(i+1)))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
+				c(pSelectObject, hdc, old)
+				gText(hdc, hFont, clrText, tx, y+(rh-th)/2, w-si(50), stp, true)
+			}
+			y += rh + si(6)
+		}
+		if len(d.steps) > 0 {
+			y += si(6)
+		}
 	}
 
 	// 3) 실행 전 / 후 그림
@@ -318,57 +340,61 @@ func guideRender(hdc uintptr, W int, draw bool) int {
 		}
 	}
 	gPicRects = [2]rectT{}
-	if n > 0 {
+	if n > 0 { // 실행 전 → 실행 후 를 카드 하나에
 		caps := [2]string{T("guide.002"), T("guide.003")}
-		gap := si(30)
-		side := n == 2 && w >= si(440)
-		colW := w
+		cp := si(14) // 카드 안쪽 여백
+		iw := w - 2*cp
+		gap := si(36)
+		side := n == 2 && iw >= si(420)
+		colW := iw
 		if side {
-			colW = (w - gap) / 2
+			colW = (iw - gap) / 2
 		}
-		capH := si(24)
+		capH := si(22)
+		ip := si(4) // 흰 그림 상자 안쪽 여백 (둥근 모서리에 그림이 걸치지 않게)
 		maxH := si(260)
-		// 두 그림을 같은 높이로 맞춤
 		imgH := 0
 		for _, p := range pics {
 			if p != nil {
-				imgH = max(imgH, min(p.h*(colW-2)/p.w, maxH))
+				imgH = max(imgH, min(p.h*(colW-2*ip)/p.w, maxH))
 			}
 		}
-		fx, fy := x, y
+		boxH := imgH + 2*ip
+		cellH := capH + boxH
+		cardH := 2*cp + cellH
+		if !side {
+			cardH = 2*cp + n*cellH + (n-1)*si(12)
+		}
+		if draw {
+			fillRound(hdc, x, y, w, cardH, guideStepBg(), guideStepBg(), si(14))
+		}
+		fx, fy := x+cp, y+cp
 		for i, p := range pics {
 			if p == nil {
 				continue
 			}
-			fh := capH + imgH + 2
 			if draw {
-				fillRound(hdc, fx, fy, colW, fh, clrPanelBg, clrLine, si(6))
-				fillBox(hdc, fx+1, fy+1, colW-2, capH-1, clrBg)
-				fillBox(hdc, fx+1, fy+capH, colW-2, 1, clrLine)
-				gText(hdc, hFontNum, clrText, fx+si(10), fy+si(4), colW-si(20), caps[i], true)
-				dw := min(colW-2, p.w*imgH/p.h)
+				gText(hdc, hFontNum, clrSubText, fx+si(2), fy, colW, caps[i], true)
+				fillRound(hdc, fx, fy+capH, colW, boxH, RGB(0xF6, 0xF7, 0xF9), clrLine, si(10))
+				dw := min(colW-2*ip, p.w*imgH/p.h)
 				dh := p.h * dw / p.w
-				drawPic(hdc, p, fx+1+(colW-2-dw)/2, fy+capH+1+(imgH-dh)/2, dw, dh)
+				drawPic(hdc, p, fx+(colW-dw)/2, fy+capH+(boxH-dh)/2, dw, dh)
 			}
-			gPicRects[i] = rectT{int32(fx), int32(fy - top), int32(fx + colW), int32(fy - top + fh)}
-			if side {
-				if i == 0 {
-					if draw {
-						old := c(pSelectObject, hdc, hFontBold)
-						c(pSetTextColor, hdc, clrAccent)
-						rc := rectT{int32(fx + colW), int32(fy), int32(fx + colW + gap), int32(fy + fh)}
-						c(pDrawTextW, hdc, uintptr(P(ws("→"))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
-						c(pSelectObject, hdc, old)
-					}
-					fx += colW + gap
-				} else {
-					fy += fh + si(12)
+			gPicRects[i] = rectT{int32(fx), int32(fy + capH - top), int32(fx + colW), int32(fy + capH + boxH - top)}
+			if side && i == 0 {
+				if draw {
+					old := c(pSelectObject, hdc, hFontBold)
+					c(pSetTextColor, hdc, guideLinkColor())
+					rc := rectT{int32(fx + colW), int32(fy + capH), int32(fx + colW + gap), int32(fy + capH + boxH)}
+					c(pDrawTextW, hdc, uintptr(P(ws("→"))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
+					c(pSelectObject, hdc, old)
 				}
-			} else {
-				fy += fh + si(10)
+				fx += colW + gap
+			} else if !side {
+				fy += cellH + si(12)
 			}
 		}
-		y = fy + si(2)
+		y += cardH + si(12)
 	}
 
 	// 4) 주의
@@ -421,11 +447,11 @@ func guideDetailColor() uintptr { // 펼친 자세한 설명 글자
 	return clrSubText
 }
 
-func guideStepBg() uintptr { // 사용 순서 한 줄 바탕
+func guideStepBg() uintptr { // 사용 순서 카드·실행 전후 카드 바탕 (창 바탕보다 한 톤 밝게)
 	if curTheme.dark {
-		return RGB(0x34, 0x38, 0x40)
+		return mixClr(clrBg, white, 0.06)
 	}
-	return clrBg
+	return clrPanelBg
 }
 
 func fillRoundEllipse(hdc uintptr, x, y, d int, clr uintptr) {
@@ -454,8 +480,9 @@ func guideProc(h, msg, wp, lp uintptr) uintptr {
 		mem := c(pCreateCompatibleDC, hdc)
 		bmp := c(pCreateCompatibleBitmap, hdc, uintptr(max(W, 1)), uintptr(max(H, 1)))
 		old := c(pSelectObject, mem, bmp)
-		fillBox(mem, 0, 0, W, H, clrPanelBg)
-		guideRender(mem, W, true)
+		fillBox(mem, 0, 0, W, H, clrBg)
+		guideRender(mem, W-si(sbW), true)
+		gsb.paint(mem, W, H)
 		c(pBitBlt, hdc, 0, 0, uintptr(W), uintptr(H), mem, 0, 0, SRCCOPY)
 		c(pSelectObject, mem, old)
 		c(pDeleteObject, bmp)
@@ -489,9 +516,45 @@ func guideProc(h, msg, wp, lp uintptr) uintptr {
 		delta := int(int16(wp >> 16))
 		guideScrollTo(gScroll - delta*si(40)/120)
 		return 0
+	case WM_MOUSEMOVE:
+		x, y := int(int16(lp&0xFFFF)), int(int16((lp>>16)&0xFFFF))
+		if !gMouseIn {
+			gMouseIn = true
+			trackLeave(h)
+		}
+		W, H := guideClient()
+		if gsb.drag {
+			gsb.mouseDrag(H, y)
+			guideScrollTo(gsb.pos)
+		} else if hb := gsb.inBar(W, x); hb != gsb.hot {
+			gsb.hot = hb
+			c(pInvalidateRect, h, 0, 0)
+		}
+		return 0
+	case WM_LBUTTONUP:
+		if gsb.drag {
+			gsb.drag = false
+			c(pReleaseCaptM)
+			c(pInvalidateRect, h, 0, 0)
+		}
+		return 0
+	case WM_CAPTURECHANGED:
+		gsb.drag = false
+		return 0
+	case WM_MOUSELEAVE:
+		gMouseIn, gsb.hot = false, false
+		c(pInvalidateRect, h, 0, 0)
+		return 0
 	case 0x0201: // WM_LBUTTONDOWN
-		x, y := int(int16(lp&0xFFFF)), int(int16((lp>>16)&0xFFFF))+gScroll
 		c(pSetFocus, h) // 마우스 휠이 이 칸으로 오도록
+		if W, H := guideClient(); gsb.mouseDown(W, H, int(int16(lp&0xFFFF)), int(int16((lp>>16)&0xFFFF))) {
+			if gsb.drag {
+				c(pSetCaptureM, h)
+			}
+			guideScrollTo(gsb.pos)
+			return 0
+		}
+		x, y := int(int16(lp&0xFFFF)), int(int16((lp>>16)&0xFFFF))+gScroll
 		if inRect(gToggle, x, y) {
 			gOpen = !gOpen
 			guideRelayout()

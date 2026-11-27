@@ -7,11 +7,12 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"unicode/utf16"
-	"unsafe"
 )
 
 type Lisp struct {
@@ -45,7 +46,31 @@ func (it *Item) hasGuide() bool {
 
 type Category struct {
 	Name  string `json:"name"`
+	Group string `json:"group,omitempty"` // 상위 분류 (예: 공통·도면수정·설계). 비우면 맨 위 단계에 바로 표시
 	Items []Item `json:"items"`
+}
+
+// 상위 분류 이름 (catalog.json 에서 처음 나오는 순서). 순서는 목록 파일이 정하고 ▲▼로는 바꾸지 않는다
+var groupNames []string
+
+func groupRank(g string) int {
+	for i, x := range groupNames {
+		if x == g {
+			return i
+		}
+	}
+	return len(groupNames) // 상위 분류 없는 분류는 맨 뒤
+}
+
+func computeGroups() {
+	groupNames = nil
+	seen := map[string]bool{}
+	for _, ct := range cat.Categories {
+		if ct.Group != "" && !seen[ct.Group] {
+			seen[ct.Group] = true
+			groupNames = append(groupNames, ct.Group)
+		}
+	}
 }
 
 type Catalog struct {
@@ -82,6 +107,7 @@ func loadCatalog() {
 		Lisps      []Lisp `json:"lisps"`
 		Categories []struct {
 			Name  string   `json:"name"`
+			Group string   `json:"group"`
 			Items []Item   `json:"items"`
 			Lisps []v1Lisp `json:"lisps"`
 		} `json:"categories"`
@@ -92,7 +118,7 @@ func loadCatalog() {
 	}
 	cat.Lisps = raw.Lisps
 	for _, rc := range raw.Categories {
-		ct := Category{Name: rc.Name, Items: rc.Items}
+		ct := Category{Name: rc.Name, Group: rc.Group, Items: rc.Items}
 		for _, l := range rc.Lisps { // v1 → v2 변환
 			cat.Lisps = append(cat.Lisps, Lisp{ID: l.Name, Desc: l.Desc, File: l.File, Manual: l.Manual, Tools: l.Tools})
 			for _, m := range l.Commands {
@@ -105,7 +131,9 @@ func loadCatalog() {
 		}
 		cat.Categories = append(cat.Categories, ct)
 	}
+	computeGroups()
 	applyOrder()
+	pruneFavs()
 	n := 0
 	for _, ct := range cat.Categories {
 		n += len(ct.Items)
@@ -149,15 +177,13 @@ func itemTag(it *Item) string {
 
 // "(GGD)" 처럼 명령어만 표시 (리습 이름은 상위 분류에 표시)
 // 오른쪽 제목 옆 꼬리표: "BPDF · BPDF_S" (리습 · 명령어)
+// 설명서 머리 줄 꼬리표: "명령어  GLC    리습  GLC.lsp"
 func itemChip(it *Item) string {
-	id := cmdID(it.Command)
-	if it.Lisp != "" && it.Lisp != id {
-		return it.Lisp + " · " + id
+	s := fmt.Sprintf(T("catalog.017"), cmdID(it.Command))
+	if l := lispByID(it.Lisp); l != nil && l.File != "" {
+		s += fmt.Sprintf(T("catalog.018"), filepath.Base(filepath.FromSlash(l.File)))
 	}
-	if it.Lisp != "" {
-		return it.Lisp
-	}
-	return id
+	return s
 }
 
 func cmdTag(it *Item) string {
@@ -186,6 +212,8 @@ const (
 	nkNone = iota
 	nkCat
 	nkItem
+	nkGroup    // 상위 분류 (ci = groupNames 위치)
+	nkFavGroup // '★ 즐겨찾기' 묶음 (favorites.go)
 )
 
 type nodeRef struct{ kind, ci, ii int }
@@ -198,7 +226,7 @@ var (
 )
 
 func (n nodeRef) category() *Category {
-	if n.kind >= nkCat && n.ci < len(cat.Categories) {
+	if (n.kind == nkCat || n.kind == nkItem) && n.ci < len(cat.Categories) {
 		return &cat.Categories[n.ci]
 	}
 	return nil
@@ -216,91 +244,8 @@ func (n nodeRef) lisp() *Lisp {
 	return nil
 }
 
-// 목록 분류는 런처를 켤 때 펼친 상태로 시작한다. 단, 개발 중 분류와 '단순기능' 은 닫힌 상태로 시작.
-// 켜 둔 동안 펼치거나 닫은 분류는 기억해서, 업데이트로 목록을 다시 그려도 그대로 둔다 (파일에는 저장하지 않음).
-var collapsedNow = map[string]bool{}
-
-func defaultCollapsed(k string) bool {
-	name := strings.TrimPrefix(k, "c:")
-	return isDevCategory(name) || strings.ReplaceAll(name, " ", "") == "단순기능"
-}
-
-func isCollapsed(k string) bool {
-	if v, ok := collapsedNow[k]; ok {
-		return v
-	}
-	return defaultCollapsed(k)
-}
-
-func setCollapsed(k string, on bool) { collapsedNow[k] = on }
-
-func tvInsertItem(parent uintptr, text string, state uint32) uintptr {
-	// state 에 stateRecommend 가 있으면 추천 아이콘(상태 그림 1번)을 붙임
-	ins := tvInsert{hParent: parent, hInsertAfter: tviLast}
-	ins.item.mask = TVIF_TEXT | TVIF_STATE
-	ins.item.pszText = ws(text)
-	ins.item.state = state
-	ins.item.stateMask = TVIS_BOLD | TVIS_EXPANDED | TVIS_STATEIMAGEMASK
-	return c(pSendMessageW, hList, TVM_INSERTITEMW, 0, uintptr(unsafe.Pointer(&ins)))
-}
-
-func refreshTree(sel nodeRef) {
-	building = true
-	c(pSendMessageW, hList, TVM_DELETEITEM, 0, tviRoot)
-	itemNode, nodeItem = map[uintptr]nodeRef{}, map[nodeRef]uintptr{}
-	for ci, ct := range cat.Categories {
-		cn := nodeRef{nkCat, ci, 0}
-		state := uint32(TVIS_BOLD)
-		if !isCollapsed("c:" + ct.Name) {
-			state |= TVIS_EXPANDED
-		}
-		hc := tvInsertItem(tviRoot, ct.Name, state)
-		itemNode[hc], nodeItem[cn] = cn, hc
-		for ii := range ct.Items {
-			in := nodeRef{nkItem, ci, ii}
-			it := &cat.Categories[ci].Items[ii]
-			rs := uint32(0)
-			if it.Recommend {
-				rs = stateRecommend
-			}
-			hi := tvInsertItem(hc, it.Name, rs)
-			itemNode[hi], nodeItem[in] = in, hi
-		}
-	}
-	building = false
-	n := 0
-	for _, ct := range cat.Categories {
-		n += len(ct.Items)
-	}
-	setText(hListCnt, itoa(n)+T("catalog.005"))
-	if h := nodeItem[sel]; h != 0 {
-		c(pSendMessageW, hList, TVM_SELECTITEM, TVGN_CARET, h)
-		c(pSendMessageW, hList, TVM_ENSUREVISIBLE, 0, h)
-	} else {
-		showNode(nodeRef{})
-	}
-}
-
-func onNotify(lp uintptr) uintptr {
-	hdr := (*nmhdr)(unsafe.Pointer(lp))
-	if hdr.hwndFrom != hList {
-		return 0
-	}
-	switch int32(hdr.code) {
-	case nmCustomDraw:
-		return treeCustomDraw(lp)
-	case tvnSelChanged:
-		if !building {
-			showNode(itemNode[(*nmTreeView)(unsafe.Pointer(lp)).itemNew.hItem])
-		}
-	case tvnItemExpanded:
-		nm := (*nmTreeView)(unsafe.Pointer(lp))
-		if n, ok := itemNode[nm.itemNew.hItem]; ok && !building && n.kind == nkCat {
-			setCollapsed("c:"+n.category().Name, nm.action == TVE_COLLAPSE)
-		}
-	}
-	return 0
-}
+// 목록(왼쪽 칸)은 listpane.go 에서 직접 그린다
+func onNotify(lp uintptr) uintptr { return 0 }
 
 func showNode(n nodeRef) {
 	cur = n
@@ -308,10 +253,44 @@ func showNode(n nodeRef) {
 	run := uintptr(0)
 	var guide *guideDoc
 	switch n.kind {
+	case nkFavGroup: // 즐겨찾기 묶음
+		setText(hTitle, T("fav.001"))
+		setText(hChip, "")
+		var sb strings.Builder
+		refs := favRefs()
+		for _, r := range refs {
+			sb.WriteString("■ " + r.item().Name + "\n")
+		}
+		setText(hDesc, fmt.Sprintf(T("fav.007"), len(refs)))
+		setManual(sb.String())
+	case nkGroup: // 상위 분류: 안에 든 분류와 기능 목록
+		g := groupNames[n.ci]
+		setText(hTitle, g)
+		setText(hChip, "")
+		nc, ni := 0, 0
+		var sb strings.Builder
+		for ci := range cat.Categories {
+			ct := &cat.Categories[ci]
+			if ct.Group != g {
+				continue
+			}
+			nc++
+			sb.WriteString("■ " + ct.Name + "\n")
+			for i := range ct.Items {
+				ni++
+				sb.WriteString("    · " + ct.Items[i].Name + "\n")
+			}
+		}
+		setText(hDesc, fmt.Sprintf(T("catalog.020"), nc, ni))
+		setManual(sb.String())
 	case nkCat:
 		ct := n.category()
 		setText(hTitle, ct.Name)
-		setText(hChip, strings.Trim(strings.TrimSpace(catLispTag(ct)), "()"))
+		if tag := strings.Trim(strings.TrimSpace(catLispTag(ct)), "()"); tag != "" {
+			setText(hChip, fmt.Sprintf(T("catalog.019"), tag))
+		} else {
+			setText(hChip, "")
+		}
 		setText(hDesc, T("catalog.006")+itoa(len(ct.Items))+T("catalog.007"))
 		var sb strings.Builder
 		for i := range ct.Items {
@@ -354,7 +333,9 @@ func showNode(n nodeRef) {
 		setManual(T("catalog.010"))
 	}
 	c(pEnableWindow, hRun, run)
+	heroGlyph = pickGlyph(n) // 오른쪽 머리 아이콘 (ui2.go)
 	setGuide(guide)
+	updateFavBtn()
 	l := n.lisp()
 	show(hTools, l != nil && len(l.Tools) > 0)
 	show(hStartup, n.kind == nkItem && l != nil && l.File != "")
@@ -469,6 +450,10 @@ func moveNode(dir int) {
 		orderNoted = true
 		logf("%s", T("catalog.016"))
 	}
+	if curFav && n.kind == nkItem { // 즐겨찾기 묶음 안에서는 즐겨찾기 순서만 바꿈
+		moveFav(dir)
+		return
+	}
 	switch n.kind {
 	case nkCat:
 		j := n.ci + dir
@@ -477,6 +462,9 @@ func moveNode(dir int) {
 		}
 		if isDevCategory(cat.Categories[n.ci].Name) != isDevCategory(cat.Categories[j].Name) {
 			return // 개발 중 분류는 맨 아래 고정
+		}
+		if cat.Categories[n.ci].Group != cat.Categories[j].Group {
+			return // 상위 분류 안에서만 순서를 바꿈
 		}
 		cat.Categories[n.ci], cat.Categories[j] = cat.Categories[j], cat.Categories[n.ci]
 		n.ci = j
@@ -540,9 +528,13 @@ func applyOrder() {
 	}
 }
 
-// 이 PC에서 순서를 바꿨더라도 개발 중 분류는 항상 맨 아래로
+// 상위 분류 순서대로 모으고, 이 PC에서 순서를 바꿨더라도 개발 중 분류는 각 상위 분류의 맨 아래로
 func devLast() {
 	sort.SliceStable(cat.Categories, func(a, b int) bool {
+		ga, gb := groupRank(cat.Categories[a].Group), groupRank(cat.Categories[b].Group)
+		if ga != gb {
+			return ga < gb
+		}
 		return !isDevCategory(cat.Categories[a].Name) && isDevCategory(cat.Categories[b].Name)
 	})
 }
