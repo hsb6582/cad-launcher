@@ -446,3 +446,73 @@ func drawCadItem(dis *drawItemStruct) {
 	c(pDrawTextW, hdc, uintptr(P(ws(name))), ^uintptr(0), uintptr(P(&tr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|0x8000 /*DT_END_ELLIPSIS*/)
 	c(pSelectObject, hdc, old)
 }
+
+// ───────────── 아래 실행 막대의 명령어·리습 꼬리표 ─────────────
+// [명령어│BPDF] [리습│BPDF.lsp] : 왼쪽 칸은 이름표(옅은 바탕), 오른쪽 칸은 값(진한 바탕 + 밝은 글자)
+type chipPair struct{ label, value string }
+
+func chipPairs() []chipPair {
+	it := cur.item()
+	if it == nil {
+		return nil
+	}
+	ps := []chipPair{{T("chip.001"), cmdID(it.Command)}}
+	if l := lispByID(it.Lisp); l != nil && l.File != "" {
+		f := l.File
+		if i := strings.LastIndexAny(f, "/\\"); i >= 0 {
+			f = f[i+1:]
+		}
+		ps = append(ps, chipPair{T("chip.002"), f})
+	}
+	return ps
+}
+
+const chipPadL, chipPadV, chipGap = 8, 9, 8 // 이름표 안쪽 / 값 안쪽 / 꼬리표 사이 (96DPI)
+
+// 꼬리표 전체 폭 (96DPI 기준)
+func chipTagsW(ps []chipPair) int {
+	w := 0
+	for i, p := range ps {
+		if i > 0 {
+			w += chipGap
+		}
+		w += 2*chipPadL + strW(p.label, hFont) + 2*chipPadV + strW(p.value, hFont)
+	}
+	return w + 2
+}
+
+func drawChipTags(dis *drawItemStruct) {
+	hdc, r := dis.hDC, dis.rcItem
+	under := ctlBg(hChip)
+	if under == clrBg {
+		under = barBgClr() // 꼬리표는 늘 실행 막대 안
+	}
+	fillBox(hdc, int(r.left), int(r.top), int(r.right-r.left), int(r.bottom-r.top), under)
+	labBg := mixClr(under, clrText, 0.20)
+	valBg := mixClr(under, 0, 0.30)
+	border := mixClr(under, clrText, 0.22)
+	labTxt := mixClr(clrText, under, 0.15)
+	if !curTheme.dark {
+		labBg, valBg, border, labTxt = mixClr(under, 0, 0.10), clrPanelBg, mixClr(under, 0, 0.18), clrSubText
+	}
+	x := int(r.left)
+	top, H := int(r.top), int(r.bottom-r.top)
+	for i, p := range chipPairs() {
+		if i > 0 {
+			x += si(chipGap)
+		}
+		lw, lh := textSize(hdc, hFont, p.label)
+		vw, _ := textSize(hdc, hFont, p.value)
+		lbw, vbw := lw+2*si(chipPadL), vw+2*si(chipPadV)
+		if x+lbw+vbw > int(r.right) { // 넘치면 그만 그림
+			break
+		}
+		fillRound(hdc, x, top, lbw+vbw, H, valBg, border, si(6))  // 바깥 + 값 칸
+		fillRound(hdc, x+1, top+1, lbw, H-2, labBg, labBg, si(5)) // 이름표 칸 (왼쪽 둥근 모서리)
+		fillBox(hdc, x+lbw-si(4), top+1, si(4), H-2, labBg)       // 이름표 칸 오른쪽은 각지게
+		ty := top + (H-lh)/2
+		drawTextAt(hdc, hFont, labTxt, x+si(chipPadL), ty, p.label)
+		drawTextAt(hdc, hFont, clrText, x+lbw+si(chipPadV), ty, p.value)
+		x += lbw + vbw
+	}
+}

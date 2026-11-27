@@ -255,7 +255,7 @@ func createControls() {
 	hTitle = mk("STATIC", "", SS_LEFT|0x0200 /*SS_CENTERIMAGE: 위아래 가운데*/ |0x4000 /*SS_ENDELLIPSIS*/, 0, 0)
 	hFontTitle = makeFont(15, true)
 	c(pSendMessageW, hTitle, WM_SETFONT, hFontTitle, 1)
-	hChip = mk("STATIC", "", 0x0001|0x0200|0x4000 /*SS_CENTER|SS_CENTERIMAGE|SS_ENDELLIPSIS: 한 줄, 넘치면 …*/, 0, 0)
+	hChip = mk("STATIC", "", 0x000D /*SS_OWNERDRAW: 명령어·리습 붙은 꼬리표로 직접 그림 (ui2.go)*/, 0, 0)
 	hDesc = mk("STATIC", "", SS_LEFT, 0, 0)
 	grey[hDesc] = true
 	hOptGroup = mk("STATIC", T("app.006"), SS_LEFT, 0, 0)
@@ -497,10 +497,10 @@ func layout() {
 		mv(hFavBtn, rx-32, cy-15, 32, 30)
 		rx -= 32 + 10
 	}
-	chip := getText(hChip)
-	show(hChip, chip != "")
-	chipW := min(textW(hChip, hFont)+16, max(rx-sx, 60))
-	mv(hChip, rx-chipW, cy-10, chipW, 20)
+	pairs := chipPairs()
+	show(hChip, len(pairs) > 0)
+	chipW := min(chipTagsW(pairs), max(rx-sx, 60))
+	mv(hChip, rx-chipW, cy-13, chipW, 26)
 	c(pInvalidateRect, hChip, 0, 1) // 폭·위치가 바뀌면 예전 글자 조각이 남지 않게 전체를 다시 그림
 
 	// 맨 아래: 마지막 결과 한 줄 + 실행 기록 펼치기 / 펼친 기록 칸

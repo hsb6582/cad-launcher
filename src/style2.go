@@ -171,6 +171,10 @@ func drawButton(lp uintptr) uintptr {
 		drawCadItem(dis)
 		return 1
 	}
+	if h != 0 && h == hChip { // 명령어·리습 꼬리표 (ui2.go)
+		drawChipTags(dis)
+		return 1
+	}
 	if h != hRun && !flatBtn[h] {
 		return 0
 	}
