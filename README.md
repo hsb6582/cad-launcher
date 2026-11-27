@@ -5,8 +5,8 @@
 
 ## 구성
 ```
-CAD런처/
-├─ CAD런처.exe           프로그램
+전자제도도우미/
+├─ 전자제도도우미.exe     프로그램
 ├─ catalog.json          리습 목록 (기능 분류 › 리습 › 명령어, 설명서, 옵션)
 ├─ lsp/
 │  ├─ GGv2.lsp           도곽 기준 기술검토 자동 정리
@@ -22,7 +22,7 @@ CAD런처/
 ```
 
 ## 사용
-1. `CAD런처.exe` 실행 → AutoCAD LT를 켠 상태에서 **창 찾기**
+1. `전자제도도우미.exe` 실행 → AutoCAD LT를 켠 상태에서 **창 찾기**
 2. 왼쪽 목록에서 **기능 분류 › 리습 › 명령어** 선택 → 오른쪽 **설명서** 확인
 3. 옵션이 있는 명령은 값을 조정 → **▶ 실행**
 
@@ -78,7 +78,7 @@ CAD런처/
 ## GitHub 자동 업데이트
 1. 업데이트 저장소는 `hsb6582/cad-launcher`(공개)로 프로그램에 고정되어 있습니다. 자동 확인 켜기/끄기는 **설정** 창에서 바꿀 수 있습니다.
 2. 런처를 켤 때마다(또는 **업데이트 확인**을 누를 때) 저장소와 비교합니다.
-   바뀐 파일(`lsp/`, `catalog.json`, `CAD런처.exe`, `README.md`)만 내려받고, 기존 파일은 `_backup/날짜/`에 보관합니다.
+   바뀐 파일(`lsp/`, `catalog.json`, `전자제도도우미.exe`, `README.md`)만 내려받고, 기존 파일은 `_backup/날짜/`에 보관합니다.
 3. 이 PC에서 직접 고친 파일은 덮어쓰기 전에 따로 물어봅니다.
 4. 런처 자신이 바뀌면 교체한 뒤 다시 시작할지 묻습니다.
 
@@ -88,5 +88,5 @@ CAD런처/
 ## 소스 수정 후 다시 빌드 (선택)
 Go 설치 후 `src` 폴더에서:
 ```
-set GOOS=windows& set GOARCH=amd64& go build -ldflags "-H windowsgui -s -w" -o CAD런처.exe
+set GOOS=windows& set GOARCH=amd64& go build -ldflags "-H windowsgui -s -w" -o 전자제도도우미.exe
 ```

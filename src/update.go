@@ -215,7 +215,7 @@ const fixedRepo = "hsb6582/cad-launcher"
 
 // 받을 브랜치는 빌드할 때 정한다 (기본 = 배포용 main)
 //
-//	테스트용: -ldflags "-X main.fixedBranch=dev -X main.exeRepoName=CAD런처-테스트.exe"
+//	테스트용: -ldflags "-X main.fixedBranch=dev -X main.exeRepoName=전자제도도우미-테스트.exe"
 var fixedBranch = "main"
 
 func init() {

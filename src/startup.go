@@ -39,7 +39,7 @@ func isStartup(id string) bool {
 // launcher_startup.lsp 다시 쓰기 (목록에서 사라진 리습은 빠짐)
 func writeStartupLoader() error {
 	var sb strings.Builder
-	sb.WriteString(";; CAD런처가 자동으로 만드는 파일입니다. 직접 고치지 마세요.\n")
+	sb.WriteString(";; 전자제도 도우미가 자동으로 만드는 파일입니다. 직접 고치지 마세요.\n")
 	sb.WriteString(";; 런처에서 '모든 도면에서 자동 로드'를 체크한 리습을 도면을 열 때마다 로드합니다.\n")
 	sb.WriteString("(setq *CADLAUNCHER-EXE* " + lispValue(Option{Type: "file"}, exePath) + ")\n")
 	var keep []string

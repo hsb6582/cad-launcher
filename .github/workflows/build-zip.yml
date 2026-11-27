@@ -1,9 +1,9 @@
 name: Build zip
 
 # 런처 두 가지를 각각 따로 zip 으로 올린다 (압축만 풀면 바로 사용).
-#  - CAD런처-네이티브 : 저장소 맨 위 CAD런처.exe (src/, Windows 기본 화면). 실행 때마다 exe 까지 자동 업데이트.
+#  - 전자제도도우미 : 저장소 맨 위 전자제도도우미.exe (src/, Windows 기본 화면). 실행 때마다 exe 까지 자동 업데이트.
 #  - CAD런처-WebView2 : src-modern 을 빌드한 CAD런처-WebView2.exe (웹 화면). exe 는 자동 업데이트 안 함.
-#    네이티브 업데이트가 저장소의 CAD런처.exe 로 덮어쓰지 않도록 exe 이름을 다르게 한다.
+#    네이티브 업데이트가 저장소의 전자제도도우미.exe 로 덮어쓰지 않도록 exe 이름을 다르게 한다.
 # (전에는 Inno Setup 설치 파일이었는데, 서명 없는 설치 파일이
 # 회사 보안 프로그램(Cortex XDR)에 계속 막혀서 zip 으로 바꿈)
 # 받는 곳: Actions → 가장 최근 "Build zip" 실행 → 아래 Artifacts
@@ -15,7 +15,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "CAD런처.exe"
+      - "전자제도도우미.exe"
       - "catalog.json"
       - "lsp/**"
       - "tools/**"
@@ -33,15 +33,15 @@ jobs:
 
       - name: Put files together
         run: |
-          out="dist/CAD런처-네이티브"
+          out="dist/전자제도도우미"
           mkdir -p "$out"
-          cp CAD런처.exe catalog.json README.md "$out/"
+          cp 전자제도도우미.exe catalog.json README.md "$out/"
           cp -r lsp tools "$out/"
 
       - name: Upload zip
         uses: actions/upload-artifact@v4
         with:
-          name: CAD런처-네이티브
+          name: 전자제도도우미
           path: dist/
 
   webview2:

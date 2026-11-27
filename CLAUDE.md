@@ -1,15 +1,18 @@
 # cad-launcher 작업 규칙 (Claude용)
 
-AutoCAD LT 2026 리습 런처. 각 PC의 CAD런처.exe 가 실행 때마다 이 저장소(main)에서
-`lsp/`, `catalog.json`, `CAD런처.exe`, `README.md` 변경분을 자동으로 받는다. 공개 저장소이므로 도면·개인정보·토큰은 올리지 않는다.
+AutoCAD LT 2026 리습 런처 '전자제도 도우미'(전자제도도우미.exe, 화면에 보이는 이름은 src/texts.txt 의 app.100). 각 PC의 전자제도도우미.exe 가 실행 때마다 이 저장소(main)에서
+`lsp/`, `catalog.json`, `전자제도도우미.exe`, `README.md` 변경분을 자동으로 받는다. 공개 저장소이므로 도면·개인정보·토큰은 올리지 않는다.
 
 ## 브랜치: dev = 테스트, main = 배포 (가장 중요)
 - 사용자가 "개발버전에 반영"이라고 하면 `dev` 브랜치에 반영하라는 뜻이다 (작업 세션 브랜치가 따로 있어도 결과는 dev 에 올린다).
-- 평소 모든 작업은 `dev` 브랜치에 커밋하고 `git -c push.negotiate=true push origin dev` 로 올린다. 사용자의 테스트용 런처(CAD런처-테스트.exe)만 dev 를 받는다.
+- 평소 모든 작업은 `dev` 브랜치에 커밋하고 `git -c push.negotiate=true push origin dev` 로 올린다. 사용자의 테스트용 런처(전자제도도우미-테스트.exe)만 dev 를 받는다.
 - `main` 은 모든 PC가 받는 배포용이다. 사용자가 "배포해줘"처럼 분명히 지시할 때만 바꾼다. 그 전에는 main 에 push 하지 않는다.
 - 배포 절차: dev 를 main 에 merge → **`python dev/release_filter.py` 로 '개발 중' 기능을 목록에서 제외(반드시)** → main 에서 배포용 exe 빌드(아래 '배포용') → 커밋·`push origin main` → main 을 다시 dev 에 merge 해서 두 브랜치를 맞춘다.
   - '개발 중' = 분류 이름·기능 이름·리습 설명에 '개발 중'이 들어 있는 것. 배포용 catalog.json 에서만 빼고 lsp 파일은 그대로 둔다.
   - main 을 dev 에 merge 할 때 dev 의 개발 중 항목이 지워지지 않게, merge 후 `git checkout HEAD^1 -- catalog.json` (dev 쪽 catalog 복원) → `git commit --amend --no-edit` 로 merge 커밋에 포함시킨다.
+  - **이름 변경 후 첫 배포 때만**: main 에 옛 이름 `CAD런처.exe` 를 새로 빌드한 전자제도도우미.exe 와 같은 내용으로 함께 올린다.
+    (옛 프로그램은 CAD런처.exe 를 찾아 자신을 바꾸고, 바뀐 뒤에는 전자제도도우미.exe 를 따라간다.) 모든 PC가 넘어온 뒤 사용자에게 물어 지운다.
+    dev 의 `CAD런처-테스트.exe` 도 같은 이유로 둔 옛 이름 복사본이다 (테스트 exe 를 다시 빌드하면 함께 복사해 둔다).
   - 개발 중 기능을 배포에 넣으려면 머리말·catalog 에서 '[개발 중]' 표시를 먼저 지운다 (사용자 지시가 있을 때만).
 
 ## 목록 구조 (catalog.json v2)
@@ -45,11 +48,11 @@ catalog.json 에서 해당 항목만 python 한두 줄로 수정 → `export` �
 - 리습(lsp/) 안의 명령행 문구는 이 방식에 넣지 않는다.
 
 ## 런처 코드 (src/, Go 표준 라이브러리 + Win32, 외부 라이브러리 없음)
-- 테스트용 (dev 에서 평소): `cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w -X main.fixedBranch=dev -X main.exeRepoName=CAD런처-테스트.exe" -o ../CAD런처-테스트.exe .`
-- 배포용 (배포 지시 때 main 에서만): `cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w" -o ../CAD런처.exe .`
-- dev 에서는 CAD런처.exe(배포용)를 다시 빌드하지 않는다. 코드를 안 바꿨으면 exe 를 다시 빌드하지 않는다. Windows에서 실행 테스트는 못 하므로 사용자에게 확인을 부탁한다.
+- 테스트용 (dev 에서 평소): `cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w -X main.fixedBranch=dev -X main.exeRepoName=전자제도도우미-테스트.exe" -o ../전자제도도우미-테스트.exe .`
+- 배포용 (배포 지시 때 main 에서만): `cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w" -o ../전자제도도우미.exe .`
+- dev 에서는 전자제도도우미.exe(배포용)를 다시 빌드하지 않는다. 코드를 안 바꿨으면 exe 를 다시 빌드하지 않는다. Windows에서 실행 테스트는 못 하므로 사용자에게 확인을 부탁한다.
 
-## 네이티브 우선 (src/ = CAD런처.exe)
+## 네이티브 우선 (src/ = 전자제도도우미.exe)
 - 런처 코드 작업은 항상 네이티브 버전(src/)에만 한다. WebView2 버전(src-modern/, CAD런처-WebView2.exe)은 사용자가 요청할 때만 고친다.
 - 리습(lsp/)·catalog.json 은 두 버전이 함께 받으므로 평소대로 고치면 된다.
 - 기능 차이(예: MATX/PAVQ 엑셀 자동 작성은 네이티브에만 있음)를 사용자에게 설명할 때만 WebView2 를 언급한다.
