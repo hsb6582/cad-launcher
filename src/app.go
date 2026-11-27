@@ -269,7 +269,7 @@ func createControls() {
 	hFavBtn = mk("BUTTON", "☆", WS_TABSTOP, 0, idFav)                    // 설명서 머리 줄 즐겨찾기 별 (favorites.go)
 	show(hFavBtn, false)
 	hTools = mk("BUTTON", T("app.010"), WS_TABSTOP, 0, idTools)
-	hStartup = mk("BUTTON", T("app.011"), BS_OWNERDRAW|WS_TABSTOP, 0, idStartup) // 켜고 끄는 스위치로 그림 (ui2.go)
+	hStartup = mk("BUTTON", T("app.011"), BS_AUTOCHECKBOX|WS_TABSTOP, 0, idStartup) // 토글 스위치로 그림 (toggle.go)
 
 	// 아래: 마지막 결과 한 줄 + 실행 기록 펼치기
 	hStatus = mk("STATIC", "", SS_LEFT|0x0100 /*SS_NOTIFY*/ |0x4000 /*SS_ENDELLIPSIS*/, 0, 0)
@@ -453,7 +453,7 @@ func layout() {
 			cw := 240
 			switch oc.opt.Type {
 			case "check":
-				mv(oc.ctrl, x+155, oy+2, 24, 22)
+				mv(oc.ctrl, x+155, oy+1, swTrackW+4, 24) // 토글 스위치
 			case "choice":
 				mv(oc.ctrl, x+155, oy, cw, 300)
 			default:
@@ -480,7 +480,7 @@ func layout() {
 	mv(hGuide, rightX, y, rw, mh)
 	cy := barTop + barH/2
 	sx := rightX
-	swW := 36 + 10 + strW(getText(hStartup), hFont) + 8
+	swW := swTrackW + swGap + strW(getText(hStartup), hFont) + 8
 	mv(hStartup, sx, cy-13, swW, 26)
 	if c(pIsWindowVisible, hStartup) != 0 {
 		sx += swW + 14
@@ -844,8 +844,6 @@ func onCommand(id, code int) {
 		st.LogOpen = !st.LogOpen
 		layout()
 	case id == idStartup:
-		startupOn = !startupOn // 스위치 (ui2.go) - toggleStartup 이 isChecked 로 읽음
-		c(pInvalidateRect, hStartup, 0, 0)
 		toggleStartup()
 	case id == idReset:
 		resetOptions()
@@ -857,6 +855,9 @@ func onCommand(id, code int) {
 func wndProc(h, msg, wp, lp uintptr) uintptr {
 	switch msg {
 	case WM_COMMAND:
+		if (wp>>16)&0xFFFF == BN_CLICKED && isToggle(lp) {
+			toggleFlip(lp) // 토글 스위치: 처리하기 전에 켬/끔을 뒤집음
+		}
 		onCommand(int(wp&0xFFFF), int((wp>>16)&0xFFFF))
 		return 0
 	case WM_NOTIFY:

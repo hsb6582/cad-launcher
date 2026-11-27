@@ -144,7 +144,13 @@ func btnProc(h, msg, wp, lp uintptr) uintptr {
 		c(pInvalidateRect, h, 0, 0)
 	case WM_LBUTTONDBLCLK:
 		msg = WM_LBUTTONDOWN // 빠르게 두 번 눌러도 두 번 다 클릭으로 (▲ 위로 등)
+	case WM_TIMER:
+		if wp == toggleTimerID {
+			toggleTick(h)
+			return 0
+		}
 	case WM_DESTROY:
+		delete(toggles, h)
 		old := oldProc[h]
 		delete(oldProc, h)
 		delete(flatBtn, h)
@@ -176,7 +182,7 @@ func drawButton(lp uintptr) uintptr {
 		drawRunButton(dis)
 		return 1
 	}
-	if h == hStartup { // 자동 로드 스위치 (ui2.go)
+	if isToggle(h) { // 체크박스 → 토글 스위치 (toggle.go)
 		drawSwitch(dis)
 		return 1
 	}

@@ -105,6 +105,9 @@ func dlgProc(h, msg, wp, lp uintptr) uintptr {
 	switch msg {
 	case WM_COMMAND:
 		id, code := int(wp&0xFFFF), int((wp>>16)&0xFFFF)
+		if code == BN_CLICKED && isToggle(lp) {
+			toggleFlip(lp) // 토글 스위치 (toggle.go)
+		}
 		if d != nil {
 			if id == IDCANCEL {
 				d.done = true
@@ -458,8 +461,9 @@ func advancedDialog() {
 			mv(h, cl.x, cl.y, colW, 24)
 			cl.y += 26
 			if note != 0 {
-				nh := noteH(note, colW-20)
-				mv(note, cl.x+20, cl.y-2, colW-20, nh)
+				ind := swTrackW + swGap // 설명은 스위치 글자 아래에 맞춤
+				nh := noteH(note, colW-ind)
+				mv(note, cl.x+ind, cl.y-2, colW-ind, nh)
 				cl.y += nh + 2
 			}
 		}

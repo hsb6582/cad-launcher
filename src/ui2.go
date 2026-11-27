@@ -353,41 +353,7 @@ func paintHeroIcon(hdc uintptr) {
 	c(pSelectObject, hdc, old)
 }
 
-// ───────────── 자동 로드 스위치 ─────────────
-var startupOn bool
-
-func drawSwitch(dis *drawItemStruct) {
-	hdc := dis.hDC
-	r := dis.rcItem
-	under := ctlBg(dis.hwndItem)
-	fillBox(hdc, int(r.left), int(r.top), int(r.right-r.left), int(r.bottom-r.top), under)
-	H := int(r.bottom - r.top)
-	tw, th := si(36), si(20)
-	cv := newCanvas(tw+2, th+2, under)
-	on := startupOn
-	track := clrBtnBorder
-	if on {
-		_, track = runColors(false, false)
-	}
-	if dis.itemState&ODS_DISABLED != 0 {
-		track = clrDisBg
-	}
-	ftw, fth := float64(tw), float64(th)
-	cv.paint(func(x, y float64) float64 { return aa(sdRoundRect(x, y, 1, 1, ftw+1, fth+1, fth/2)) }, solid(track))
-	kr := fth/2 - float64(si(3))
-	kx := 1 + fth/2
-	if on {
-		kx = 1 + ftw - fth/2
-	}
-	cv.paint(func(x, y float64) float64 { return aa(math.Hypot(x-kx, y-(1+fth/2)) - kr) }, solid(white))
-	cv.blit(hdc, int(r.left), int(r.top)+(H-th-2)/2)
-	clr := clrSubText
-	if hotBtn == dis.hwndItem {
-		clr = clrText
-	}
-	_, lh := textSize(hdc, hFont, getText(dis.hwndItem))
-	drawTextAt(hdc, hFont, clr, int(r.left)+tw+si(10), int(r.top)+(H-lh)/2, getText(dis.hwndItem))
-}
+// 켜고 끄는 스위치는 toggle.go
 
 // ───────────── 작업할 도면 선택칸 ─────────────
 type measureItemStruct struct {
