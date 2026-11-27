@@ -12,6 +12,7 @@ import (
 	"math"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -28,7 +29,70 @@ type listRow struct {
 	fav   bool   // 즐겨찾기 묶음 머리 / 그 안의 바로가기
 	sub   bool   // 중간 분류 아래 기능 (한 칸 들여씀)
 	node  nodeRef
-	y, h  int // 내용 좌표 (장치 픽셀)
+	y, h  int    // 내용 좌표 (장치 픽셀), h = 원래 높이
+	vh    int    // 지금 보이는 높이 (펼치기·접기 애니메이션 중에는 h 보다 작음)
+	gkey  string // 이 줄을 감춘 상위 분류(또는 즐겨찾기) 접기 키
+	ckey  string // 이 줄을 감춘 중간 분류 접기 키
+}
+
+// ───────────── 펼치기·접기 애니메이션 ─────────────
+// 머리를 누르면 그 아래 줄들의 높이가 0↔원래 높이로 부드럽게 변한다 (약 0.18초, 처음 빠르고 끝에 느려짐)
+type listAnim struct {
+	start time.Time
+	open  bool
+}
+
+const (
+	animDur     = 180 * time.Millisecond
+	animTimerID = 7
+)
+
+var (
+	lanims             = map[string]listAnim{}
+	pKillTimer         = user32.NewProc("KillTimer")
+	pSaveDC            = gdi32.NewProc("SaveDC")
+	pRestoreDC         = gdi32.NewProc("RestoreDC")
+	pIntersectClipRect = gdi32.NewProc("IntersectClipRect")
+)
+
+// 키 하나의 펼침 비율 (0 = 접힘 ~ 1 = 펼침). 애니메이션이 없으면 1
+func animF(k string) float64 {
+	a, ok := lanims[k]
+	if k == "" || !ok {
+		return 1
+	}
+	p := float64(time.Since(a.start)) / float64(animDur)
+	if p > 1 {
+		p = 1
+	}
+	e := 1 - (1-p)*(1-p)*(1-p) // 끝에 느려짐
+	if a.open {
+		return e
+	}
+	return 1 - e
+}
+
+// 접는 중인 묶음은 애니메이션이 끝날 때까지 줄을 남겨 둔다
+func isOpen(k string) bool {
+	_, anim := lanims[k]
+	return !isCollapsed(k) || anim
+}
+
+func startListAnim(k string, open bool) {
+	lanims[k] = listAnim{start: time.Now(), open: open}
+	c(pSetTimer, hList, animTimerID, 15, 0)
+}
+
+func onListAnimTimer() {
+	for k, a := range lanims {
+		if time.Since(a.start) >= animDur {
+			delete(lanims, k)
+		}
+	}
+	if len(lanims) == 0 {
+		c(pKillTimer, hList, animTimerID)
+	}
+	refilterList()
 }
 
 const (
@@ -162,9 +226,9 @@ func buildRows() {
 		if refs := favRefs(); len(refs) > 0 {
 			// 노란 별은 따로 그리므로 문구 앞 ★ 는 뗌 (별이 두 개로 보이지 않게)
 			rows = append(rows, listRow{kind: rowGroup, label: strings.TrimSpace(strings.TrimPrefix(T("fav.001"), "★")), key: "f:", fav: true})
-			if !isCollapsed("f:") {
+			if isOpen("f:") {
 				for _, n := range refs {
-					rows = append(rows, listRow{kind: rowItem, label: n.item().Name, node: n, fav: true})
+					rows = append(rows, listRow{kind: rowItem, label: n.item().Name, node: n, fav: true, gkey: "f:"})
 				}
 			}
 		}
@@ -207,20 +271,28 @@ func buildRows() {
 			continue
 		}
 		rows = append(rows, listRow{kind: rowGroup, label: g.label, key: g.key})
-		if !filtering && isCollapsed(g.key) {
+		if !filtering && !isOpen(g.key) {
 			continue
+		}
+		gk := g.key
+		if filtering {
+			gk = ""
 		}
 		for _, cp := range g.cats {
 			name := cat.Categories[cp.ci].Name
+			ck := ""
 			if !g.top {
-				ck := "c:" + name
-				rows = append(rows, listRow{kind: rowCat, label: name, key: ck})
-				if !filtering && isCollapsed(ck) {
+				ck = "c:" + name
+				rows = append(rows, listRow{kind: rowCat, label: name, key: ck, gkey: gk})
+				if !filtering && !isOpen(ck) {
 					continue
+				}
+				if filtering {
+					ck = ""
 				}
 			}
 			for _, n := range cp.items {
-				rows = append(rows, listRow{kind: rowItem, label: n.item().Name, node: n, sub: !g.top})
+				rows = append(rows, listRow{kind: rowItem, label: n.item().Name, node: n, sub: !g.top, gkey: gk, ckey: ck})
 			}
 		}
 	}
@@ -236,11 +308,12 @@ func buildRows() {
 		case rowItem:
 			rows[i].h = si(36)
 		case rowCat:
-			y += si(2)
+			y += int(float64(si(2)) * animF(rows[i].gkey))
 			rows[i].h = si(32)
 		}
 		rows[i].y = y
-		y += rows[i].h
+		rows[i].vh = int(float64(rows[i].h)*animF(rows[i].gkey)*animF(rows[i].ckey) + 0.5)
+		y += rows[i].vh
 	}
 	lrows = rows
 	lsb.total = y + si(6)
@@ -320,7 +393,7 @@ func ensureRowVisible(i int) {
 func rowAt(y int) int {
 	y += lsb.pos
 	for i, r := range lrows {
-		if y >= r.y && y < r.y+r.h {
+		if y >= r.y && y < r.y+r.vh {
 			return i
 		}
 	}
@@ -350,7 +423,9 @@ func activateRow(i int) {
 		if searchText() != "" || lmode != lmAll {
 			return // 걸러 보는 중에는 늘 펼침
 		}
-		setCollapsed(r.key, !isCollapsed(r.key))
+		open := isCollapsed(r.key) // 지금 접혀 있으면 펼침
+		setCollapsed(r.key, !open)
+		startListAnim(r.key, open)
 		refilterList()
 	}
 }
@@ -434,10 +509,15 @@ func paintList(hdc uintptr, W, H int) {
 	}
 	for i, r := range lrows {
 		y := r.y - lsb.pos
-		if y+r.h < 0 || y > H {
+		if y+r.h < 0 || y > H || r.vh <= 0 {
 			continue
 		}
 		hot := i == lhot
+		clip := r.vh < r.h // 펼치기·접기 중: 보이는 높이만큼만 그림
+		if clip {
+			c(pSaveDC, hdc)
+			c(pIntersectClipRect, hdc, 0, uintptr(y), uintptr(W), uintptr(y+r.vh))
+		}
 		switch r.kind {
 		case rowGroup: // 상위 분류: 진한 띠 + 굵은 흰 글씨
 			band := groupBandClr()
@@ -475,6 +555,9 @@ func paintList(hdc uintptr, W, H int) {
 			}
 		case rowItem:
 			paintItemRow(hdc, r, y, cw, i == lsel, hot)
+		}
+		if clip {
+			c(pRestoreDC, hdc, ^uintptr(0)) // -1: 바로 전 SaveDC 로
 		}
 	}
 	lsb.paint(hdc, W, H)
@@ -575,6 +658,11 @@ func listProc(h, msg, wp, lp uintptr) uintptr {
 		return 0
 	case WM_SIZE:
 		listRelayout()
+		return 0
+	case WM_TIMER:
+		if wp == animTimerID {
+			onListAnimTimer()
+		}
 		return 0
 	case 0x0087: // WM_GETDLGCODE: 위·아래 화살표는 목록이 받음
 		return 0x0001 // DLGC_WANTARROWS
