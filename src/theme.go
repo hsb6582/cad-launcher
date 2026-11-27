@@ -1,6 +1,6 @@
 package main
 
-// 화면 색상: 차콜 다크 / 크림 / 슬레이트(#454F61, 기본·켤 때 고정). 설정 버튼 옆 전구 버튼으로 차례로 바꾼다.
+// 화면 색상: 차콜 다크 / 크림 / 슬레이트(#454F61, 최초 실행 기본). 설정 버튼 옆 전구 버튼으로 차례로 바꾼다.
 //  - 누르면 바로 바뀌고, launcher_state.json 의 "theme" 에 저장된다.
 //  - 다크에서는 체크박스·옵션 묶음 테두리를 Windows 기본(밝은) 테마 대신 직접 색으로 그리게 하고,
 //    입력칸·목록·스크롤바는 Windows 의 어두운 테마(DarkMode_Explorer / DarkMode_CFD)를 입힌다.
@@ -60,7 +60,7 @@ var themes = []theme{
 		btn: rgbHex(0x5A657A), btnBorder: rgbHex(0x75819A), btnHover: rgbHex(0x63738D)},
 }
 
-// 런처를 켤 때 항상 쓰는 화면 색상 (저장된 값과 상관없이). 전구 버튼은 켜져 있는 동안만 바꾼다.
+// 최초 실행(저장된 화면 색상 없음) 때 쓰는 색상. 전구 버튼으로 바꾸면 그 값이 저장된다.
 const startTheme = "slate"
 
 var (
