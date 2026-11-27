@@ -224,8 +224,8 @@ func createControls() {
 	show(hLblKw, false)
 	show(hKeyword, false)
 	hFind = mk("BUTTON", "↻", WS_TABSTOP, 0, idFind)
-	hCadLbl = mk("STATIC", T("app.101"), SS_LEFT, 0, 0) // CAD 창 선택칸 앞 이름표 (흐린 글씨)
-	grey[hCadLbl] = true
+	hCadLbl = mk("STATIC", T("app.101"), SS_LEFT, 0, 0) // CAD 창 선택칸 앞 이름표 ('작업 목록'과 같은 굵은 글씨)
+	c(pSendMessageW, hCadLbl, WM_SETFONT, hFontSec, 1)
 	hWinCombo = mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP, 0, idWinCombo)
 	hCadState = mk("STATIC", "", SS_LEFT|0x4000 /*SS_ENDELLIPSIS*/, 0, 0)
 
@@ -398,8 +398,8 @@ func layout() {
 	mv(hUpdate, W-90, 10-updPad, 82+updPad, 26+updPad) // 위·오른쪽 여백에 업데이트 알림 빨간 점 (style2.go)
 	mv(hAdvanced, W-160, 10, 64, 26)
 	mv(hThemeBtn, W-198, 10, 32, 26)
-	lw := textW(hCadLbl, hFont) + 4
-	mv(hCadLbl, 12, 15, lw, 20)
+	lw := textW(hCadLbl, hFontSec) + 4
+	mv(hCadLbl, 12, 14, lw, 22)
 	titleEndX = 12 + lw - 6 // 점은 이름표 오른쪽 10px
 	cx := titleEndX + 30
 	// 상태 문구 칸: 두 문구 중 긴 쪽 폭 (문구가 바뀌어도 선택칸이 출렁이지 않게)
