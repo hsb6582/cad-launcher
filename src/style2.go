@@ -52,6 +52,9 @@ var (
 	clrSelBg     = RGB(0xF6, 0xE4, 0xDC) // 목록 선택 항목 바탕
 	clrSelText   = RGB(0x7A, 0x3E, 0x2A) // 목록 선택 항목 글자
 	clrHotBg     = RGB(0xFA, 0xF6, 0xEF) // 목록에 마우스를 올린 항목 바탕
+	clrBtnBg     = RGB(0xFF, 0xFF, 0xFF) // 일반 버튼(실행 외) 바탕 - 창 배경보다 밝게 (theme.go)
+	clrBtnBorder = RGB(0xE0, 0xD9, 0xCC)
+	clrBtnHover  = RGB(0xFB, 0xEF, 0xEA)
 )
 
 // ───────────── 창 제목 표시줄·테두리 색 ─────────────
@@ -158,8 +161,24 @@ func btnProc(h, msg, wp, lp uintptr) uintptr {
 func drawButton(lp uintptr) uintptr {
 	dis := (*drawItemStruct)(unsafe.Pointer(lp))
 	h := dis.hwndItem
+	if h != 0 && h == hWinCombo { // 작업할 도면 선택칸 (ui2.go)
+		drawCadItem(dis)
+		return 1
+	}
 	if h != hRun && !flatBtn[h] {
 		return 0
+	}
+	if isChip(h) { // 목록 보기 버튼 (listpane.go)
+		drawChip(dis)
+		return 1
+	}
+	if h == hRun { // 그라데이션·그림자 실행 버튼 (ui2.go)
+		drawRunButton(dis)
+		return 1
+	}
+	if h == hStartup { // 자동 로드 스위치 (ui2.go)
+		drawSwitch(dis)
+		return 1
 	}
 	hdc := dis.hDC
 	c(pFillRect, hdc, uintptr(P(&dis.rcItem)), hBgBrush) // 둥근 모서리 바깥은 창 배경색
@@ -188,14 +207,14 @@ func drawButton(lp uintptr) uintptr {
 			border = clrAccentDk
 		}
 	} else {
-		fill, border, txt = clrPanelBg, clrBorder, clrText
+		fill, border, txt = clrBtnBg, clrBtnBorder, clrText
 		switch {
 		case disabled:
 			fill, border, txt = clrBg, clrBorder, clrSubText
 		case pressed:
 			fill, border, txt = clrPressBg, clrAccent, clrHoverTxt
 		case hot:
-			fill, border, txt = clrHoverBg, clrAccent, clrHoverTxt
+			fill, border, txt = clrBtnHover, clrAccent, clrHoverTxt
 		case focus:
 			border = clrAccent
 		}
@@ -210,6 +229,18 @@ func drawButton(lp uintptr) uintptr {
 	c(pSetBkMode, hdc, TRANSPARENT)
 	c(pSetTextColor, hdc, txt)
 	label := getText(h)
+	if h == hFavBtn { // 즐겨찾기 별: 조금 큰 글씨, 즐겨찾기면 노란 별
+		font = hFontBold
+		if getText(h) == "★" {
+			c(pSetTextColor, hdc, favStarClr)
+		}
+	}
+	if h == hFind { // 다시 찾기: 새로고침 아이콘
+		font, label = hFontIcon, "\uE72C"
+	}
+	if h == hAdvanced { // 설정: 톱니바퀴 아이콘
+		font, label = hFontIcon, "\uE713"
+	}
 	if h == hThemeBtn { // 전구: 다크(불 꺼짐)는 회색, 크림(불 켜짐)은 노란색
 		font, label = hFontIcon, "\uE82F"
 		switch curTheme.key {
@@ -221,7 +252,9 @@ func drawButton(lp uintptr) uintptr {
 	}
 	oldFont := c(pSelectObject, hdc, font)
 	rc := box
-	c(pDrawTextW, hdc, uintptr(P(ws(label))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
+	if h != hFavBtn || !drawGlyphCentered(hdc, label, box) {
+		c(pDrawTextW, hdc, uintptr(P(ws(label))), ^uintptr(0), uintptr(P(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
+	}
 	c(pSelectObject, hdc, oldFont)
 	if h == hUpdate && updateAvail {
 		// 버튼 오른쪽 위 모서리에 걸친 빨간 점 + 둘레에 배경색 테두리
@@ -292,67 +325,45 @@ func paintFrames(h uintptr) {
 	c(pEndPaint, h, uintptr(P(&ps)))
 }
 
-// ───────────── 목록(트리) 선택 색 ─────────────
-type nmTVCustomDraw struct {
-	hdr        nmhdr
-	drawStage  uint32
-	hdc        uintptr
-	rc         rectT
-	itemSpec   uintptr
-	itemState  uint32
-	itemlParam uintptr
-	clrText    uint32
-	clrTextBk  uint32
-	level      int32
-}
-
+// 목록 색 (화면 색상을 바꿀 때) - 목록은 listpane.go 가 직접 그림
 func styleTree() {
-	c(pSendMessageW, hList, TVM_SETITEMHEIGHT, s(24), 0)
-	c(pSendMessageW, hList, TVM_SETTEXTCOLOR, 0, clrText)
-	c(pSendMessageW, hList, TVM_SETBKCOLOR, 0, clrPanelBg)
+	if hList != 0 {
+		c(pInvalidateRect, hList, 0, 0)
+	}
 }
 
-func treeCustomDraw(lp uintptr) uintptr {
-	cd := (*nmTVCustomDraw)(unsafe.Pointer(lp))
-	switch cd.drawStage {
-	case CDDS_PREPAINT:
-		return CDRF_NOTIFYITEM
-	case CDDS_ITEMPREPAINT:
-		switch {
-		case cd.itemState&CDIS_SELECTED != 0:
-			cd.itemState &^= CDIS_SELECTED | CDIS_FOCUS | CDIS_HOT // 탐색기 테마의 파란 선택 표시 대신
-			cd.clrText = uint32(clrSelText)
-			cd.clrTextBk = uint32(clrSelBg)
-		case cd.itemState&CDIS_HOT != 0:
-			cd.itemState &^= CDIS_HOT
-			cd.clrTextBk = uint32(clrHotBg)
-		}
-		return 0x10 // CDRF_NOTIFYPOSTPAINT: 이름 옆에 명령어를 흐린 색으로 덧그림
-	case 0x10002: // CDDS_ITEMPOSTPAINT
-		n, ok := itemNode[cd.itemSpec]
-		if !ok || n.kind != nkItem {
-			break
-		}
-		var r struct {
-			h    uintptr
-			_, _ int32
-		}
-		r.h = cd.itemSpec
-		if c(pSendMessageW, hList, 0x1104 /*TVM_GETITEMRECT*/, 1, uintptr(unsafe.Pointer(&r))) == 0 {
-			break
-		}
-		rc := (*rectT)(unsafe.Pointer(&r))
-		t := cmdID(n.item().Command)
-		old := c(pSelectObject, cd.hdc, hFont)
-		c(pSetBkMode, cd.hdc, TRANSPARENT)
-		clr := clrSubText
-		if cd.itemState&CDIS_SELECTED != 0 {
-			clr = clrSelText
-		}
-		c(pSetTextColor, cd.hdc, clr)
-		tr := rectT{rc.right + int32(s(8)), rc.top, cd.rc.right, rc.bottom}
-		c(pDrawTextW, cd.hdc, uintptr(P(ws(t))), ^uintptr(0), uintptr(P(&tr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|0x8000 /*DT_END_ELLIPSIS*/)
-		c(pSelectObject, cd.hdc, old)
+// ───────────── 글자 하나(별 등)를 버튼 정중앙에 ─────────────
+// DrawText 의 가운데 맞춤은 글꼴의 줄 높이 기준이라 ★ 처럼 기호 글자는 위아래·좌우로 치우친다.
+// 글자의 실제 잉크 영역(GetGlyphOutline 치수)을 재서 그 가운데가 상자 가운데에 오도록 찍는다.
+var (
+	pGetGlyphOutlineW = gdi32.NewProc("GetGlyphOutlineW")
+	pTextOutW         = gdi32.NewProc("TextOutW")
+	pSetTextAlign     = gdi32.NewProc("SetTextAlign")
+)
+
+type glyphMetrics struct {
+	blackBoxX, blackBoxY uint32
+	originX, originY     int32
+	cellIncX, cellIncY   int16
+}
+
+func drawGlyphCentered(hdc uintptr, label string, box rectT) bool {
+	r := []rune(label)
+	if len(r) != 1 {
+		return false
 	}
-	return CDRF_DODEFAULT
+	var gm glyphMetrics
+	mat := [4]int32{1 << 16, 0, 0, 1 << 16} // MAT2 단위 행렬 (FIXED: 정수부가 위 16비트)
+	if c(pGetGlyphOutlineW, hdc, uintptr(r[0]), 0 /*GGO_METRICS*/, uintptr(P(&gm)), 0, 0, uintptr(P(&mat))) == 0xFFFFFFFF {
+		return false
+	}
+	cx := (int(box.left) + int(box.right)) / 2
+	cy := (int(box.top) + int(box.bottom)) / 2
+	x := cx - int(gm.originX) - int(gm.blackBoxX)/2
+	y := cy + int(gm.originY) - int(gm.blackBoxY)/2 // 글자 기준선 (originY 는 기준선에서 잉크 위쪽까지)
+	old := c(pSetTextAlign, hdc, 24 /*TA_BASELINE|TA_LEFT*/)
+	s := ws(label)
+	c(pTextOutW, hdc, uintptr(x), uintptr(y), uintptr(P(s)), 1)
+	c(pSetTextAlign, hdc, old)
+	return true
 }

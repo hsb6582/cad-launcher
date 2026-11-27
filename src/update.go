@@ -74,12 +74,15 @@ var (
 )
 
 func syncTarget(p string) bool {
-	return p == "catalog.json" || p == exeRepoName || p == "README.md" || strings.HasPrefix(p, "lsp/")
+	return p == catalogRepoName || p == exeRepoName || p == "README.md" || strings.HasPrefix(p, "lsp/")
 }
 
 func localFor(p string) string {
 	if p == exeRepoName {
 		return exePath
+	}
+	if p == catalogRepoName { // 베타: 저장소의 catalog_full.json 을 이 PC의 catalog.json 으로
+		return catalogPath
 	}
 	return absPath(p)
 }
@@ -215,16 +218,32 @@ const fixedRepo = "hsb6582/cad-launcher"
 
 // 받을 브랜치는 빌드할 때 정한다 (기본 = 배포용 main)
 //
-//	테스트용: -ldflags "-X main.fixedBranch=dev -X main.exeRepoName=전자제도도우미-테스트.exe"
+//	테스트용: -ldflags "-X main.fixedBranch=dev -X main.exeRepoName=전자제도_도우미-테스트.exe"
 var fixedBranch = "main"
+
+// 받을 목록 파일 (기본 = 배포용 catalog.json, '개발 중' 기능 제외)
+//
+//	베타용: -ldflags "-X main.exeRepoName=전자제도_도우미-베타.exe -X main.catalogRepoName=catalog_full.json"
+//	→ main 의 런처·리습 그대로 + 배포 때 거르기 전 전체 목록(catalog_full.json, '개발 중' 포함)
+var catalogRepoName = "catalog.json"
+
+func isBeta() bool { return catalogRepoName != "catalog.json" }
 
 func init() {
 	if fixedBranch != "main" {
 		appTitle += T("update.003") // 창 제목으로 테스트용 런처임을 구분
+	} else if isBeta() {
+		appTitle += T("update.030") // 베타
 	}
 }
 
 func branch() string { return fixedBranch }
+
+// 배포용(main)은 목록 순서 말고는 이 PC에서 고칠 수 없다:
+// 리습·목록(catalog.json)·README 를 이 PC에서 직접 고쳐도, 업데이트 확인 때 묻지 않고 저장소 내용으로 되돌린다
+// (고친 파일은 _backup 에 보관). 테스트용(dev)은 지금처럼 덮어쓸지 묻는다.
+// 목록 순서는 launcher_state.json 에 따로 저장되므로 영향 없음.
+func lockedRelease() bool { return fixedBranch == "main" }
 
 func fetchPlan(interactive bool) *updatePlan {
 	plan := &updatePlan{interactive: interactive}
@@ -319,6 +338,11 @@ func onUpdateResult() {
 		st.GitHubDate = p.ghDate
 	}
 	saveState()
+	if lockedRelease() && len(p.conflicts) > 0 { // 배포용: 이 PC에서 고친 파일은 묻지 않고 원래대로
+		n := applyUpdates(p.conflicts, true)
+		logf(T("update.029"), n)
+		p.conflicts = nil
+	}
 	if len(p.updates) == 0 && len(p.conflicts) == 0 {
 		setUpdateAvail(false)
 		logf("%s", T("update.009"))
@@ -350,11 +374,12 @@ func onUpdateResult() {
 		}
 	}
 	if len(todo) > 0 {
-		applyUpdates(todo)
+		applyUpdates(todo, false)
 	}
 }
 
-func applyUpdates(files []remoteFile) {
+// quiet: 배포용 되돌리기처럼 안내창 없이 (기록만 남김). 받은 파일 수를 돌려준다.
+func applyUpdates(files []remoteFile, quiet bool) int {
 	backup := filepath.Join(appDir, "_backup", time.Now().Format("20060102-150405"))
 	okN, exeUpdated, catUpdated := 0, false, false
 	for _, f := range files {
@@ -405,7 +430,7 @@ func applyUpdates(files []remoteFile) {
 				logf(T("update.021"), f.Path, err)
 				continue
 			}
-			if f.Path == "catalog.json" {
+			if f.Path == catalogRepoName {
 				catUpdated = true
 			}
 		}
@@ -428,12 +453,15 @@ func applyUpdates(files []remoteFile) {
 			c(pPostMessageW, hMain, WM_CLOSE, 0, 0)
 		}
 	} else if okN > 0 {
-		msgBox(itoa(okN)+T("update.025"), 0x40)
+		if !quiet {
+			msgBox(itoa(okN)+T("update.025"), 0x40)
+		}
 	}
+	return okN
 }
 
 // 로컬에서 고친 목록(catalog.json)을 동기화 기록과 비교해 안내
 func localCatalogChanged() bool {
-	s := st.Synced["catalog.json"]
+	s := st.Synced[catalogRepoName]
 	return s != "" && gitBlobSha(catalogPath) != s
 }

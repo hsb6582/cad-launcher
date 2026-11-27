@@ -1,6 +1,6 @@
 package main
 
-// PAVQ.lsp 가 "--pavq-fill <집계CSV경로>" 인자로 전자제도도우미.exe 를 호출하면
+// PAVQ.lsp 가 "--pavq-fill <집계CSV경로>" 인자로 전자제도_도우미.exe 를 호출하면
 // 그 PAVQ_집계_*.csv 를 복구수량산출서_양식.xlsx 에 채운 뒤 같은 폴더에
 // 복구수량산출서_<도면명>.xlsx 로 저장하고 엑셀로 바로 연다.
 // (예전 PAVQ_FORM.exe/py + C:\MATX-Tools 설치를 대체)

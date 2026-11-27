@@ -67,6 +67,7 @@ var (
 	pGetWindowRect         = user32.NewProc("GetWindowRect")
 	pEnableWindow          = user32.NewProc("EnableWindow")
 	pSetFocus              = user32.NewProc("SetFocus")
+	pGetFocus              = user32.NewProc("GetFocus")
 	pSetCapture            = user32.NewProc("SetCapture")
 	pReleaseCapture        = user32.NewProc("ReleaseCapture")
 	pMapWindowPoints       = user32.NewProc("MapWindowPoints")
@@ -473,8 +474,18 @@ func mv(h uintptr, x, y, w, hh int) {
 	c(pMoveWindow, h, s(x), s(y), s(w), s(hh), 1)
 }
 
-func isChecked(h uintptr) bool { return c(pSendMessageW, h, BM_GETCHECK, 0, 0) == 1 }
+func isChecked(h uintptr) bool {
+	if h != 0 && h == hStartup { // 직접 그리는 스위치 (ui2.go)
+		return startupOn
+	}
+	return c(pSendMessageW, h, BM_GETCHECK, 0, 0) == 1
+}
 func setCheck(h uintptr, b bool) {
+	if h != 0 && h == hStartup {
+		startupOn = b
+		c(pInvalidateRect, h, 0, 0)
+		return
+	}
 	v := uintptr(0)
 	if b {
 		v = 1

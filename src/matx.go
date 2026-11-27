@@ -1,6 +1,6 @@
 package main
 
-// MATX.lsp 가 "--matx-fill <출력폴더>" 인자로 전자제도도우미.exe 를 호출하면
+// MATX.lsp 가 "--matx-fill <출력폴더>" 인자로 전자제도_도우미.exe 를 호출하면
 // (출력폴더)\excel_matched.csv 를 읽어 자재내역.xlsx 양식에 채운 뒤
 // (출력폴더)\자재내역_결과.xlsx 로 저장하고 엑셀로 바로 연다.
 // (예전 mapping_engine.exe + run_after_matx.bat + 파이썬 의존을 대체)
