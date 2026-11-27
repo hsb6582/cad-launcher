@@ -456,16 +456,15 @@ func paintList(hdc uintptr, W, H int) {
 			if !filtering {
 				drawChevron(hdc, cw-si(14), y+r.h/2, !isCollapsed(r.key), groupTextClr())
 			}
-		case rowCat: // 중간 분류: 파란 세로 띠 + 흰 글씨
+		case rowCat: // 중간 분류: 밝은 파랑 세로 띠 + 같은 색 굵은 글씨 (기능 이름 흰 글씨와 구분)
 			if hot && !filtering {
 				fillRound(hdc, si(6), y+si(1), cw-si(8), r.h-si(2), clrHotBg, clrHotBg, si(8))
 			}
-			_, bar := runColors(false, false)
-			bar = mixClr(bar, white, 0.5) // 중간 분류 세로줄: 밝은 파랑
+			bar, txt := catColors()
 			fillRound(hdc, si(12), y+(r.h-si(16))/2, si(3), si(16), bar, bar, si(3))
 			_, th := textSize(hdc, hFontBtnBold, r.label)
 			old := c(pSelectObject, hdc, hFontBtnBold)
-			c(pSetTextColor, hdc, clrText)
+			c(pSetTextColor, hdc, txt)
 			tr := rectT{int32(si(24)), int32(y), int32(cw - si(26)), int32(y + r.h)}
 			c(pDrawTextW, hdc, uintptr(P(ws(r.label))), ^uintptr(0), uintptr(P(&tr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|0x8000)
 			c(pSelectObject, hdc, old)
@@ -682,4 +681,14 @@ func groupTextClr() uintptr {
 		return white
 	}
 	return clrText
+}
+
+// 중간 분류 세로줄·글자 색: 어두운 화면은 밝은 파랑, 크림 화면은 진한 테라코타 (바탕과 대비)
+func catColors() (bar, txt uintptr) {
+	_, b := runColors(false, false)
+	if curTheme.dark {
+		bar = mixClr(b, white, 0.5)
+		return bar, mixClr(b, white, 0.55)
+	}
+	return b, mixClr(b, 0, 0.15)
 }
