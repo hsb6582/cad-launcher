@@ -181,7 +181,7 @@ func logf(format string, a ...interface{}) {
 var chipBrush, chipBrushClr uintptr
 
 func ctlColor(hdc, ctl uintptr) uintptr {
-	if ctl == hChip { // (리습 · 명령어) 꼬리표: 한 톤 다른 바탕 + 흐린 글자
+	if ctl == hChip { // 설명서 머리 줄의 명령어·리습 꼬리표: 한 톤 다른 바탕 + 흐린 글자
 		if chipBrush == 0 || chipBrushClr != clrHotBg {
 			if chipBrush != 0 {
 				c(pDeleteObject, chipBrush)
@@ -384,11 +384,7 @@ func layout() {
 	if c(pIsWindowVisible, hRun) != 0 {
 		tr = max(rw-runW-12, 120)
 	}
-	tw := max(min(textW(hTitle, hFontBold)+6, tr-120), 60)
-	mv(hTitle, rightX, secTop, tw, 28)
-	chip := getText(hChip)
-	show(hChip, chip != "")
-	mv(hChip, rightX+tw+8, secTop+5, textW(hChip, hFont)+16, 20)
+	mv(hTitle, rightX, secTop, tr, 28)
 	mv(hDesc, rightX, secTop+30, tr, 20)
 	y := secTop + 58
 	if len(optCtls) > 0 {
@@ -425,6 +421,11 @@ func layout() {
 	}
 	actTop := mainBottom - 38 // 실행 줄
 	mv(hLblManual, rightX, y+2, 80, 22)
+	// 명령어·리습 꼬리표: 설명서 머리 줄 오른쪽 끝 (목록·제목에는 표시하지 않음)
+	chip := getText(hChip)
+	show(hChip, chip != "")
+	chipW := min(textW(hChip, hFont)+16, max(rw-90, 40))
+	mv(hChip, rightX+rw-chipW, y+3, chipW, 20)
 	mh := max(actTop-12-(y+28), 40)
 	mv(hManual, rightX, y+28, rw, mh)
 	mv(hGuide, rightX, y+28, rw, mh)

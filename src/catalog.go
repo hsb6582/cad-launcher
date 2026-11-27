@@ -7,7 +7,9 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"unicode/utf16"
@@ -149,15 +151,13 @@ func itemTag(it *Item) string {
 
 // "(GGD)" 처럼 명령어만 표시 (리습 이름은 상위 분류에 표시)
 // 오른쪽 제목 옆 꼬리표: "BPDF · BPDF_S" (리습 · 명령어)
+// 설명서 머리 줄 꼬리표: "명령어  GLC    리습  GLC.lsp"
 func itemChip(it *Item) string {
-	id := cmdID(it.Command)
-	if it.Lisp != "" && it.Lisp != id {
-		return it.Lisp + " · " + id
+	s := fmt.Sprintf(T("catalog.017"), cmdID(it.Command))
+	if l := lispByID(it.Lisp); l != nil && l.File != "" {
+		s += fmt.Sprintf(T("catalog.018"), filepath.Base(filepath.FromSlash(l.File)))
 	}
-	if it.Lisp != "" {
-		return it.Lisp
-	}
-	return id
+	return s
 }
 
 func cmdTag(it *Item) string {
@@ -311,7 +311,11 @@ func showNode(n nodeRef) {
 	case nkCat:
 		ct := n.category()
 		setText(hTitle, ct.Name)
-		setText(hChip, strings.Trim(strings.TrimSpace(catLispTag(ct)), "()"))
+		if tag := strings.Trim(strings.TrimSpace(catLispTag(ct)), "()"); tag != "" {
+			setText(hChip, fmt.Sprintf(T("catalog.019"), tag))
+		} else {
+			setText(hChip, "")
+		}
 		setText(hDesc, T("catalog.006")+itoa(len(ct.Items))+T("catalog.007"))
 		var sb strings.Builder
 		for i := range ct.Items {

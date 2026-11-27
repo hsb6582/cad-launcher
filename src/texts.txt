@@ -53,6 +53,9 @@ catalog.012 = "' 정보가 없습니다."
 catalog.013 = "옵션 파일 저장 실패\n"
 catalog.014 = "리습 파일을 찾을 수 없습니다.\n"
 catalog.015 = "실행: %s %s"
+catalog.017 = "명령어  %s"
+catalog.018 = "    리습  %s"
+catalog.019 = "리습  %s"
 catalog.016 = "목록 순서는 이 PC에만 저장됩니다"
 
 # ── 설정 창·옵션 편집 (dialogs.go) ──

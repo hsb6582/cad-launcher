@@ -327,32 +327,7 @@ func treeCustomDraw(lp uintptr) uintptr {
 			cd.itemState &^= CDIS_HOT
 			cd.clrTextBk = uint32(clrHotBg)
 		}
-		return 0x10 // CDRF_NOTIFYPOSTPAINT: 이름 옆에 명령어를 흐린 색으로 덧그림
-	case 0x10002: // CDDS_ITEMPOSTPAINT
-		n, ok := itemNode[cd.itemSpec]
-		if !ok || n.kind != nkItem {
-			break
-		}
-		var r struct {
-			h    uintptr
-			_, _ int32
-		}
-		r.h = cd.itemSpec
-		if c(pSendMessageW, hList, 0x1104 /*TVM_GETITEMRECT*/, 1, uintptr(unsafe.Pointer(&r))) == 0 {
-			break
-		}
-		rc := (*rectT)(unsafe.Pointer(&r))
-		t := cmdID(n.item().Command)
-		old := c(pSelectObject, cd.hdc, hFont)
-		c(pSetBkMode, cd.hdc, TRANSPARENT)
-		clr := clrSubText
-		if cd.itemState&CDIS_SELECTED != 0 {
-			clr = clrSelText
-		}
-		c(pSetTextColor, cd.hdc, clr)
-		tr := rectT{rc.right + int32(s(8)), rc.top, cd.rc.right, rc.bottom}
-		c(pDrawTextW, cd.hdc, uintptr(P(ws(t))), ^uintptr(0), uintptr(P(&tr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|0x8000 /*DT_END_ELLIPSIS*/)
-		c(pSelectObject, cd.hdc, old)
+		return 0 // 목록에는 기능 이름만 (명령어는 설명서 머리 줄에 표시)
 	}
 	return CDRF_DODEFAULT
 }
