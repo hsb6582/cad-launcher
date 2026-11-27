@@ -15,7 +15,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -93,6 +95,69 @@ func gitBlobSha(path string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// ── GitHub API 응답 보관 (ETag) ──
+// 토큰 없이 쓰는 GitHub API 는 같은 인터넷 주소(IP)당 1시간 60회로 제한된다.
+// 지난 응답의 ETag 를 보내 "바뀐 게 없음(304)" 답을 받으면 횟수에서 빠지므로,
+// api.github.com 응답은 launcher_ghcache.json 에 보관해 두고 다시 쓴다.
+type ghCacheEntry struct {
+	ETag string `json:"etag"`
+	Body string `json:"body"`
+}
+
+var (
+	ghCacheMu     sync.Mutex
+	ghCache       map[string]ghCacheEntry
+	ghCacheLoaded bool
+)
+
+func ghCachePath() string { return filepath.Join(appDir, "launcher_ghcache.json") }
+
+func ghCacheGet(u string) (ghCacheEntry, bool) {
+	ghCacheMu.Lock()
+	defer ghCacheMu.Unlock()
+	if !ghCacheLoaded {
+		ghCacheLoaded = true
+		ghCache = map[string]ghCacheEntry{}
+		if b, err := os.ReadFile(ghCachePath()); err == nil {
+			_ = json.Unmarshal(b, &ghCache)
+		}
+	}
+	e, ok := ghCache[u]
+	return e, ok
+}
+
+func ghCachePut(u string, e ghCacheEntry) {
+	ghCacheMu.Lock()
+	defer ghCacheMu.Unlock()
+	if ghCache == nil {
+		ghCache = map[string]ghCacheEntry{}
+	}
+	ghCache[u] = e
+	if b, err := json.Marshal(ghCache); err == nil {
+		_ = os.WriteFile(ghCachePath(), b, 0644)
+	}
+}
+
+// 횟수 제한 응답이면 안내 문구(풀리는 시각 포함)를, 아니면 "" 를 돌려준다.
+func ghRateLimitMsg(resp *http.Response, body []byte) string {
+	if resp.StatusCode != 403 && resp.StatusCode != 429 {
+		return ""
+	}
+	if resp.Header.Get("X-RateLimit-Remaining") != "0" && !strings.Contains(strings.ToLower(string(body)), "rate limit") {
+		return ""
+	}
+	var at time.Time
+	if v, err := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64); err == nil && v > 0 {
+		at = time.Unix(v, 0)
+	} else if v, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && v > 0 {
+		at = time.Now().Add(time.Duration(v) * time.Second)
+	}
+	if at.IsZero() {
+		return T("update.028")
+	}
+	return fmt.Sprintf(T("update.027"), at.Local().Format("15:04"))
+}
+
 func ghGet(rawURL string, accept string) ([]byte, error) {
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
@@ -105,6 +170,13 @@ func ghGet(rawURL string, accept string) ([]byte, error) {
 	if st.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+st.Token)
 	}
+	isAPI := strings.HasPrefix(rawURL, "https://api.github.com/")
+	cached, hasCache := ghCacheEntry{}, false
+	if isAPI {
+		if cached, hasCache = ghCacheGet(rawURL); hasCache && cached.ETag != "" {
+			req.Header.Set("If-None-Match", cached.ETag)
+		}
+	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -114,8 +186,21 @@ func ghGet(rawURL string, accept string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if msg := ghRateLimitMsg(resp, body); msg != "" {
+		return nil, fmt.Errorf("%s", msg)
+	}
 	switch resp.StatusCode {
+	case 304: // 지난번과 같음 (횟수에서 빠짐)
+		if hasCache {
+			return []byte(cached.Body), nil
+		}
+		return nil, fmt.Errorf("HTTP 304")
 	case 200:
+		if isAPI {
+			if et := resp.Header.Get("ETag"); et != "" {
+				ghCachePut(rawURL, ghCacheEntry{ETag: et, Body: string(body)})
+			}
+		}
 		return body, nil
 	case 401, 403:
 		return nil, fmt.Errorf(T("update.001"), resp.StatusCode)

@@ -4,3 +4,4 @@ _backup/
 *.new
 src-modern/build/
 launcher_startup.lsp
+launcher_ghcache.json
