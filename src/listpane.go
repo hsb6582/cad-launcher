@@ -1,16 +1,14 @@
 package main
 
 // 왼쪽 작업 목록 (새 화면 2단계) - Windows 트리 대신 직접 그리는 평평한 목록
-//   [검색칸]
 //   (전체) (★ 즐겨찾기) (추천)
 //   ★ 즐겨찾기 ⌄           ← 즐겨찾기가 있을 때 맨 위 (전체 보기에서만)
 //   공통 ⌄                  ← 상위 분류: 작은 회색 글씨, 누르면 접기/펼치기
 //    [아이콘] 기능 이름   👍 ★
-//   ＋ 세부 기능 N개 더 보기  ← 처음에 닫혀 있던 분류('단순기능'·'개발 중')는 여기 모아 둠
+//   ('단순기능'·'개발 중' 기능도 모두 바로 보이고, 넘치면 스크롤)
 //   스크롤 막대는 scroll.go (잘 보이게 직접 그림)
 
 import (
-	"fmt"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -106,8 +104,7 @@ func createListPane() {
 	hFontGrp = makeFont(8, true)
 	hFontGlyph = makeIconFont(10)
 
-	hSearch = mk("EDIT", "", ES_AUTOHSCROLL|WS_TABSTOP, WS_EX_CLIENTEDGE, idSearch)
-	c(pSendMessageW, hSearch, 0x1501 /*EM_SETCUEBANNER*/, 1, uintptr(P(ws(T("list.001")))))
+	// 검색칸은 쓰지 않음 (hSearch = 0 → 검색어 없음)
 	hChipAll = mk("BUTTON", T("list.002"), WS_TABSTOP, 0, idChipAll)
 	hChipFav = mk("BUTTON", T("list.003"), WS_TABSTOP, 0, idChipFav)
 	hChipRec = mk("BUTTON", T("list.004"), WS_TABSTOP, 0, idChipRec)
@@ -115,14 +112,13 @@ func createListPane() {
 
 // 왼쪽 칸 배치: 검색칸 / 보기 버튼 / 목록
 func layoutListPane(mainBottom int) {
-	mv(hSearch, 8, secTop, leftW, 34)
 	x := 8
 	for _, h := range []uintptr{hChipAll, hChipFav, hChipRec} {
 		w := strW(getText(h), hFont) + 26
-		mv(h, x, secTop+42, w, 28)
+		mv(h, x, secTop, w, 28)
 		x += w + 6
 	}
-	lt := secTop + 78
+	lt := secTop + 36
 	mv(hList, 8, lt, leftW, max(mainBottom-lt, 60))
 }
 
@@ -177,7 +173,6 @@ func buildRows() {
 	}
 	var groups []*grp
 	byKey := map[string]*grp{}
-	hidden := 0
 	for ci := range cat.Categories {
 		ct := &cat.Categories[ci]
 		label, key := ct.Group, "g:"+ct.Group
@@ -190,13 +185,8 @@ func buildRows() {
 			byKey[key] = g
 			groups = append(groups, g)
 		}
-		sub := ct.Group != "" && defaultCollapsed("c:"+ct.Name) // 처음에 닫혀 있던 분류 → '세부 기능'
 		for ii := range ct.Items {
 			if !itemMatches(&ct.Items[ii], q) {
-				continue
-			}
-			if sub && !filtering && !showMore {
-				hidden++
 				continue
 			}
 			g.items = append(g.items, nodeRef{nkItem, ci, ii})
@@ -212,13 +202,6 @@ func buildRows() {
 				rows = append(rows, listRow{kind: rowItem, label: n.item().Name, node: n})
 			}
 		}
-	}
-	if !filtering && (hidden > 0 || showMore) {
-		label := T("list.006")
-		if !showMore {
-			label = fmt.Sprintf(T("list.005"), hidden)
-		}
-		rows = append(rows, listRow{kind: rowMore, label: label})
 	}
 	// 행 위치
 	y := si(2)

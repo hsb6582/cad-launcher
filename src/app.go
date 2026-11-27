@@ -382,7 +382,6 @@ func cadConnected() bool {
 
 // 맨 위 줄 아래·상태 줄 위 구분선 + 오른쪽 머리의 기능 아이콘 (ui2.go)
 func paintHeader(hdc uintptr) {
-	paintHeroIcon(hdc)
 	W, H := clientSize()
 	br := c(pCreateSolidBrush, clrBorder)
 	for _, ln := range []rectT{
@@ -414,7 +413,7 @@ func layout() {
 
 	// 오른쪽 머리: [아이콘] 제목 / 설명 / 명령어·리습 꼬리표 ········ ☆ [▶ 실행]
 	rw := max(W-rightX-8, 200)
-	ix := rightX + heroIconSz + 14 // 아이콘(paintHeroIcon) 오른쪽
+	ix := rightX // 제목은 왼쪽 끝부터 (아이콘·설명 문구는 뺌)
 	const runW, runH = 160 + 2*runPadX, 58 + runPadTop + runPadBot
 	mv(hRun, rightX+rw-runW+runPadX, secTop-1, runW, runH) // 그림자 여백만큼 바깥으로
 	tr := rightX + rw - ix                                 // 제목·설명이 쓸 수 있는 폭
@@ -426,13 +425,13 @@ func layout() {
 		tr = max(tr-36, 100)
 	}
 	mv(hTitle, ix, secTop-2, tr, 30)
-	mv(hDesc, ix, secTop+29, tr, 20)
+	show(hDesc, false)
 	chip := getText(hChip)
 	show(hChip, chip != "")
 	chipW := min(textW(hChip, hFont)+16, tr)
-	mv(hChip, ix, secTop+53, chipW, 20)
+	mv(hChip, ix, secTop+33, chipW, 20)
 	c(pInvalidateRect, hChip, 0, 1) // 폭·위치가 바뀌면 예전 글자 조각이 남지 않게 전체를 다시 그림
-	y := secTop + heroIconSz + 26
+	y := secTop + 72                // 실행 버튼 아래부터
 	if len(optCtls) > 0 {
 		show(hOptGroup, true)
 		show(hReset, true)
@@ -781,7 +780,7 @@ func onCommand(id, code int) {
 	switch {
 	case id == IDOK: // Enter: 목록이나 실행 버튼에 있을 때만 실행 (입력칸에서 누른 Enter 는 무시)
 		f := c(pGetFocus)
-		if f == hSearch { // 검색칸에서 Enter: 첫 번째 결과를 고르고 목록으로 (한 번 더 Enter 면 실행)
+		if hSearch != 0 && f == hSearch { // 검색칸에서 Enter: 첫 번째 결과를 고르고 목록으로 (한 번 더 Enter 면 실행)
 			for i := range lrows {
 				if lrows[i].kind == rowItem {
 					selectRow(i)

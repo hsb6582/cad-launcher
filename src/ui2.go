@@ -259,24 +259,12 @@ func drawRunButton(dis *drawItemStruct) {
 	sub := T("app.104")
 	lw, lh := textSize(hdc, hFontRun, label)
 	sw, sh := textSize(hdc, hFontRunSub, sub)
-	d := si(30)
-	gap := si(10)
-	tw := max(lw, sw)
-	total := d + gap + tw
-	cx0 := (x0+x1)/2 - float64(total)/2
+	tw := max(lw, sw) // '실행' / 'Enter' 를 버튼 가운데에
+	cx0 := (x0+x1)/2 - float64(tw)/2
 	cy := (y0 + y1) / 2
-	ccx := cx0 + float64(d)/2
-	rr := float64(d) / 2
-	circleA := 0.22
-	if disabled {
-		circleA = 0.10
-	}
-	cv.paint(func(x, y float64) float64 { return circleA * aa(math.Hypot(x-ccx, y-cy)-rr) }, solid(txt))
-	fd := float64(d)
-	cv.paint(triCover(ccx-fd*0.12, cy-fd*0.21, ccx-fd*0.12, cy+fd*0.21, ccx+fd*0.24, cy), solid(txt))
 	cv.blit(hdc, int(r.left), int(r.top))
 
-	tx := int(r.left) + int(cx0) + d + gap
+	tx := int(r.left) + int(cx0)
 	th := lh + sh - si(2)
 	ty := int(r.top) + int(cy) - th/2
 	drawTextAt(hdc, hFontRun, txt, tx+(tw-lw)/2, ty, label)
