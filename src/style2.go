@@ -80,6 +80,7 @@ type trackMouseEvent struct {
 
 var (
 	hFontBtnBold uintptr // 강조 버튼 글꼴 (9pt 굵게)
+	hFontRun     uintptr // '▶ 실행' 버튼 글꼴 (13pt 굵게)
 	hFontIcon    uintptr // 전구 버튼 아이콘 글꼴 (Segoe MDL2 Assets, Windows 10/11 기본 글꼴)
 )
 
@@ -172,6 +173,9 @@ func drawButton(lp uintptr) uintptr {
 	var fill, border, txt uintptr
 	if h == hRun || primaryBtn[h] {
 		font = hFontBtnBold
+		if h == hRun {
+			font = hFontRun
+		}
 		fill, border, txt = clrAccent, clrAccent, clrAccentTxt
 		switch {
 		case disabled:

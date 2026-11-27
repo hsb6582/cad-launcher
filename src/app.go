@@ -908,6 +908,7 @@ func main() {
 	hFont = makeFont(9, false)
 	hFontBold = makeFont(12, true)
 	hFontBtnBold = makeFont(9, true)
+	hFontRun = makeFont(13, true)
 	hFontIcon = makeIconFont(12)
 	setThemeColors(st.Theme) // 화면 색상 (theme.go, 기본 차콜 다크)
 	hBgBrush = c(pCreateSolidBrush, clrBg)
