@@ -259,12 +259,16 @@ func drawRunButton(dis *drawItemStruct) {
 	sub := T("app.104")
 	lw, lh := textSize(hdc, hFontRun, label)
 	sw, sh := textSize(hdc, hFontRunSub, sub)
-	tw := max(lw, sw) // '실행' / 'Enter' 를 버튼 가운데에
-	cx0 := (x0+x1)/2 - float64(tw)/2
+	tw := max(lw, sw)
+	tri := si(16) // 재생 세모 (동그라미 없이)
+	gap := si(10)
+	cx0 := (x0+x1)/2 - float64(tri+gap+tw)/2 // 세모 + 글자 묶음을 버튼 가운데에
 	cy := (y0 + y1) / 2
+	ft := float64(tri)
+	cv.paint(triCover(cx0, cy-ft*0.58, cx0, cy+ft*0.58, cx0+ft, cy), solid(txt))
 	cv.blit(hdc, int(r.left), int(r.top))
 
-	tx := int(r.left) + int(cx0)
+	tx := int(r.left) + int(cx0) + tri + gap
 	th := lh + sh - si(2)
 	ty := int(r.top) + int(cy) - th/2
 	drawTextAt(hdc, hFontRun, txt, tx+(tw-lw)/2, ty, label)
