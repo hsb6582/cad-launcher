@@ -7,6 +7,7 @@ package main
 //  - 목록 선택 표시를 파란색 대신 연한 테라코타로
 
 import (
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -324,6 +325,10 @@ func treeCustomDraw(lp uintptr) uintptr {
 	case CDDS_PREPAINT:
 		return CDRF_NOTIFYITEM
 	case CDDS_ITEMPREPAINT:
+		if n, ok := itemNode[cd.itemSpec]; ok && (n.kind == nkGroup || n.kind == nkFavGroup) {
+			drawGroupRow(cd, n) // 상위 분류·즐겨찾기 묶음: 줄 전체를 직접 그림
+			return 0x04         // CDRF_SKIPDEFAULT
+		}
 		switch {
 		case cd.itemState&CDIS_SELECTED != 0:
 			cd.itemState &^= CDIS_SELECTED | CDIS_FOCUS | CDIS_HOT // 탐색기 테마의 파란 선택 표시 대신
@@ -332,30 +337,12 @@ func treeCustomDraw(lp uintptr) uintptr {
 		case cd.itemState&CDIS_HOT != 0:
 			cd.itemState &^= CDIS_HOT
 			cd.clrTextBk = uint32(clrHotBg)
-		default:
-			if n, ok := itemNode[cd.itemSpec]; ok && (n.kind == nkGroup || n.kind == nkFavGroup) {
-				cd.clrTextBk = uint32(clrHotBg) // 상위 분류·즐겨찾기 묶음: 한 톤 다른 바탕
-			}
 		}
-		if n, ok := itemNode[cd.itemSpec]; ok {
-			if n.kind == nkGroup || n.kind == nkFavGroup || (n.kind == nkItem && !favHandle[cd.itemSpec] && isFav(n.item())) {
-				return 0x10 // CDRF_NOTIFYPOSTPAINT: 왼쪽 세로줄 / 이름 뒤 작은 별
-			}
+		if n, ok := itemNode[cd.itemSpec]; ok && n.kind == nkItem && !favHandle[cd.itemSpec] && isFav(n.item()) {
+			return 0x10 // CDRF_NOTIFYPOSTPAINT: 이름 뒤 작은 별
 		}
 		return 0 // 목록에는 기능 이름만 (명령어는 설명서 머리 줄에 표시)
 	case 0x10002: // CDDS_ITEMPOSTPAINT
-		n := itemNode[cd.itemSpec]
-		if n.kind == nkGroup || n.kind == nkFavGroup { // 왼쪽 세로줄 (즐겨찾기는 노랑)
-			clr := clrAccent
-			if n.kind == nkFavGroup {
-				clr = favStarClr
-			}
-			bar := rectT{cd.rc.left + int32(s(1)), cd.rc.top + int32(s(3)), cd.rc.left + int32(s(4)), cd.rc.bottom - int32(s(3))}
-			br := c(pCreateSolidBrush, clr)
-			c(pFillRect, cd.hdc, uintptr(P(&bar)), br)
-			c(pDeleteObject, br)
-			break
-		}
 		// 즐겨찾기 기능: 원래 분류 쪽 이름 뒤에 작은 노란 별
 		var r struct {
 			h    uintptr
@@ -374,4 +361,76 @@ func treeCustomDraw(lp uintptr) uintptr {
 		c(pSelectObject, cd.hdc, old)
 	}
 	return CDRF_DODEFAULT
+}
+
+// ───────────── 상위 분류·즐겨찾기 묶음 줄 (줄 전체를 직접 그림) ─────────────
+var (
+	pPolyline  = gdi32.NewProc("Polyline")
+	hFontGroup uintptr // 상위 분류 글꼴 (다른 줄보다 조금 큰 굵은 글씨)
+)
+
+func drawGroupRow(cd *nmTVCustomDraw, n nodeRef) {
+	if hFontGroup == 0 {
+		hFontGroup = makeFont(11, true)
+	}
+	hdc, rc := cd.hdc, cd.rc
+	// 줄 바탕 → 띠 (양옆 4px 여백, 위아래 2px)
+	bg := c(pCreateSolidBrush, clrPanelBg)
+	c(pFillRect, hdc, uintptr(P(&rc)), bg)
+	c(pDeleteObject, bg)
+	band := rc
+	band.left += int32(s(4))
+	band.right -= int32(s(4))
+	band.top += int32(s(2))
+	band.bottom -= int32(s(2))
+	fill, txt := clrHotBg, clrText
+	switch {
+	case cd.itemState&CDIS_SELECTED != 0:
+		fill, txt = clrSelBg, clrSelText
+	case cd.itemState&CDIS_HOT != 0:
+		fill = clrHoverBg
+	}
+	roundBox(hdc, band, fill, fill, 6)
+	// 띠 왼쪽 세로줄: 상위 분류는 강조색, 즐겨찾기는 노랑
+	barClr := clrAccent
+	if n.kind == nkFavGroup {
+		barClr = favStarClr
+	}
+	bar := rectT{band.left, band.top, band.left + int32(s(3)), band.bottom}
+	br := c(pCreateSolidBrush, barClr)
+	c(pFillRect, hdc, uintptr(P(&bar)), br)
+	c(pDeleteObject, br)
+	// 펼침 화살표 (펼침 ∨ / 접힘 ›) - 트리의 원래 펼침 단추 자리
+	expanded := c(pSendMessageW, hList, 0x1127 /*TVM_GETITEMSTATE*/, cd.itemSpec, TVIS_EXPANDED)&TVIS_EXPANDED != 0
+	cx, cy := int32(band.left)+int32(s(9)), (rc.top+rc.bottom)/2 // 원래 펼침 단추를 누르는 자리 안쪽
+	w := int32(s(4))
+	var pts [3][2]int32
+	if expanded {
+		pts = [3][2]int32{{cx - w, cy - w/2}, {cx, cy + w/2}, {cx + w, cy - w/2}}
+	} else {
+		pts = [3][2]int32{{cx - w/2, cy - w}, {cx + w/2, cy}, {cx - w/2, cy + w}}
+	}
+	pen := c(pCreatePen, PS_SOLID, uintptr(s(2)), txt)
+	op := c(pSelectObject, hdc, pen)
+	c(pPolyline, hdc, uintptr(P(&pts[0])), 3)
+	c(pSelectObject, hdc, op)
+	c(pDeleteObject, pen)
+	// 이름 (즐겨찾기는 노란 별 + 이름)
+	x := cx + int32(s(12))
+	old := c(pSelectObject, hdc, hFontGroup)
+	c(pSetBkMode, hdc, TRANSPARENT)
+	name := ""
+	if n.kind == nkFavGroup {
+		c(pSetTextColor, hdc, favStarClr)
+		sr := rectT{x, rc.top, band.right, rc.bottom}
+		c(pDrawTextW, hdc, uintptr(P(ws("★"))), ^uintptr(0), uintptr(P(&sr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX)
+		x += int32(s(strW("★", hFontGroup) + 6))
+		name = strings.TrimSpace(strings.TrimPrefix(T("fav.001"), "★"))
+	} else if n.ci < len(groupNames) {
+		name = groupNames[n.ci]
+	}
+	c(pSetTextColor, hdc, txt)
+	tr := rectT{x, rc.top, band.right - int32(s(6)), rc.bottom}
+	c(pDrawTextW, hdc, uintptr(P(ws(name))), ^uintptr(0), uintptr(P(&tr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|0x8000 /*DT_END_ELLIPSIS*/)
+	c(pSelectObject, hdc, old)
 }
