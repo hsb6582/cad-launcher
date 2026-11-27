@@ -425,12 +425,7 @@ func layout() {
 	}
 	mv(hTitle, ix, secTop-2, tr, 30)
 	show(hDesc, false)
-	chip := getText(hChip)
-	show(hChip, chip != "")
-	chipW := min(textW(hChip, hFont)+16, tr)
-	mv(hChip, ix, secTop+33, chipW, 20)
-	c(pInvalidateRect, hChip, 0, 1) // 폭·위치가 바뀌면 예전 글자 조각이 남지 않게 전체를 다시 그림
-	y := secTop + 72                // 실행 버튼 아래부터
+	y := secTop + 72 // 실행 버튼 아래부터
 	if len(optCtls) > 0 {
 		show(hOptGroup, true)
 		show(hReset, true)
@@ -476,6 +471,12 @@ func layout() {
 		sx += swW + 14
 	}
 	mv(hTools, sx, actTop+4, 140, 28)
+	// 명령어·리습 꼬리표: 아래 줄 오른쪽 끝
+	chip := getText(hChip)
+	show(hChip, chip != "")
+	chipW := min(textW(hChip, hFont)+16, max(rightX+rw-sx-150, 60))
+	mv(hChip, rightX+rw-chipW, actTop+9, chipW, 20)
+	c(pInvalidateRect, hChip, 0, 1) // 폭·위치가 바뀌면 예전 글자 조각이 남지 않게 전체를 다시 그림
 
 	// 맨 아래: 마지막 결과 한 줄 + 실행 기록 펼치기 / 펼친 기록 칸
 	show(hLog, st.LogOpen)
