@@ -444,26 +444,34 @@ func drawCadItem(dis *drawItemStruct) {
 		}
 		fillRoundEllipse(hdc, x, int(rc.top)+(H-si(9))/2, si(9), dot)
 		x += si(19)
-		if id < 0 {
+		if id < 0 { // CAD 창이 없으면 안내 문구를 빨갛게
 			name = T("app.103")
 		}
 	}
-	right := app
-	if field && alive {
+	right, rclr := app, clrSubText
+	if field && id >= 0 { // 선택칸: 연결 상태에 따라 초록(연결됨) / 빨강(연결 끊김)
+		state := T("app.106")
+		rclr = RGB(0xE8, 0x5A, 0x52)
+		if alive {
+			state, rclr = T("app.105"), RGB(0x3E, 0xCF, 0x8E)
+		}
 		if right == "" {
-			right = T("app.102")
+			right = state
 		} else {
-			right += " · " + T("app.105")
+			right += " · " + state
 		}
 	}
-	rx := int(rc.right) - si(8)
+	rx := int(rc.right) - si(10)
 	if right != "" {
 		w, h := textSize(hdc, hFont, right)
 		rx -= w
-		drawTextAt(hdc, hFont, clrSubText, rx, int(rc.top)+(H-h)/2, right)
+		drawTextAt(hdc, hFont, rclr, rx, int(rc.top)+(H-h)/2, right)
 		rx -= si(14)
 	}
 	nameClr := clrText
+	if field && id < 0 {
+		nameClr = RGB(0xE8, 0x5A, 0x52)
+	}
 	if sel {
 		nameClr = clrSelText
 	}
