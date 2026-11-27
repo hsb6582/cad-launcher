@@ -33,6 +33,7 @@ type State struct {
 	Installed  map[string]string                 `json:"installed,omitempty"`  // 외부 프로그램 이름 → 설치한 버전
 	LeftW      int                               `json:"leftW,omitempty"`      // 목록 칸 폭
 	Order      map[string][]string               `json:"order,omitempty"`      // 이 PC에서 바꾼 목록 순서
+	Favorites  []string                          `json:"favorites,omitempty"`  // 즐겨찾기 기능 (리습|명령어, favorites.go)
 	Startup    []string                          `json:"startup,omitempty"`    // 시작하기 세트로 모든 도면에 자동 로드할 리습 id
 	FontLevel  int                               `json:"fontLevel,omitempty"`  // 글자 크기 1~5단계 (0 = 기본 3단계, 설정 창)
 	Theme      string                            `json:"theme,omitempty"`      // 화면 색상: dark(기본)/cream/slate (theme.go, 전구 버튼)
@@ -133,6 +134,7 @@ const (
 	idAdvAuto
 	idAdvTrust
 	idThemeBtn
+	idFav
 	idAdvKw
 	idAdvFont
 	idAdvToken
@@ -261,6 +263,8 @@ func createControls() {
 	c(pSendMessageW, hLblManual, WM_SETFONT, hFontSec, 1)
 	hManual = mk("EDIT", "", ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL, WS_EX_CLIENTEDGE, idManual)
 	hRun = mk("BUTTON", T("app.009"), WS_TABSTOP|BS_OWNERDRAW, 0, idRun) // 직접 그려서 강조색 버튼으로 표시
+	hFavBtn = mk("BUTTON", "☆", WS_TABSTOP, 0, idFav)                    // 설명서 머리 줄 즐겨찾기 별 (favorites.go)
+	show(hFavBtn, false)
 	hTools = mk("BUTTON", T("app.010"), WS_TABSTOP, 0, idTools)
 	hStartup = mk("BUTTON", T("app.011"), BS_AUTOCHECKBOX|WS_TABSTOP, 0, idStartup)
 
@@ -467,8 +471,13 @@ func layout() {
 	// 명령어·리습 꼬리표: 설명서 머리 줄 오른쪽 끝 (목록·제목에는 표시하지 않음)
 	chip := getText(hChip)
 	show(hChip, chip != "")
-	chipW := min(textW(hChip, hFont)+16, max(rw-90, 40))
-	mv(hChip, rightX+rw-chipW, y+3, chipW, 20)
+	favW := 0 // 별 버튼 (기능을 골랐을 때만)
+	if c(pIsWindowVisible, hFavBtn) != 0 {
+		favW = 30
+		mv(hFavBtn, rightX+rw-28, y, 28, 26)
+	}
+	chipW := min(textW(hChip, hFont)+16, max(rw-90-favW, 40))
+	mv(hChip, rightX+rw-favW-chipW, y+3, chipW, 20)
 	c(pInvalidateRect, hChip, 0, 1) // 폭·위치가 바뀌면 예전 글자 조각이 남지 않게 전체를 다시 그림
 	mh := max(actTop-12-(y+28), 40)
 	mv(hManual, rightX, y+28, rw, mh)
@@ -789,6 +798,8 @@ func onCommand(id, code int) {
 		moveNode(-1)
 	case id == idDown:
 		moveNode(1)
+	case id == idFav:
+		toggleFav(cur.item())
 	case id == idRun:
 		runCurrent()
 	case id == idTools:

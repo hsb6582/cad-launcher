@@ -134,6 +134,7 @@ func loadCatalog() {
 	}
 	computeGroups()
 	applyOrder()
+	pruneFavs()
 	n := 0
 	for _, ct := range cat.Categories {
 		n += len(ct.Items)
@@ -212,7 +213,8 @@ const (
 	nkNone = iota
 	nkCat
 	nkItem
-	nkGroup // 상위 분류 (ci = groupNames 위치)
+	nkGroup    // 상위 분류 (ci = groupNames 위치)
+	nkFavGroup // '★ 즐겨찾기' 묶음 (favorites.go)
 )
 
 type nodeRef struct{ kind, ci, ii int }
@@ -248,7 +250,7 @@ func (n nodeRef) lisp() *Lisp {
 var collapsedNow = map[string]bool{}
 
 func defaultCollapsed(k string) bool {
-	if strings.HasPrefix(k, "g:") {
+	if strings.HasPrefix(k, "g:") || k == "f:" {
 		return false // 상위 분류는 펼친 채 시작
 	}
 	name := strings.TrimPrefix(k, "c:")
@@ -278,6 +280,7 @@ func refreshTree(sel nodeRef) {
 	building = true
 	c(pSendMessageW, hList, TVM_DELETEITEM, 0, tviRoot)
 	itemNode, nodeItem = map[uintptr]nodeRef{}, map[nodeRef]uintptr{}
+	insertFavTree() // 맨 위 '★ 즐겨찾기' (있을 때만)
 	// 상위 분류 → 분류 → 기능 (상위 분류가 없는 분류는 맨 위 단계에)
 	groupNode := map[string]uintptr{}
 	for gi, g := range groupNames {
@@ -319,7 +322,12 @@ func refreshTree(sel nodeRef) {
 		n += len(ct.Items)
 	}
 	setText(hListCnt, itoa(n)+T("catalog.005"))
-	if h := nodeItem[sel]; h != 0 {
+	h := nodeItem[sel]
+	if selFavNext && favNode[sel] != 0 {
+		h = favNode[sel] // 즐겨찾기 묶음에서 고르던 중이면 그쪽을 다시 선택
+	}
+	selFavNext = false
+	if h != 0 {
 		c(pSendMessageW, hList, TVM_SELECTITEM, TVGN_CARET, h)
 		c(pSendMessageW, hList, TVM_ENSUREVISIBLE, 0, h)
 	} else {
@@ -337,8 +345,13 @@ func onNotify(lp uintptr) uintptr {
 		return treeCustomDraw(lp)
 	case tvnSelChanged:
 		if !building {
-			showNode(itemNode[(*nmTreeView)(unsafe.Pointer(lp)).itemNew.hItem])
+			h := (*nmTreeView)(unsafe.Pointer(lp)).itemNew.hItem
+			curFav = favHandle[h]
+			showNode(itemNode[h])
 		}
+	case nmRClick: // 오른쪽 클릭 메뉴 (favorites.go)
+		onTreeRClick()
+		return 1
 	case tvnItemExpanded:
 		nm := (*nmTreeView)(unsafe.Pointer(lp))
 		if n, ok := itemNode[nm.itemNew.hItem]; ok && !building {
@@ -347,6 +360,8 @@ func onNotify(lp uintptr) uintptr {
 				setCollapsed("c:"+n.category().Name, nm.action == TVE_COLLAPSE)
 			case nkGroup:
 				setCollapsed("g:"+groupNames[n.ci], nm.action == TVE_COLLAPSE)
+			case nkFavGroup:
+				setCollapsed("f:", nm.action == TVE_COLLAPSE)
 			}
 		}
 	}
@@ -359,6 +374,16 @@ func showNode(n nodeRef) {
 	run := uintptr(0)
 	var guide *guideDoc
 	switch n.kind {
+	case nkFavGroup: // 즐겨찾기 묶음
+		setText(hTitle, T("fav.001"))
+		setText(hChip, "")
+		var sb strings.Builder
+		refs := favRefs()
+		for _, r := range refs {
+			sb.WriteString("■ " + r.item().Name + "\n")
+		}
+		setText(hDesc, fmt.Sprintf(T("fav.007"), len(refs)))
+		setManual(sb.String())
 	case nkGroup: // 상위 분류: 안에 든 분류와 기능 목록
 		g := groupNames[n.ci]
 		setText(hTitle, g)
@@ -430,6 +455,7 @@ func showNode(n nodeRef) {
 	}
 	c(pEnableWindow, hRun, run)
 	setGuide(guide)
+	updateFavBtn()
 	l := n.lisp()
 	show(hTools, l != nil && len(l.Tools) > 0)
 	show(hStartup, n.kind == nkItem && l != nil && l.File != "")
@@ -543,6 +569,10 @@ func moveNode(dir int) {
 	if !orderNoted && n.kind != nkNone {
 		orderNoted = true
 		logf("%s", T("catalog.016"))
+	}
+	if curFav && n.kind == nkItem { // 즐겨찾기 묶음 안에서는 즐겨찾기 순서만 바꿈
+		moveFav(dir)
+		return
 	}
 	switch n.kind {
 	case nkCat:

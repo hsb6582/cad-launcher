@@ -210,6 +210,12 @@ func drawButton(lp uintptr) uintptr {
 	c(pSetBkMode, hdc, TRANSPARENT)
 	c(pSetTextColor, hdc, txt)
 	label := getText(h)
+	if h == hFavBtn { // 즐겨찾기 별: 조금 큰 글씨, 즐겨찾기면 노란 별
+		font = hFontBold
+		if getText(h) == "★" {
+			c(pSetTextColor, hdc, favStarClr)
+		}
+	}
 	if h == hThemeBtn { // 전구: 다크(불 꺼짐)는 회색, 크림(불 켜짐)은 노란색
 		font, label = hFontIcon, "\uE82F"
 		switch curTheme.key {
@@ -327,19 +333,45 @@ func treeCustomDraw(lp uintptr) uintptr {
 			cd.itemState &^= CDIS_HOT
 			cd.clrTextBk = uint32(clrHotBg)
 		default:
-			if n, ok := itemNode[cd.itemSpec]; ok && n.kind == nkGroup {
-				cd.clrTextBk = uint32(clrHotBg) // 상위 분류: 한 톤 다른 바탕
+			if n, ok := itemNode[cd.itemSpec]; ok && (n.kind == nkGroup || n.kind == nkFavGroup) {
+				cd.clrTextBk = uint32(clrHotBg) // 상위 분류·즐겨찾기 묶음: 한 톤 다른 바탕
 			}
 		}
-		if n, ok := itemNode[cd.itemSpec]; ok && n.kind == nkGroup {
-			return 0x10 // CDRF_NOTIFYPOSTPAINT: 왼쪽 강조색 세로줄
+		if n, ok := itemNode[cd.itemSpec]; ok {
+			if n.kind == nkGroup || n.kind == nkFavGroup || (n.kind == nkItem && !favHandle[cd.itemSpec] && isFav(n.item())) {
+				return 0x10 // CDRF_NOTIFYPOSTPAINT: 왼쪽 세로줄 / 이름 뒤 작은 별
+			}
 		}
 		return 0 // 목록에는 기능 이름만 (명령어는 설명서 머리 줄에 표시)
-	case 0x10002: // CDDS_ITEMPOSTPAINT (상위 분류만)
-		bar := rectT{cd.rc.left + int32(s(1)), cd.rc.top + int32(s(3)), cd.rc.left + int32(s(4)), cd.rc.bottom - int32(s(3))}
-		br := c(pCreateSolidBrush, clrAccent)
-		c(pFillRect, cd.hdc, uintptr(P(&bar)), br)
-		c(pDeleteObject, br)
+	case 0x10002: // CDDS_ITEMPOSTPAINT
+		n := itemNode[cd.itemSpec]
+		if n.kind == nkGroup || n.kind == nkFavGroup { // 왼쪽 세로줄 (즐겨찾기는 노랑)
+			clr := clrAccent
+			if n.kind == nkFavGroup {
+				clr = favStarClr
+			}
+			bar := rectT{cd.rc.left + int32(s(1)), cd.rc.top + int32(s(3)), cd.rc.left + int32(s(4)), cd.rc.bottom - int32(s(3))}
+			br := c(pCreateSolidBrush, clr)
+			c(pFillRect, cd.hdc, uintptr(P(&bar)), br)
+			c(pDeleteObject, br)
+			break
+		}
+		// 즐겨찾기 기능: 원래 분류 쪽 이름 뒤에 작은 노란 별
+		var r struct {
+			h    uintptr
+			_, _ int32
+		}
+		r.h = cd.itemSpec
+		if c(pSendMessageW, hList, 0x1104 /*TVM_GETITEMRECT*/, 1, uintptr(unsafe.Pointer(&r))) == 0 {
+			break
+		}
+		rc := (*rectT)(unsafe.Pointer(&r))
+		old := c(pSelectObject, cd.hdc, hFont)
+		c(pSetBkMode, cd.hdc, TRANSPARENT)
+		c(pSetTextColor, cd.hdc, favStarClr)
+		tr := rectT{rc.right + int32(s(4)), rc.top, cd.rc.right, rc.bottom}
+		c(pDrawTextW, cd.hdc, uintptr(P(ws("★"))), ^uintptr(0), uintptr(P(&tr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX)
+		c(pSelectObject, cd.hdc, old)
 	}
 	return CDRF_DODEFAULT
 }
