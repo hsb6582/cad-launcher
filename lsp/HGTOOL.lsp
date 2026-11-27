@@ -70,7 +70,7 @@
 ;;;           도시가스관로(종단) 구간 밖 검은색,
 ;;;           구간 시/종점 수직선 + 허가구간 밴드 작도 (0허가도면 레이어)
 ;;;           종단 위치가 종단 관로 범위를 넘으면 시/종점으로 맞춤
-;;;           종단면도는 '밴드'(Q-종단그래프 가로선 + 바로 위 Q-종단TEXT 관경 글자)로 인식 -
+;;;           종단면도는 '밴드'(Q-종단그래프 가로선 + 바로 위 Q-종단TEXT·종단제원 관경 글자)로 인식 -
 ;;;           밴드가 확인되는 종단면도만 반영하고, 상세도 등 밴드가 없는 곳은 제외
 ;;;
 ;;;   HG3CPY : (3) 도곽 복사
@@ -982,6 +982,7 @@
 (setq *QC:LAY-GRAPH* "Q-종단그래프")     ; 종단 그래프(수직선)
 (setq *QC:LAY-QSTA*  "Q-종단측점")       ; 종단 측점 글자
 (setq *QC:LAY-QTXT*  "Q-종단TEXT")       ; 종단 문자 (밴드의 관경 글자 예: LP 160mm PE)
+(setq *QC:LAY-BTXT*  "Q-종단TEXT,종단제원") ; 밴드 관경 글자로 인정할 레이어 (예: MP 100A PLP(200.0M))
 (setq *QC:BAND-MINL* 10.0)               ; 종단면도 밴드로 볼 가로선 최소 길이
 (setq *QC:ARW-TOL*   1.0)                ; 밴드 가로선 끝 - 화살표 객체 허용 거리 (검증용)
 (setq *QC:LDR-SLOPES* '(0.5 0.75 1.0 0.3 1.5)) ; 지시선 사선 가로/세로 비 후보 (0.5=약63도, 1.0=45도, 1.5=약34도)
@@ -1301,7 +1302,7 @@
 )
 
 ;; 도곽 안 종단면도 밴드 목록 ((x1 x2 y 화살표수) ...)
-;;  밴드 = Q-종단그래프 가로선(길이 *QC:BAND-MINL* 이상) 중 바로 위(0~4)에 Q-종단TEXT 관경 글자가 있는 것.
+;;  밴드 = Q-종단그래프 가로선(길이 *QC:BAND-MINL* 이상) 중 바로 위(0~4)에 Q-종단TEXT·종단제원(*QC:LAY-BTXT*) 관경 글자가 있는 것.
 ;;  화살표는 검증용 : 가로선 양끝 *QC:ARW-TOL* 이내에 작은(크기 5 이하) Q-종단그래프 객체
 ;;  (블록·SOLID·짧은 선/폴리선 무엇이든)가 있으면 그 끝은 화살표 있음. 없어도 밴드로 인정은 함.
 ;;  가로 범위가 겹치고 높이 차이가 60 이내면 같은 종단면도로 보고 하나만 남김
@@ -1325,7 +1326,7 @@
         (setq bb (qc:bbox pts))
         (if (and (<= (- (car (cadr bb)) (car (car bb))) 5.0) (<= (- (cadr (cadr bb)) (cadr (car bb))) 5.0))
           (setq arws (append pts arws))))))
-  (foreach e (qc:collect (list '(0 . "TEXT") (cons 8 *QC:LAY-QTXT*)) box)
+  (foreach e (qc:collect (list '(0 . "TEXT") (cons 8 *QC:LAY-BTXT*)) box)
     (setq ed (entget e))
     (if (and (equal (cond ((qc:dxf 50 ed)) (0.0)) 0.0 1e-3) (qc:pipelabel-p (qc:dxf 1 ed)))
       (setq labs (cons (qc:pt (qc:txtpt ed)) labs))))
@@ -1572,8 +1573,10 @@
 
   ;; --- 도곽 판별
   (setq p0 (car (qc:entpts (entget (ssname sel 0)))))
-  (foreach b (qc:formboxes) (if (and (null box) (qc:inbox p0 b)) (setq box b)))
-  (if (null box) (princ "\n※ FORM 도곽을 찾지 못해 도면 전체를 대상으로 합니다."))
+  ;;     FORM 블록 우선, 없으면 사각 테두리 폴리선(예: FORM_ 레이어 닫힌 사각형)
+  (if (setq box (hg:findframe p0))
+    (progn (princ (strcat "\n도곽 : " (cdr box))) (setq box (car box)))
+    (princ "\n※ 도곽(FORM 블록·사각 테두리)을 찾지 못해 도면 전체를 대상으로 합니다."))
 
   ;; --- 종단면도 밴드 인식 (밴드가 확인되는 종단면도만 반영, 상세도 등은 제외)
   (setq bands (qc:findbands box)
@@ -1581,7 +1584,7 @@
   (if (null bands)
     (progn
       ;; 밴드를 못 찾으면 예전 방식 : 종단 레이어 객체 전체 범위
-      (princ "\n※ 종단면도 밴드(Q-종단그래프 가로선 + 위쪽 Q-종단TEXT 관경 글자)를 못 찾아 종단 레이어 전체 범위를 씁니다.")
+      (princ "\n※ 종단면도 밴드(Q-종단그래프 가로선 + 위쪽 Q-종단TEXT·종단제원 관경 글자)를 못 찾아 종단 레이어 전체 범위를 씁니다.")
       (foreach e (qc:collect (list (cons 8 (strcat *QC:LAY-GRAPH* "," *QC:LAY-QPIPE* "," *QC:LAY-QSTA*))) box)
         (setq pts (append (qc:entpts (entget e)) pts)))
       (if pts (setq areas (list (qc:grow (qc:bbox pts) 1.0))))))
