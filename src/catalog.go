@@ -47,7 +47,31 @@ func (it *Item) hasGuide() bool {
 
 type Category struct {
 	Name  string `json:"name"`
+	Group string `json:"group,omitempty"` // 상위 분류 (예: 공통·도면수정·설계). 비우면 맨 위 단계에 바로 표시
 	Items []Item `json:"items"`
+}
+
+// 상위 분류 이름 (catalog.json 에서 처음 나오는 순서). 순서는 목록 파일이 정하고 ▲▼로는 바꾸지 않는다
+var groupNames []string
+
+func groupRank(g string) int {
+	for i, x := range groupNames {
+		if x == g {
+			return i
+		}
+	}
+	return len(groupNames) // 상위 분류 없는 분류는 맨 뒤
+}
+
+func computeGroups() {
+	groupNames = nil
+	seen := map[string]bool{}
+	for _, ct := range cat.Categories {
+		if ct.Group != "" && !seen[ct.Group] {
+			seen[ct.Group] = true
+			groupNames = append(groupNames, ct.Group)
+		}
+	}
 }
 
 type Catalog struct {
@@ -84,6 +108,7 @@ func loadCatalog() {
 		Lisps      []Lisp `json:"lisps"`
 		Categories []struct {
 			Name  string   `json:"name"`
+			Group string   `json:"group"`
 			Items []Item   `json:"items"`
 			Lisps []v1Lisp `json:"lisps"`
 		} `json:"categories"`
@@ -94,7 +119,7 @@ func loadCatalog() {
 	}
 	cat.Lisps = raw.Lisps
 	for _, rc := range raw.Categories {
-		ct := Category{Name: rc.Name, Items: rc.Items}
+		ct := Category{Name: rc.Name, Group: rc.Group, Items: rc.Items}
 		for _, l := range rc.Lisps { // v1 → v2 변환
 			cat.Lisps = append(cat.Lisps, Lisp{ID: l.Name, Desc: l.Desc, File: l.File, Manual: l.Manual, Tools: l.Tools})
 			for _, m := range l.Commands {
@@ -107,6 +132,7 @@ func loadCatalog() {
 		}
 		cat.Categories = append(cat.Categories, ct)
 	}
+	computeGroups()
 	applyOrder()
 	n := 0
 	for _, ct := range cat.Categories {
@@ -186,6 +212,7 @@ const (
 	nkNone = iota
 	nkCat
 	nkItem
+	nkGroup // 상위 분류 (ci = groupNames 위치)
 )
 
 type nodeRef struct{ kind, ci, ii int }
@@ -198,7 +225,7 @@ var (
 )
 
 func (n nodeRef) category() *Category {
-	if n.kind >= nkCat && n.ci < len(cat.Categories) {
+	if (n.kind == nkCat || n.kind == nkItem) && n.ci < len(cat.Categories) {
 		return &cat.Categories[n.ci]
 	}
 	return nil
@@ -221,6 +248,9 @@ func (n nodeRef) lisp() *Lisp {
 var collapsedNow = map[string]bool{}
 
 func defaultCollapsed(k string) bool {
+	if strings.HasPrefix(k, "g:") {
+		return false // 상위 분류는 펼친 채 시작
+	}
 	name := strings.TrimPrefix(k, "c:")
 	return isDevCategory(name) || strings.ReplaceAll(name, " ", "") == "단순기능"
 }
@@ -248,13 +278,29 @@ func refreshTree(sel nodeRef) {
 	building = true
 	c(pSendMessageW, hList, TVM_DELETEITEM, 0, tviRoot)
 	itemNode, nodeItem = map[uintptr]nodeRef{}, map[nodeRef]uintptr{}
+	// 상위 분류 → 분류 → 기능 (상위 분류가 없는 분류는 맨 위 단계에)
+	groupNode := map[string]uintptr{}
+	for gi, g := range groupNames {
+		gn := nodeRef{nkGroup, gi, 0}
+		state := uint32(TVIS_BOLD)
+		if !isCollapsed("g:" + g) {
+			state |= TVIS_EXPANDED
+		}
+		hg := tvInsertItem(tviRoot, g, state)
+		itemNode[hg], nodeItem[gn] = gn, hg
+		groupNode[g] = hg
+	}
 	for ci, ct := range cat.Categories {
 		cn := nodeRef{nkCat, ci, 0}
 		state := uint32(TVIS_BOLD)
 		if !isCollapsed("c:" + ct.Name) {
 			state |= TVIS_EXPANDED
 		}
-		hc := tvInsertItem(tviRoot, ct.Name, state)
+		parent := tviRoot
+		if hg := groupNode[ct.Group]; hg != 0 {
+			parent = hg
+		}
+		hc := tvInsertItem(parent, ct.Name, state)
 		itemNode[hc], nodeItem[cn] = cn, hc
 		for ii := range ct.Items {
 			in := nodeRef{nkItem, ci, ii}
@@ -295,8 +341,13 @@ func onNotify(lp uintptr) uintptr {
 		}
 	case tvnItemExpanded:
 		nm := (*nmTreeView)(unsafe.Pointer(lp))
-		if n, ok := itemNode[nm.itemNew.hItem]; ok && !building && n.kind == nkCat {
-			setCollapsed("c:"+n.category().Name, nm.action == TVE_COLLAPSE)
+		if n, ok := itemNode[nm.itemNew.hItem]; ok && !building {
+			switch n.kind {
+			case nkCat:
+				setCollapsed("c:"+n.category().Name, nm.action == TVE_COLLAPSE)
+			case nkGroup:
+				setCollapsed("g:"+groupNames[n.ci], nm.action == TVE_COLLAPSE)
+			}
 		}
 	}
 	return 0
@@ -308,6 +359,26 @@ func showNode(n nodeRef) {
 	run := uintptr(0)
 	var guide *guideDoc
 	switch n.kind {
+	case nkGroup: // 상위 분류: 안에 든 분류와 기능 목록
+		g := groupNames[n.ci]
+		setText(hTitle, g)
+		setText(hChip, "")
+		nc, ni := 0, 0
+		var sb strings.Builder
+		for ci := range cat.Categories {
+			ct := &cat.Categories[ci]
+			if ct.Group != g {
+				continue
+			}
+			nc++
+			sb.WriteString("■ " + ct.Name + "\n")
+			for i := range ct.Items {
+				ni++
+				sb.WriteString("    · " + ct.Items[i].Name + "\n")
+			}
+		}
+		setText(hDesc, fmt.Sprintf(T("catalog.020"), nc, ni))
+		setManual(sb.String())
 	case nkCat:
 		ct := n.category()
 		setText(hTitle, ct.Name)
@@ -482,6 +553,9 @@ func moveNode(dir int) {
 		if isDevCategory(cat.Categories[n.ci].Name) != isDevCategory(cat.Categories[j].Name) {
 			return // 개발 중 분류는 맨 아래 고정
 		}
+		if cat.Categories[n.ci].Group != cat.Categories[j].Group {
+			return // 상위 분류 안에서만 순서를 바꿈
+		}
 		cat.Categories[n.ci], cat.Categories[j] = cat.Categories[j], cat.Categories[n.ci]
 		n.ci = j
 	case nkItem:
@@ -544,9 +618,13 @@ func applyOrder() {
 	}
 }
 
-// 이 PC에서 순서를 바꿨더라도 개발 중 분류는 항상 맨 아래로
+// 상위 분류 순서대로 모으고, 이 PC에서 순서를 바꿨더라도 개발 중 분류는 각 상위 분류의 맨 아래로
 func devLast() {
 	sort.SliceStable(cat.Categories, func(a, b int) bool {
+		ga, gb := groupRank(cat.Categories[a].Group), groupRank(cat.Categories[b].Group)
+		if ga != gb {
+			return ga < gb
+		}
 		return !isDevCategory(cat.Categories[a].Name) && isDevCategory(cat.Categories[b].Name)
 	})
 }

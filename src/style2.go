@@ -326,8 +326,20 @@ func treeCustomDraw(lp uintptr) uintptr {
 		case cd.itemState&CDIS_HOT != 0:
 			cd.itemState &^= CDIS_HOT
 			cd.clrTextBk = uint32(clrHotBg)
+		default:
+			if n, ok := itemNode[cd.itemSpec]; ok && n.kind == nkGroup {
+				cd.clrTextBk = uint32(clrHotBg) // 상위 분류: 한 톤 다른 바탕
+			}
+		}
+		if n, ok := itemNode[cd.itemSpec]; ok && n.kind == nkGroup {
+			return 0x10 // CDRF_NOTIFYPOSTPAINT: 왼쪽 강조색 세로줄
 		}
 		return 0 // 목록에는 기능 이름만 (명령어는 설명서 머리 줄에 표시)
+	case 0x10002: // CDDS_ITEMPOSTPAINT (상위 분류만)
+		bar := rectT{cd.rc.left + int32(s(1)), cd.rc.top + int32(s(3)), cd.rc.left + int32(s(4)), cd.rc.bottom - int32(s(3))}
+		br := c(pCreateSolidBrush, clrAccent)
+		c(pFillRect, cd.hdc, uintptr(P(&bar)), br)
+		c(pDeleteObject, br)
 	}
 	return CDRF_DODEFAULT
 }

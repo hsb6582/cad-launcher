@@ -59,6 +59,7 @@ catalog.015 = "실행: %s %s"
 catalog.017 = "명령어  %s"
 catalog.018 = "    리습  %s"
 catalog.019 = "리습  %s"
+catalog.020 = "분류 %d개 · 기능 %d개"
 catalog.016 = "목록 순서는 이 PC에만 저장됩니다"
 
 # ── 설정 창·옵션 편집 (dialogs.go) ──

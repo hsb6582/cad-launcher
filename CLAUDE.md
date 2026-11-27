@@ -18,6 +18,7 @@ AutoCAD LT 2026 리습 런처 '전자제도 도우미'(전자제도_도우미.ex
 
 ## 목록 구조 (catalog.json v2)
 - `lisps[]`: id, file(lsp/파일.lsp), desc, manual(공통 안내), tools(외부 프로그램)
+- `categories[]`: name(분류), group(상위 분류: 공통·도면수정·설계, 런처 목록 맨 위 단계. 순서는 catalog.json 에 처음 나오는 순서, 엑셀 '상위 분류' 칸)
 - `categories[].items[]`: name(짧은 한국어 기능 이름), desc, lisp(id), command, manual, options
   - 간단 설명서(선택): when(언제 쓰나 한 줄), steps[](사용 순서), warn(주의), before/after(실행 전·후 그림 `lsp/img/명령어_before.png`·`_after.png`).
     하나라도 있으면 네이티브 런처 설명서 칸이 간단 버전으로 바뀌고 manual 은 '자세한 설명 보기'에 접힌다. 그림은 600×340 정도 PNG, 공개 저장소이므로 실제 도면 캡처는 정보를 지운 뒤 올린다.

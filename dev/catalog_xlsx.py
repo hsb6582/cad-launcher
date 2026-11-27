@@ -21,7 +21,7 @@ FONT = "맑은 고딕"
 MAXROW = 300
 SHEET = "기능 목록"
 COLS = [("분류", 16), ("기능 이름", 26), ("간단한 설명", 46), ("리습", 10), ("명령어", 13), ("설명서", 80),
-        ("언제 쓰나", 40), ("사용 순서", 40), ("주의", 34), ("추천", 8)]
+        ("언제 쓰나", 40), ("사용 순서", 40), ("주의", 34), ("추천", 8), ("상위 분류", 12)]
 NCOL = len(COLS)
 CHK = NCOL + 1  # 확인 칸
 WRAP = (3, 6, 7, 8, 9)
@@ -52,7 +52,7 @@ def export():
         for it in ct["items"]:
             row = [ct["name"], it["name"], it.get("desc", ""), it.get("lisp", ""), it["command"].replace("\n", "\\n"), it.get("manual", ""),
                    it.get("when", ""), "\n".join(it.get("steps", [])), it.get("warn", ""),
-                   "O" if it.get("recommend") else ""]
+                   "O" if it.get("recommend") else "", ct.get("group", "")]
             for i, v in enumerate(row, 1):
                 c = ws.cell(r, i, v)
                 c.font = Font(name=FONT, size=10, color="595959" if i in (4, 5) else "000000")
@@ -106,6 +106,7 @@ def export():
         ("• 설명서: 오른쪽 설명서 창 내용. 셀 안 줄바꿈은 Alt + Enter.", 10, False),
         ("• 언제 쓰나 / 사용 순서 / 주의: 간단 설명서. 하나라도 적으면 설명서 창이 간단 버전으로 바뀌고, 위 '설명서'는 '자세한 설명 보기'에 접힙니다.", 10, False),
         ("• 추천: O 를 적으면 런처 목록에서 그 기능 이름 앞에 엄지척 아이콘이 붙습니다.", 10, False),
+        ("• 상위 분류: 분류를 묶는 맨 위 묶음 (예: 공통, 도면수정, 설계). 같은 분류의 행에는 같은 값을 적습니다. 비우면 이전 값을 유지합니다.", 10, False),
         ("  사용 순서는 셀 안에서 Alt + Enter 로 줄을 나눠 한 줄에 한 단계씩 적습니다. 실행 전/후 그림은 대화로 요청해 주세요.", 10, False),
         ("• 행 순서 = 목록 순서. 행을 잘라내서 끼워 넣으면 순서가 바뀝니다. 행을 지우면 목록에서 빠집니다.", 10, False),
         ("", 10, False),
@@ -140,11 +141,12 @@ def do_import(path):
         for it in ct["items"]:
             old[(it.get("lisp", ""), it["command"].split("\n")[0].strip("_.").upper())] = it
     errs, seen, cats = [], set(), []
+    old_group = {c["name"]: c.get("group", "") for c in cat["categories"]}
     for r in range(2, ws.max_row + 1):
         v = [("" if ws.cell(r, i).value is None else str(ws.cell(r, i).value).strip()) for i in range(1, NCOL + 1)]
         if not any(v):
             continue
-        cname, name, desc, lisp, cmd, man, when, steps, warn, rec = v
+        cname, name, desc, lisp, cmd, man, when, steps, warn, rec, grp = v
         if not name:
             errs.append(f"{r}행: 기능 이름이 비어 있습니다")
             continue
@@ -183,13 +185,18 @@ def do_import(path):
         ct = next((c for c in cats if c["name"] == cname), None)
         if not ct:
             ct = {"name": cname, "items": []}
+            if old_group.get(cname):
+                ct["group"] = old_group[cname]  # 상위 분류 칸이 비면 이전 값 유지
             cats.append(ct)
+        if grp:
+            ct["group"] = grp
         ct["items"].append(it)
     if errs:
         print("\n".join("오류: " + e for e in errs))
         sys.exit("반영하지 않았습니다. 위 행을 고쳐 주세요.")
     removed = [f"{k[0]} · {k[1]}" for k in old if k not in seen]
-    cat["categories"] = cats
+    # 분류 칸 순서: name → group(있으면) → items
+    cat["categories"] = [{"name": c["name"], **({"group": c["group"]} if c.get("group") else {}), "items": c["items"]} for c in cats]
     CATALOG.write_text(json.dumps(cat, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"catalog.json 반영: 분류 {len(cats)} / 기능 {len(seen)}")
     if removed:
