@@ -135,6 +135,7 @@ const (
 	idThemeBtn
 	idAdvKw
 	idAdvFont
+	idAdvToken
 )
 
 const WM_APP_UPDATE = 0x8001

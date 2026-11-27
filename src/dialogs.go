@@ -307,7 +307,7 @@ func adoptLisp(p string) string {
 // 평소에는 거의 건드릴 일이 없는 설정(전송 방식·취소·항상 위·인코딩)과
 // 직접 명령 입력을 메인 화면에서 빼서 여기에 모아둔다.
 func advancedDialog() {
-	d := newDialogStyle(T("dialogs.004"), 860, 540, true)
+	d := newDialogStyle(T("dialogs.004"), 860, 600, true)
 	// 구역 제목: 굵은 글씨, 폭은 글자만큼 (오른쪽에 구분선을 그림)
 	var heads []uintptr
 	head := func(t string) uintptr {
@@ -384,6 +384,12 @@ func advancedDialog() {
 	if localCatalogChanged() {
 		hNoteLocal = hint(strings.TrimPrefix(T("dialogs.015"), "\n"))
 	}
+
+	// GitHub 토큰 (선택): 글자는 ● 로 가림 (ES_PASSWORD)
+	hLblTok := label(T("dialogs.101"))
+	hTok := d.mk("EDIT", st.Token, ES_AUTOHSCROLL|0x0020|WS_TABSTOP, WS_EX_CLIENTEDGE, idAdvToken)
+	hNoteTok := hint(T("dialogs.102"))
+	tokVal := st.Token
 
 	hHeadCad := head("AutoCAD")
 	hTrust := check(T("dialogs.022"), idAdvTrust, st.Trust != "no")
@@ -479,6 +485,8 @@ func advancedDialog() {
 			mv(hNoteLocal, R.x+20, R.y+2, colW-20, 40)
 			R.y += 44
 		}
+		R.y += 6
+		row(R, hLblTok, hTok, 0, 24, hNoteTok)
 		R.y += 16
 		sec(R, hHeadCad)
 		chk(R, hTrust, hNoteTrust)
@@ -494,6 +502,8 @@ func advancedDialog() {
 
 	d.onCmd = func(id, code int) {
 		switch {
+		case id == idAdvToken && code == 0x0300: // EN_CHANGE
+			tokVal = getText(hTok)
 		case id == idAdvKw && code == 0x0300: // EN_CHANGE (창이 닫히면 글자를 못 읽으므로 바뀔 때마다 보관)
 			kwVal = getText(hKw2)
 		case id == idAdvMethod && code == CBN_SELCHANGE:
@@ -533,6 +543,16 @@ func advancedDialog() {
 	if fontChanged && ask(T("dialogs.093")) {
 		c(pShellExecuteW, 0, uintptr(P(ws("open"))), uintptr(P(ws(exePath))), 0, uintptr(P(ws(appDir))), SW_SHOWNORMAL)
 		c(pPostMessageW, hMain, WM_CLOSE, 0, 0)
+	}
+	// GitHub 토큰: 앞뒤 공백을 지우고 저장 (비우면 토큰 없이 확인)
+	if tv := strings.TrimSpace(tokVal); tv != st.Token {
+		st.Token = tv
+		saveState()
+		if tv != "" {
+			logf("%s", T("dialogs.103"))
+		} else {
+			logf("%s", T("dialogs.104"))
+		}
 	}
 	// 창 제목 키워드가 바뀌었으면 CAD 창을 다시 찾음
 	if kw := strings.TrimSpace(kwVal); kw != "" && kw != st.Keyword {
