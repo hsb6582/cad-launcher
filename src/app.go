@@ -1,6 +1,6 @@
 // CAD 런처 - AutoCAD LT 2026 리습 실행 / 옵션 조정 / 설명서 / GitHub 자동 업데이트
 // 외부 라이브러리 없이 Win32 API 직접 사용 (Go 표준 라이브러리만)
-// 빌드: GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w" -o 전자제도도우미.exe
+// 빌드: GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w" -o 전자제도_도우미.exe
 package main
 
 import (
@@ -17,7 +17,7 @@ import (
 	"unsafe"
 )
 
-var exeRepoName = "전자제도도우미.exe" // 저장소 안의 프로그램 파일 이름 (테스트용은 빌드 때 전자제도도우미-테스트.exe 로 바꿈)
+var exeRepoName = "전자제도_도우미.exe" // 저장소 안의 프로그램 파일 이름 (테스트용은 빌드 때 전자제도_도우미-테스트.exe 로 바꿈)
 
 // ───────────────────────── 상태 ─────────────────────────
 type State struct {
