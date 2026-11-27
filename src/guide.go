@@ -277,6 +277,23 @@ func guideRender(hdc uintptr, W int, draw bool) int {
 	}
 	y := top + pad
 
+	// 0) 주의: 맨 위에 눈에 띄게 (진한 노란 테두리 상자 + 굵은 '주의' 제목)
+	if d.warn != "" {
+		in := si(14)
+		tw := w - in - si(14)
+		_, hh := textSize(hdc, hFontMid, T("guide.006"))
+		th := gText(hdc, hFontMid, clrWarnTxt, 0, 0, tw, d.warn, false)
+		bh := si(10) + hh + si(4) + th + si(12)
+		if draw {
+			fill := mixClr(clrSoft, clrWarnBar, 0.18)
+			fillRound(hdc, x, y, w, bh, fill, clrWarnBar, si(10))
+			fillRound(hdc, x, y, si(6), bh, clrWarnBar, clrWarnBar, si(4)) // 왼쪽 굵은 노란 띠
+			drawTextAt(hdc, hFontMid, clrWarnBar, x+in, y+si(10), T("guide.006"))
+			gText(hdc, hFontMid, clrWarnTxt, x+in, y+si(10)+hh+si(4), tw, d.warn, true)
+		}
+		y += bh + si(14)
+	}
+
 	// 1) 언제 쓰나
 	if d.when != "" {
 		y += gText(hdc, hFontMid, clrText, x, y, w, d.when, draw) + si(10)
@@ -395,19 +412,6 @@ func guideRender(hdc uintptr, W int, draw bool) int {
 			}
 		}
 		y += cardH + si(12)
-	}
-
-	// 4) 주의
-	if d.warn != "" {
-		t := "※ " + d.warn
-		th := gText(hdc, hFont, clrWarnTxt, x+si(14), 0, w-si(26), t, false)
-		bh := th + si(16)
-		if draw {
-			fillRound(hdc, x, y, w, bh, clrSoft, clrSoft, si(8))
-			fillRound(hdc, x, y, si(4), bh, clrWarnBar, clrWarnBar, si(3)) // 왼쪽 노란 띠
-			gText(hdc, hFont, clrWarnTxt, x+si(14), y+si(8), w-si(26), t, true)
-		}
-		y += bh + si(12)
 	}
 
 	// 5) 자세한 설명 (접기/펼치기)
