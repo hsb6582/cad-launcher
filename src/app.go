@@ -215,6 +215,8 @@ func createControls() {
 	show(hLblKw, false)
 	show(hKeyword, false)
 	hFind = mk("BUTTON", "↻", WS_TABSTOP, 0, idFind)
+	hCadLbl = mk("STATIC", T("app.101"), SS_LEFT, 0, 0) // CAD 창 선택칸 앞 이름표 (흐린 글씨)
+	grey[hCadLbl] = true
 	hWinCombo = mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP, 0, idWinCombo)
 
 	hUpdate = mk("BUTTON", T("app.002"), WS_TABSTOP, 0, idUpdate)
@@ -327,8 +329,9 @@ func mainBottomY(H int) int {
 	return b
 }
 
-// 맨 위 줄 왼쪽 여백: 큰 제목·아이콘은 빼고 연결 점부터 시작 (점은 titleEndX+16, 선택칸은 titleEndX+30)
-const titleEndX = -4
+// 맨 위 줄: '작업할 도면' 이름표 → 연결 점(titleEndX+16) → CAD 창 선택칸(titleEndX+30). layout 에서 잼
+var titleEndX = -4
+var hCadLbl uintptr
 
 // 대상 CAD 창 연결 표시 (초록 = 선택된 CAD 창이 살아 있음)
 func cadConnected() bool {
@@ -358,10 +361,13 @@ func paintHeader(hdc uintptr) {
 
 func layout() {
 	W, H := clientSize()
-	// 맨 위 줄: (연결 점) 대상 CAD 창 · ↻ ······ 전구 · 설정 · 업데이트
+	// 맨 위 줄: 작업할 도면 (연결 점) 대상 CAD 창 · ↻ ······ 전구 · 설정 · 업데이트
 	mv(hUpdate, W-90, 10-updPad, 82+updPad, 26+updPad) // 위·오른쪽 여백에 업데이트 알림 빨간 점 (style2.go)
 	mv(hAdvanced, W-160, 10, 64, 26)
 	mv(hThemeBtn, W-198, 10, 32, 26)
+	lw := textW(hCadLbl, hFont) + 4
+	mv(hCadLbl, 12, 15, lw, 20)
+	titleEndX = 12 + lw - 6 // 점은 이름표 오른쪽 10px
 	cx := titleEndX + 30
 	cw := min(max(W-198-12-36-cx, 120), 640)
 	mv(hWinCombo, cx, 11, cw, 300)
