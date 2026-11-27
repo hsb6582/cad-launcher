@@ -101,6 +101,7 @@ func topOwner() uintptr {
 }
 
 func dlgProc(h, msg, wp, lp uintptr) uintptr {
+	defer guardCrash() // 오류가 나면 crash.log 에 기록 (crash.go)
 	d := dialogs[h]
 	switch msg {
 	case WM_COMMAND:

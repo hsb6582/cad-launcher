@@ -56,6 +56,7 @@ catalog.json 에서 해당 항목만 python 한두 줄로 수정 → `export` �
 - 테스트용 (dev 에서 평소): `cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w -X main.fixedBranch=dev -X main.exeRepoName=전자제도_도우미-테스트.exe" -o ../전자제도_도우미-테스트.exe .`
 - 배포용 (배포 지시 때 main 에서만): `cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w" -o ../전자제도_도우미.exe .`
 - 베타용 (배포 때 main 에서 함께): `cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w -X main.exeRepoName=전자제도_도우미-베타.exe -X main.catalogRepoName=catalog_full.json" -o ../전자제도_도우미-베타.exe .`
+- 런처가 오류로 꺼지면 런처 폴더 crash.log 에 원인(호출 경로·GDI/USER 개수)이 남는다 (src/crash.go). 사용자가 보내 주면 그걸로 원인을 찾는다.
 - dev 에서는 전자제도_도우미.exe(배포용)를 다시 빌드하지 않는다. 코드를 안 바꿨으면 exe 를 다시 빌드하지 않는다. Windows에서 실행 테스트는 못 하므로 사용자에게 확인을 부탁한다.
 
 ## 네이티브 우선 (src/ = 전자제도_도우미.exe)

@@ -125,6 +125,7 @@ func hookButton(h uintptr, primary bool) {
 }
 
 func btnProc(h, msg, wp, lp uintptr) uintptr {
+	defer guardCrash() // 오류가 나면 crash.log 에 기록 (crash.go)
 	switch msg {
 	case WM_MOUSEMOVE:
 		if hotBtn != h {

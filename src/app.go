@@ -853,6 +853,7 @@ func onCommand(id, code int) {
 }
 
 func wndProc(h, msg, wp, lp uintptr) uintptr {
+	defer guardCrash() // 오류가 나면 crash.log 에 기록 (crash.go)
 	switch msg {
 	case WM_COMMAND:
 		if (wp>>16)&0xFFFF == BN_CLICKED && isToggle(lp) {
@@ -997,6 +998,7 @@ func main() {
 	optPath = filepath.Join(tmp, "cad_launcher_opt.txt")
 	_ = os.Remove(exePath + ".old") // 지난 자체 업데이트의 잔여 파일
 	loadState()
+	setupCrashLog() // 오류로 꺼지면 crash.log 에 원인 기록 (crash.go)
 
 	c(pSetProcessDPIAware)
 	enableVisualStyles()
@@ -1050,6 +1052,7 @@ func main() {
 	layout()
 	refreshTree(nodeRef{})
 	refreshWindows()
+	noticeCrashLog()
 	if st.Topmost {
 		applyTopmost()
 	}
