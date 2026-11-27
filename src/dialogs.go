@@ -307,7 +307,7 @@ func adoptLisp(p string) string {
 // 평소에는 거의 건드릴 일이 없는 설정(전송 방식·취소·항상 위·인코딩)과
 // 직접 명령 입력을 메인 화면에서 빼서 여기에 모아둔다.
 func advancedDialog() {
-	d := newDialogStyle(T("dialogs.004"), 640, 600, true)
+	d := newDialogStyle(T("dialogs.004"), 640, 662, true)
 	const lx, ex = 16, 160
 	head := func(t string) uintptr {
 		h := d.label(t, lx, 0, 200)
@@ -330,6 +330,13 @@ func advancedDialog() {
 	setCheck(hCancel, st.Cancel)
 	hTop := d.mk("BUTTON", T("dialogs.011"), BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvTop)
 	setCheck(hTop, st.Topmost)
+
+	hHeadView := head(T("dialogs.090"))
+	hLblFont := d.label(T("dialogs.091"), lx, 0, 120)
+	hFontSel := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvFont)
+	comboFill(hFontSel, []string{T("dialogs.094"), T("dialogs.095"), T("dialogs.096"), T("dialogs.097"), T("dialogs.098")}, fontLevel()-1)
+	hNoteFont := d.note(T("dialogs.092"), 0, 0, 10, 20)
+	fontChanged := false
 
 	hHeadUpd := head(T("dialogs.012"))
 	hAuto := d.mk("BUTTON", T("dialogs.013"), BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvAuto)
@@ -398,6 +405,13 @@ func advancedDialog() {
 		mv(hTop, lx, y, rw(lx), 22)
 		y += 40
 
+		mv(hHeadView, lx, y, 200, 20)
+		y += 28
+		mv(hLblFont, lx, y+4, 120, 20)
+		mv(hFontSel, ex, y, 150, 200)
+		mv(hNoteFont, ex+160, y+4, rw(ex+160), 20)
+		y += 40
+
 		mv(hHeadUpd, lx, y, 200, 20)
 		y += 28
 		mv(hAuto, lx, y, rw(lx), 22)
@@ -459,6 +473,12 @@ func advancedDialog() {
 		case id == idAdvAuto && code == BN_CLICKED:
 			st.AutoUpdate = isChecked(hAuto)
 			saveState()
+		case id == idAdvFont && code == CBN_SELCHANGE:
+			if i := comboSel(hFontSel); i >= 0 && i+1 != fontLevel() {
+				st.FontLevel = i + 1
+				saveState()
+				fontChanged = true
+			}
 		case id == idAdvTop && code == BN_CLICKED:
 			st.Topmost = isChecked(hTop)
 			applyTopmost()
@@ -467,6 +487,11 @@ func advancedDialog() {
 		}
 	}
 	d.run(hFree)
+	// 글자 크기는 글꼴을 처음에 만들므로 다시 켜야 적용됨
+	if fontChanged && ask(T("dialogs.093")) {
+		c(pShellExecuteW, 0, uintptr(P(ws("open"))), uintptr(P(ws(exePath))), 0, uintptr(P(ws(appDir))), SW_SHOWNORMAL)
+		c(pPostMessageW, hMain, WM_CLOSE, 0, 0)
+	}
 	// 창 제목 키워드가 바뀌었으면 CAD 창을 다시 찾음
 	if kw := strings.TrimSpace(kwVal); kw != "" && kw != st.Keyword {
 		st.Keyword = kw

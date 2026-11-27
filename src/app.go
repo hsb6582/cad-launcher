@@ -34,6 +34,7 @@ type State struct {
 	LeftW      int                               `json:"leftW,omitempty"`      // 목록 칸 폭
 	Order      map[string][]string               `json:"order,omitempty"`      // 이 PC에서 바꾼 목록 순서
 	Startup    []string                          `json:"startup,omitempty"`    // 시작하기 세트로 모든 도면에 자동 로드할 리습 id
+	FontLevel  int                               `json:"fontLevel,omitempty"`  // 글자 크기 1~5단계 (0 = 기본 3단계, 설정 창)
 	Theme      string                            `json:"theme,omitempty"`      // 화면 색상: dark(기본)/cream/slate (theme.go, 전구 버튼)
 	Trust      string                            `json:"trust,omitempty"`      // AutoCAD 신뢰 위치 자동 추가: ""(아직 안 물음)/"yes"/"no" (trust.go)
 	LastUpdate string                            `json:"lastUpdate,omitempty"` // 이 PC가 마지막으로 파일을 내려받은 시각 (RFC3339)
@@ -133,6 +134,7 @@ const (
 	idAdvTrust
 	idThemeBtn
 	idAdvKw
+	idAdvFont
 )
 
 const WM_APP_UPDATE = 0x8001
@@ -218,7 +220,7 @@ func createControls() {
 	hAdvanced = mk("BUTTON", T("app.003"), WS_TABSTOP, 0, idAdvanced)
 	hThemeBtn = mk("BUTTON", T("app.004"), WS_TABSTOP, 0, idThemeBtn) // 전구 모양으로 그림 (style2.go)
 
-	// 왼쪽: '리습 목록' 제목 + 개수 + 순서 바꾸기(▲▼)
+	// 왼쪽: '작업 목록' 제목 + 개수 + 순서 바꾸기(▲▼)
 	hListHdr = mk("STATIC", T("app.005"), SS_LEFT, 0, 0)
 	c(pSendMessageW, hListHdr, WM_SETFONT, hFontSec, 1)
 	hListCnt = mk("STATIC", "", SS_LEFT, 0, 0)
@@ -401,8 +403,9 @@ func layout() {
 
 	mainBottom := mainBottomY(H)
 	// 왼쪽: 리습 목록
-	mv(hListHdr, 10, secTop+4, 80, 22)
-	mv(hListCnt, 92, secTop+6, 60, 20)
+	hw := textW(hListHdr, hFontSec) + 8 // 글자 크기 단계에 따라 폭이 달라짐
+	mv(hListHdr, 10, secTop+4, hw, 22)
+	mv(hListCnt, 12+hw, secTop+6, 60, 20)
 	mv(hUp, 8+leftW-58, secTop, 28, 26)
 	mv(hDown, 8+leftW-28, secTop, 28, 26)
 	mv(hList, 8, listTop, leftW, max(mainBottom-listTop, 60))
@@ -865,12 +868,24 @@ func wndProc(h, msg, wp, lp uintptr) uintptr {
 	return c(pDefWindowProcW, h, msg, wp, lp)
 }
 
+// 글자 크기 단계 → 배율 (2단계 = 예전 크기, 기본은 3단계)
+var fontScales = []float64{0.9, 1.0, 1.1, 1.2, 1.3}
+
+func fontLevel() int {
+	if st.FontLevel < 1 || st.FontLevel > len(fontScales) {
+		return 3
+	}
+	return st.FontLevel
+}
+
+func fontScale() float64 { return fontScales[fontLevel()-1] }
+
 func makeFont(pt int, bold bool) uintptr {
 	weight := uintptr(400)
 	if bold {
 		weight = 700
 	}
-	height := -int(float64(pt) * scale * 96 / 72)
+	height := -int(float64(pt) * fontScale() * scale * 96 / 72)
 	return c(pCreateFontW, uintptr(height), 0, 0, 0, weight, 0, 0, 0, 1, 0, 0, 5, 0, uintptr(P(ws("맑은 고딕"))))
 }
 
