@@ -307,7 +307,7 @@ func adoptLisp(p string) string {
 // 평소에는 거의 건드릴 일이 없는 설정(전송 방식·취소·항상 위·인코딩)과
 // 직접 명령 입력을 메인 화면에서 빼서 여기에 모아둔다.
 func advancedDialog() {
-	d := newDialogStyle(T("dialogs.004"), 860, 500, true)
+	d := newDialogStyle(T("dialogs.004"), 860, 540, true)
 	// 구역 제목: 굵은 글씨, 폭은 글자만큼 (오른쪽에 구분선을 그림)
 	var heads []uintptr
 	head := func(t string) uintptr {
@@ -405,6 +405,14 @@ func advancedDialog() {
 		c(pDeleteObject, br)
 	}
 
+	// 설명 글이 칸 폭보다 길면 두 줄 높이
+	noteH := func(h uintptr, w int) int {
+		if textW(h, hFont) > w-4 {
+			return 38
+		}
+		return 20
+	}
+
 	// 배치: 두 단, 각 단은 [이름 칸 | 입력 칸], 설명은 입력 칸 아래 회색 글씨
 	const pad, gap, lblW = 20, 28, 118
 	d.onSize = func(W, H int) {
@@ -426,16 +434,18 @@ func advancedDialog() {
 			mv(ctl, cx, cl.y, ctlW, ctlH)
 			cl.y += 30
 			if note != 0 {
-				mv(note, cx, cl.y-2, colW-lblW, 20)
-				cl.y += 22
+				nh := noteH(note, colW-lblW)
+				mv(note, cx, cl.y-2, colW-lblW, nh)
+				cl.y += nh + 2
 			}
 		}
 		chk := func(cl *col, h, note uintptr) {
 			mv(h, cl.x, cl.y, colW, 24)
 			cl.y += 26
 			if note != 0 {
-				mv(note, cl.x+20, cl.y-2, colW-20, 20)
-				cl.y += 22
+				nh := noteH(note, colW-20)
+				mv(note, cl.x+20, cl.y-2, colW-20, nh)
+				cl.y += nh + 2
 			}
 		}
 
@@ -454,7 +464,7 @@ func advancedDialog() {
 		mv(hFree, L.x, L.y, ew, 24)
 		mv(hSend, L.x+ew+8, L.y-2, 90, 28)
 		L.y += 30
-		mv(hNoteFree, L.x, L.y-2, colW, 20)
+		mv(hNoteFree, L.x, L.y-2, colW, noteH(hNoteFree, colW))
 
 		R := &col{pad + colW + gap, 16}
 		sec(R, hHeadUpd)
