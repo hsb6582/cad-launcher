@@ -40,7 +40,7 @@ func sendCopyData(h uintptr, text string, cancel bool) error {
 	r := c(pSendMessageTimeoutW, h, WM_COPYDATA, hMain, uintptr(P(&cds)), SMTO_ABORTIFHUNG, 5000, uintptr(P(&res)))
 	runtime.KeepAlive(u)
 	if r == 0 {
-		return fmt.Errorf("WM_COPYDATA 전송 실패 (CAD 응답 없음/시간 초과)")
+		return fmt.Errorf("%s", T("send.001"))
 	}
 	return nil
 }

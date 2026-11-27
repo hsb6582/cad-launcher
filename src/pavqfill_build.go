@@ -149,7 +149,7 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 
 	zr, err := zip.NewReader(bytes.NewReader(templateXlsx), int64(len(templateXlsx)))
 	if err != nil {
-		return nil, nil, fmt.Errorf("템플릿 xlsx 열기 실패: %w", err)
+		return nil, nil, fmt.Errorf(T("pavqfill_build.001"), err)
 	}
 	files := map[string][]byte{}
 	var order []string
@@ -381,13 +381,13 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 					rb.set(gIdx, pqCNum("G"+itoa(R), gStyle, mq))
 				}
 				if mismatched {
-					memos.add(hIdx, R, fmt.Sprintf("자재내역 %sm / 집계 %sm (차 %sm)\n관로 길이 확인 필요", pqNumStr(mq), pqNumStr(tot), pqNumStr(tot-mq)))
-					mism = append(mism, fmt.Sprintf("%s %s : 자재내역 %sm / 집계 %sm (차 %sm)", b.dwg, dispRow(r), pqNumStr(mq), pqNumStr(tot), pqNumStr(tot-mq)))
+					memos.add(hIdx, R, fmt.Sprintf(T("pavqfill_build.002"), pqNumStr(mq), pqNumStr(tot), pqNumStr(tot-mq)))
+					mism = append(mism, fmt.Sprintf(T("pavqfill_build.003"), b.dwg, dispRow(r), pqNumStr(mq), pqNumStr(tot), pqNumStr(tot-mq)))
 				}
 			case len(csv.mats) > 0:
 				rb.set(gIdx, pqCEmpty("G"+itoa(R), gStyle))
-				memos.add(hIdx, R, fmt.Sprintf("자재내역에 이 관경 수량이 없음 (집계 %sm)\n관경·자재내역 확인 필요", pqNumStr(tot)))
-				mism = append(mism, fmt.Sprintf("%s %s : 자재내역 수량 없음 / 집계 %sm", b.dwg, dispRow(r), pqNumStr(tot)))
+				memos.add(hIdx, R, fmt.Sprintf(T("pavqfill_build.004"), pqNumStr(tot)))
+				mism = append(mism, fmt.Sprintf(T("pavqfill_build.005"), b.dwg, dispRow(r), pqNumStr(tot)))
 			default:
 				rb.set(gIdx, pqCEmpty("G"+itoa(R), gStyle))
 			}
@@ -440,7 +440,7 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 	}
 	for d := range accMap {
 		if _, ok := idxOf[d]; !ok {
-			unknown = append(unknown, d+" : 횡단보도/과속방지턱이 있으나 집계 행이 없음")
+			unknown = append(unknown, d+T("pavqfill_build.006"))
 		}
 	}
 
@@ -450,34 +450,34 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 	}
 
 	// -------- 합계 행 --------
-	T := row
-	rbT := newPqRow(T, ti.heightTotal)
+	totRow := row
+	rbT := newPqRow(totRow, ti.heightTotal)
 	tStyle := ti.donorStyle["total"]
 	for c := 1; c <= ti.lastColIdx; c++ {
-		rbT.set(c, pqCEmpty(pqColLetters(c)+itoa(T), tStyle[c]))
+		rbT.set(c, pqCEmpty(pqColLetters(c)+itoa(totRow), tStyle[c]))
 	}
 	aIdx := pqColIndex("A")
-	rbT.set(aIdx, pqCStr("A"+itoa(T), tStyle[aIdx], "합 계"))
-	mergesOut = append(mergesOut, fmt.Sprintf("A%d:C%d", T, T))
+	rbT.set(aIdx, pqCStr("A"+itoa(totRow), tStyle[aIdx], T("pavqfill_build.007")))
+	mergesOut = append(mergesOut, fmt.Sprintf("A%d:C%d", totRow, totRow))
 	for _, lc := range ti.sumCols {
 		ci := pqColIndex(lc)
-		rbT.set(ci, pqCFormula(lc+itoa(T), tStyle[ci], fmt.Sprintf("SUM(%s%d:%s%d)", lc, pqFirstRow, lc, last)))
+		rbT.set(ci, pqCFormula(lc+itoa(totRow), tStyle[ci], fmt.Sprintf("SUM(%s%d:%s%d)", lc, pqFirstRow, lc, last)))
 	}
 	newRows = append(newRows, rbT)
 
 	// -------- 비고 행 --------
-	N := T + 1
+	N := totRow + 1
 	rbN := newPqRow(N, ti.heightTotal)
 	nStyle := ti.donorStyle["note"]
 	for c := 1; c <= ti.lastColIdx; c++ {
 		rbN.set(c, pqCEmpty(pqColLetters(c)+itoa(N), nStyle[c]))
 	}
-	rbN.set(aIdx, pqCStr("A"+itoa(N), nStyle[aIdx], "비  고"))
+	rbN.set(aIdx, pqCStr("A"+itoa(N), nStyle[aIdx], T("pavqfill_build.008")))
 	mergesOut = append(mergesOut, fmt.Sprintf("A%d:C%d", N, N))
 	mergesOut = append(mergesOut, fmt.Sprintf("D%d:%s%d", N, pqLastCol, N))
 	noteText := strings.Join(firstN(csv.notes, 12), "\n")
 	if len(csv.notes) > 12 {
-		noteText += fmt.Sprintf("\n… 외 %d건 (PAVQ_오류 파일 참고)", len(csv.notes)-12)
+		noteText += fmt.Sprintf(T("pavqfill_build.009"), len(csv.notes)-12)
 	}
 	dIdx := pqColIndex("D")
 	noteFont := ss.addFont(pqFontXML(false, 9))
@@ -516,8 +516,8 @@ func pavqBuildExcel(templateXlsx []byte, csvText, baseName string) (outBytes []b
 	// 메모가 달린 H 칸은 노란색 (연장 불일치)
 	pqYellowMemoCells(ss, newRows, memos, yellowFill)
 
-	warnings = append(warnings, prefixEach(mism, "자재내역 불일치: ")...)
-	warnings = append(warnings, prefixEach(unknown, "양식 열 없음: ")...)
+	warnings = append(warnings, prefixEach(mism, T("pavqfill_build.010"))...)
+	warnings = append(warnings, prefixEach(unknown, T("pavqfill_build.011"))...)
 
 	// -------- sheetData 갈아 끼우기 --------
 	var rowsXML strings.Builder

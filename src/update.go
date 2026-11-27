@@ -118,9 +118,9 @@ func ghGet(rawURL string, accept string) ([]byte, error) {
 	case 200:
 		return body, nil
 	case 401, 403:
-		return nil, fmt.Errorf("접근 거부(%d) - 비공개 저장소면 토큰을 확인하세요", resp.StatusCode)
+		return nil, fmt.Errorf(T("update.001"), resp.StatusCode)
 	case 404:
-		return nil, fmt.Errorf("저장소 또는 브랜치를 찾을 수 없음(404) - GitHub 설정을 확인하세요")
+		return nil, fmt.Errorf("%s", T("update.002"))
 	}
 	return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 }
@@ -135,7 +135,7 @@ var fixedBranch = "main"
 
 func init() {
 	if fixedBranch != "main" {
-		appTitle += " (테스트)" // 창 제목으로 테스트용 런처임을 구분
+		appTitle += T("update.003") // 창 제목으로 테스트용 런처임을 구분
 	}
 }
 
@@ -182,7 +182,7 @@ func startUpdateCheck(interactive bool) {
 	}
 	updating = true
 	c(pEnableWindow, hUpdate, 0)
-	logf("업데이트 확인 중… (%s, %s)", fixedRepo, branch())
+	logf(T("update.004"), fixedRepo, branch())
 	go func() {
 		p := fetchPlan(interactive)
 		pendingPlan = p
@@ -194,7 +194,7 @@ func pathList(fs []remoteFile) string {
 	var sb strings.Builder
 	for i, f := range fs {
 		if i == 12 {
-			sb.WriteString("  … 외 " + itoa(len(fs)-12) + "개\n")
+			sb.WriteString(T("update.005") + itoa(len(fs)-12) + T("update.006"))
 			break
 		}
 		sb.WriteString("  • " + f.Path + "\n")
@@ -212,9 +212,9 @@ func onUpdateResult() {
 		return
 	}
 	if p.err != nil {
-		logf("업데이트 확인 실패: %v", p.err)
+		logf(T("update.007"), p.err)
 		if p.interactive {
-			msgBox("업데이트 확인 실패\n\n"+p.err.Error(), MB_ICONWARNING)
+			msgBox(T("update.008")+p.err.Error(), MB_ICONWARNING)
 		}
 		return
 	}
@@ -228,25 +228,25 @@ func onUpdateResult() {
 	saveState()
 	if len(p.updates) == 0 && len(p.conflicts) == 0 {
 		setUpdateAvail(false)
-		logf("최신 상태입니다")
+		logf("%s", T("update.009"))
 		if p.interactive {
-			msgBox("모든 리습과 런처가 최신 상태입니다.", 0x40)
+			msgBox(T("update.010"), 0x40)
 		}
 		return
 	}
 	todo := p.updates
 	if len(p.updates) > 0 {
-		if !ask("GitHub에 새 버전이 있습니다.\n\n" + pathList(p.updates) + "\n지금 내려받을까요?\n(기존 파일은 _backup 폴더에 보관됩니다)") {
+		if !ask(T("update.011") + pathList(p.updates) + T("update.012")) {
 			todo = nil
 		}
 	}
 	setUpdateAvail(len(p.updates) > 0 && len(todo) == 0) // 안 받았으면 빨간 점으로 남김
 	if len(p.conflicts) > 0 {
-		if ask("아래 파일은 이 PC에서도 수정되었습니다.\n\n" + pathList(p.conflicts) +
-			"\nGitHub 버전으로 덮어쓸까요?\n(아니오 = 이 PC 버전 유지, 기존 파일은 _backup 에 보관)") {
+		if ask(T("update.013") + pathList(p.conflicts) +
+			T("update.014")) {
 			todo = append(todo, p.conflicts...)
 		} else {
-			logf("로컬 수정 파일 %d개는 유지", len(p.conflicts))
+			logf(T("update.015"), len(p.conflicts))
 		}
 	}
 	if len(todo) > 0 {
@@ -264,14 +264,14 @@ func applyUpdates(files []remoteFile) {
 		}
 		data, err := ghGet("https://raw.githubusercontent.com/"+fixedRepo+"/"+url.PathEscape(branch())+"/"+strings.Join(segs, "/"), "")
 		if err != nil {
-			logf("받기 실패 %s: %v", f.Path, err)
+			logf(T("update.016"), f.Path, err)
 			continue
 		}
 		h := sha1.New()
 		fmt.Fprintf(h, "blob %d\x00", len(data))
 		h.Write(data)
 		if hex.EncodeToString(h.Sum(nil)) != f.Sha {
-			logf("검증 실패 %s (내용 불일치) - 건너뜀", f.Path)
+			logf(T("update.017"), f.Path)
 			continue
 		}
 		dst := localFor(f.Path)
@@ -284,25 +284,25 @@ func applyUpdates(files []remoteFile) {
 			// 실행 중인 exe 는 덮어쓸 수 없지만 이름은 바꿀 수 있음 → .old 로 옮기고 새 파일을 놓는다
 			tmp := exePath + ".new"
 			if err := os.WriteFile(tmp, data, 0755); err != nil {
-				logf("런처 업데이트 실패: %v", err)
+				logf(T("update.018"), err)
 				continue
 			}
 			_ = os.Remove(exePath + ".old")
 			if err := os.Rename(exePath, exePath+".old"); err != nil {
-				logf("런처 업데이트 실패: %v", err)
+				logf(T("update.019"), err)
 				_ = os.Remove(tmp)
 				continue
 			}
 			if err := os.Rename(tmp, exePath); err != nil {
 				_ = os.Rename(exePath+".old", exePath)
-				logf("런처 업데이트 실패: %v", err)
+				logf(T("update.020"), err)
 				continue
 			}
 			exeUpdated = true
 		} else {
 			_ = os.MkdirAll(filepath.Dir(dst), 0755)
 			if err := os.WriteFile(dst, data, 0644); err != nil {
-				logf("저장 실패 %s: %v", f.Path, err)
+				logf(T("update.021"), f.Path, err)
 				continue
 			}
 			if f.Path == "catalog.json" {
@@ -311,7 +311,7 @@ func applyUpdates(files []remoteFile) {
 		}
 		st.Synced[f.Path] = f.Sha
 		okN++
-		logf("업데이트: %s", f.Path)
+		logf(T("update.022"), f.Path)
 	}
 	if okN > 0 {
 		st.LastUpdate = time.Now().Format(time.RFC3339)
@@ -321,14 +321,14 @@ func applyUpdates(files []remoteFile) {
 		loadCatalog()
 		refreshTree(nodeRef{})
 	}
-	logf("업데이트 완료 %d/%d개", okN, len(files))
+	logf(T("update.023"), okN, len(files))
 	if exeUpdated {
-		if ask("런처 프로그램이 새 버전으로 바뀌었습니다.\n지금 다시 시작할까요?") {
+		if ask(T("update.024")) {
 			c(pShellExecuteW, 0, uintptr(P(ws("open"))), uintptr(P(ws(exePath))), 0, uintptr(P(ws(appDir))), SW_SHOWNORMAL)
 			c(pPostMessageW, hMain, WM_CLOSE, 0, 0)
 		}
 	} else if okN > 0 {
-		msgBox(itoa(okN)+"개 파일을 최신 버전으로 업데이트했습니다.", 0x40)
+		msgBox(itoa(okN)+T("update.025"), 0x40)
 	}
 }
 

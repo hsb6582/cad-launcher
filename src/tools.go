@@ -29,7 +29,7 @@ type Tool struct {
 }
 
 var toolKinds = []string{"zip", "exe", "msi", "file"}
-var toolKindNames = []string{"zip (압축 풀어 설치)", "exe 설치 프로그램 실행", "msi 설치 패키지 실행", "file (파일 하나 복사)"}
+var toolKindNames = []string{T("tools.001"), T("tools.002"), T("tools.003"), T("tools.004")}
 
 var envRe = regexp.MustCompile(`%([^%]+)%`)
 
@@ -109,11 +109,11 @@ func toolStatusText(t Tool) string {
 	}
 	switch toolState(t) {
 	case 0:
-		return t.Name + v + " — 설치 안 됨"
+		return t.Name + v + T("tools.005")
 	case 2:
-		return t.Name + v + " — 새 버전 있음 (설치된 버전 " + st.Installed[t.Name] + ")"
+		return t.Name + v + T("tools.006") + st.Installed[t.Name] + ")"
 	}
-	return t.Name + v + " — 설치됨"
+	return t.Name + v + T("tools.007")
 }
 
 func toolsSummary(l *Lisp) string {
@@ -121,11 +121,11 @@ func toolsSummary(l *Lisp) string {
 		return ""
 	}
 	var sb strings.Builder
-	sb.WriteString("\n[외부 프로그램]  ('외부 프로그램' 버튼으로 설치)\n")
+	sb.WriteString(T("tools.008"))
 	for _, t := range l.Tools {
 		sb.WriteString("  • " + toolStatusText(t) + "\n")
 		if t.Kind == "zip" || t.Kind == "file" {
-			sb.WriteString("      설치 위치: " + toolDir(t) + "\n")
+			sb.WriteString(T("tools.009") + toolDir(t) + "\n")
 		}
 		if t.Desc != "" {
 			sb.WriteString("      " + t.Desc + "\n")
@@ -138,7 +138,7 @@ func toolsSummary(l *Lisp) string {
 func fetchToolSource(t Tool) (string, error) {
 	src := strings.TrimSpace(t.Source)
 	if src == "" {
-		return "", fmt.Errorf("설치 파일 위치가 비어 있습니다")
+		return "", fmt.Errorf("%s", T("tools.010"))
 	}
 	name := filepath.Base(filepath.FromSlash(strings.SplitN(src, "?", 2)[0]))
 	dl := filepath.Join(os.TempDir(), "CADLauncher_"+sanitize(name))
@@ -179,7 +179,7 @@ func unzipTo(zipPath, dir string) error {
 		p := filepath.Join(dir, filepath.FromSlash(f.Name))
 		ap, _ := filepath.Abs(p)
 		if ap != root && !strings.HasPrefix(ap, root+string(os.PathSeparator)) {
-			return fmt.Errorf("압축 파일에 잘못된 경로가 있습니다: %s", f.Name)
+			return fmt.Errorf(T("tools.011"), f.Name)
 		}
 		if f.FileInfo().IsDir() {
 			_ = os.MkdirAll(p, 0755)
@@ -217,12 +217,12 @@ var pendingJob *toolJob
 
 func installTools(ts []Tool) {
 	if updating {
-		msgBox("다른 작업이 진행 중입니다. 잠시 후 다시 시도하세요.", MB_ICONWARNING)
+		msgBox(T("tools.012"), MB_ICONWARNING)
 		return
 	}
 	updating = true
 	c(pEnableWindow, hTools, 0)
-	logf("외부 프로그램 설치 준비 중…")
+	logf("%s", T("tools.013"))
 	go func() {
 		job := &toolJob{tools: ts}
 		for _, t := range ts {
@@ -236,11 +236,11 @@ func installTools(ts []Tool) {
 				// 덮어쓰기 설치: 압축 안의 파일만 바꾸고 폴더의 다른 파일(보정값·설정 등)은 그대로 둠
 				dir := toolDir(t)
 				if err := os.MkdirAll(dir, 0755); err != nil {
-					job.err = append(job.err, t.Name+": 폴더를 만들 수 없음 "+dir+" ("+err.Error()+")")
+					job.err = append(job.err, t.Name+T("tools.014")+dir+" ("+err.Error()+")")
 					continue
 				}
 				if err := unzipTo(dl, dir); err != nil {
-					job.err = append(job.err, t.Name+": "+err.Error()+" (프로그램이 실행 중이면 닫고 다시 시도)")
+					job.err = append(job.err, t.Name+": "+err.Error()+T("tools.015"))
 					continue
 				}
 				job.done = append(job.done, t.Name)
@@ -275,7 +275,7 @@ func onToolsResult() {
 		return
 	}
 	for _, r := range job.runs {
-		logf("설치 프로그램 실행: %s %s", r[0], r[1])
+		logf(T("tools.016"), r[0], r[1])
 		c(pShellExecuteW, hMain, uintptr(P(ws("open"))), uintptr(P(ws(r[0]))), uintptr(P(ws(r[1]))), 0, SW_SHOWNORMAL)
 	}
 	for _, t := range job.tools {
@@ -283,7 +283,7 @@ func onToolsResult() {
 			if n == t.Name {
 				st.Installed[t.Name] = t.Version
 				if st.Installed[t.Name] == "" {
-					st.Installed[t.Name] = "설치됨"
+					st.Installed[t.Name] = T("tools.017")
 				}
 			}
 		}
@@ -291,15 +291,15 @@ func onToolsResult() {
 	saveState()
 	msg := ""
 	if len(job.done) > 0 {
-		msg += "설치 완료: " + strings.Join(job.done, ", ")
+		msg += T("tools.018") + strings.Join(job.done, ", ")
 		if len(job.runs) > 0 {
-			msg += "\n(설치 프로그램 창이 열리면 안내에 따라 마무리하세요)"
+			msg += T("tools.019")
 		}
 	}
 	if len(job.err) > 0 {
-		msg += "\n\n실패:\n" + strings.Join(job.err, "\n")
+		msg += T("tools.020") + strings.Join(job.err, "\n")
 	}
-	logf("외부 프로그램: 완료 %d, 실패 %d", len(job.done), len(job.err))
+	logf(T("tools.021"), len(job.done), len(job.err))
 	if msg != "" {
 		msgBox(strings.TrimSpace(msg), 0x40)
 	}
@@ -319,13 +319,13 @@ func installCurrentTools() {
 		}
 	}
 	list := need
-	q := "아래 외부 프로그램을 설치할까요?\n\n"
+	q := T("tools.022")
 	if len(need) == 0 {
 		list = l.Tools
-		q = "모두 설치되어 있습니다. 다시 설치할까요?\n\n"
+		q = T("tools.023")
 	}
 	for _, t := range list {
-		q += "  • " + toolStatusText(t) + "\n     받는 곳: " + t.Source + "\n"
+		q += "  • " + toolStatusText(t) + T("tools.024") + t.Source + "\n"
 	}
 	if ask(q) {
 		installTools(list)
@@ -347,8 +347,8 @@ func ensureTools(l *Lisp) bool {
 	for _, t := range miss {
 		names = append(names, t.Name)
 	}
-	r := msgBox("이 리습에 필요한 외부 프로그램이 설치되어 있지 않습니다: "+strings.Join(names, ", ")+
-		"\n\n지금 설치할까요?\n(예 = 설치 / 아니오 = 설치 없이 실행 / 취소 = 실행 안 함)", 0x03|MB_ICONQUESTION)
+	r := msgBox(T("tools.025")+strings.Join(names, ", ")+
+		T("tools.026"), 0x03|MB_ICONQUESTION)
 	switch r {
 	case IDYES:
 		installTools(miss)
@@ -371,34 +371,34 @@ func toolVarLines(l *Lisp) string {
 
 // ───────────── 외부 프로그램 편집 창 ─────────────
 func toolDialog(t *Tool) bool {
-	d := newDialog("외부 프로그램", 560, 400)
+	d := newDialog(T("tools.027"), 560, 400)
 	const lx, ex, ew = 14, 120, 420
-	d.label("이름", lx, 16, 100)
+	d.label(T("tools.028"), lx, 16, 100)
 	hName := d.edit(t.Name, ex, 12, 200)
-	d.label("버전", lx+330, 16, 40)
+	d.label(T("tools.029"), lx+330, 16, 40)
 	hVer := d.edit(t.Version, ex+260, 12, 160)
-	d.label("설명", lx, 48, 100)
+	d.label(T("tools.030"), lx, 48, 100)
 	hDesc := d.edit(t.Desc, ex, 44, ew)
-	d.label("설치 파일", lx, 80, 100)
+	d.label(T("tools.031"), lx, 80, 100)
 	hSrc := d.edit(t.Source, ex, 76, ew-40)
 	d.button("…", 801, ex+ew-34, 74, 34, false)
-	d.note("저장소 안 경로(tools/MATX.zip) 또는 https 주소 (큰 파일은 GitHub Releases 주소 권장)", ex, 104, ew, 20)
-	d.label("종류", lx, 132, 100)
+	d.note(T("tools.032"), ex, 104, ew, 20)
+	d.label(T("tools.033"), lx, 132, 100)
 	hKind := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, 802)
 	mv(hKind, ex, 128, 250, 200)
 	comboFill(hKind, toolKindNames, max(indexOf(toolKinds, t.Kind), 0))
-	d.label("실행 파일", lx, 164, 100)
+	d.label(T("tools.034"), lx, 164, 100)
 	hExe := d.edit(t.Exe, ex, 160, ew)
-	d.note("zip·file: 설치 폴더 안 실행파일 (예: MATX.exe)  /  exe·msi: 설치 후 확인할 경로 (예: %ProgramFiles%\\MATX\\MATX.exe)", ex, 188, ew, 34)
-	d.label("설치 옵션", lx, 230, 100)
+	d.note(T("tools.035"), ex, 188, ew, 34)
+	d.label(T("tools.036"), lx, 230, 100)
 	hArgs := d.edit(t.Args, ex, 226, 200)
-	d.note("exe·msi 전용 (예: /S, /quiet)", ex+208, 230, ew-208, 20)
-	d.label("LISP 변수", lx, 262, 100)
+	d.note(T("tools.037"), ex+208, 230, ew-208, 20)
+	d.label(T("tools.038"), lx, 262, 100)
 	hVar := d.edit(t.Var, ex, 258, 200)
-	d.note("실행파일 경로를 리습에 넘김 (예: *MATX-EXE*)", ex+208, 262, ew-208, 20)
-	d.note("zip·file 은 %LOCALAPPDATA%\\CADLauncher\\tools\\이름 폴더에 설치됩니다.", ex, 296, ew, 20)
-	d.button("확인", IDOK, 350, 356, 95, true)
-	d.button("취소", IDCANCEL, 450, 356, 95, false)
+	d.note(T("tools.039"), ex+208, 262, ew-208, 20)
+	d.note(T("tools.040"), ex, 296, ew, 20)
+	d.button(T("tools.041"), IDOK, 350, 356, 95, true)
+	d.button(T("tools.042"), IDCANCEL, 450, 356, 95, false)
 	d.onCmd = func(id, code int) {
 		switch {
 		case id == 801 && code == BN_CLICKED:
@@ -431,7 +431,7 @@ func toolDialog(t *Tool) bool {
 			name := strings.TrimSpace(getText(hName))
 			src := strings.TrimSpace(getText(hSrc))
 			if name == "" || src == "" {
-				msgBox("이름과 설치 파일을 입력하세요.", MB_ICONWARNING)
+				msgBox(T("tools.043"), MB_ICONWARNING)
 				return
 			}
 			k := "zip"

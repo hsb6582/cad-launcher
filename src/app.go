@@ -207,19 +207,19 @@ func ctlColor(hdc, ctl uintptr) uintptr {
 func createControls() {
 	hFontSec = makeFont(10, true)
 	// 대상 CAD 창: 제목 옆 선택칸 + 다시 찾기(↻). 창 제목 키워드는 설정 창에서 바꿈 (입력칸은 숨겨서 값만 보관)
-	hLblKw = mk("STATIC", "창 제목 키워드", SS_LEFT, 0, 0)
+	hLblKw = mk("STATIC", T("app.001"), SS_LEFT, 0, 0)
 	hKeyword = mk("EDIT", st.Keyword, ES_AUTOHSCROLL|WS_TABSTOP, WS_EX_CLIENTEDGE, idKeyword)
 	show(hLblKw, false)
 	show(hKeyword, false)
 	hFind = mk("BUTTON", "↻", WS_TABSTOP, 0, idFind)
 	hWinCombo = mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP, 0, idWinCombo)
 
-	hUpdate = mk("BUTTON", "업데이트", WS_TABSTOP, 0, idUpdate)
-	hAdvanced = mk("BUTTON", "설정", WS_TABSTOP, 0, idAdvanced)
-	hThemeBtn = mk("BUTTON", "화면 색상", WS_TABSTOP, 0, idThemeBtn) // 전구 모양으로 그림 (style2.go)
+	hUpdate = mk("BUTTON", T("app.002"), WS_TABSTOP, 0, idUpdate)
+	hAdvanced = mk("BUTTON", T("app.003"), WS_TABSTOP, 0, idAdvanced)
+	hThemeBtn = mk("BUTTON", T("app.004"), WS_TABSTOP, 0, idThemeBtn) // 전구 모양으로 그림 (style2.go)
 
 	// 왼쪽: '리습 목록' 제목 + 개수 + 순서 바꾸기(▲▼)
-	hListHdr = mk("STATIC", "리습 목록", SS_LEFT, 0, 0)
+	hListHdr = mk("STATIC", T("app.005"), SS_LEFT, 0, 0)
 	c(pSendMessageW, hListHdr, WM_SETFONT, hFontSec, 1)
 	hListCnt = mk("STATIC", "", SS_LEFT, 0, 0)
 	grey[hListCnt] = true
@@ -239,15 +239,15 @@ func createControls() {
 	hChip = mk("STATIC", "", 0x0001 /*SS_CENTER*/, 0, 0)
 	hDesc = mk("STATIC", "", SS_LEFT, 0, 0)
 	grey[hDesc] = true
-	hOptGroup = mk("STATIC", "옵션", SS_LEFT, 0, 0)
+	hOptGroup = mk("STATIC", T("app.006"), SS_LEFT, 0, 0)
 	c(pSendMessageW, hOptGroup, WM_SETFONT, hFontSec, 1)
-	hReset = mk("BUTTON", "기본값으로", WS_TABSTOP, 0, idReset)
-	hLblManual = mk("STATIC", "설명서", SS_LEFT, 0, 0)
+	hReset = mk("BUTTON", T("app.007"), WS_TABSTOP, 0, idReset)
+	hLblManual = mk("STATIC", T("app.008"), SS_LEFT, 0, 0)
 	c(pSendMessageW, hLblManual, WM_SETFONT, hFontSec, 1)
 	hManual = mk("EDIT", "", ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL, WS_EX_CLIENTEDGE, idManual)
-	hRun = mk("BUTTON", "▶ 실행", WS_TABSTOP|BS_OWNERDRAW, 0, idRun) // 직접 그려서 강조색 버튼으로 표시
-	hTools = mk("BUTTON", "외부 프로그램 설치", WS_TABSTOP, 0, idTools)
-	hStartup = mk("BUTTON", "모든 도면에서 자동 로드", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idStartup)
+	hRun = mk("BUTTON", T("app.009"), WS_TABSTOP|BS_OWNERDRAW, 0, idRun) // 직접 그려서 강조색 버튼으로 표시
+	hTools = mk("BUTTON", T("app.010"), WS_TABSTOP, 0, idTools)
+	hStartup = mk("BUTTON", T("app.011"), BS_AUTOCHECKBOX|WS_TABSTOP, 0, idStartup)
 
 	// 아래: 마지막 결과 한 줄 + 실행 기록 펼치기
 	hStatus = mk("STATIC", "", SS_LEFT|0x0100 /*SS_NOTIFY*/ |0x4000 /*SS_ENDELLIPSIS*/, 0, 0)
@@ -472,10 +472,10 @@ func layout() {
 	// 맨 아래: 마지막 결과 한 줄 + 실행 기록 펼치기 / 펼친 기록 칸
 	show(hLog, st.LogOpen)
 	if st.LogOpen {
-		setText(hLogToggle, "실행 기록 접기 ▾")
+		setText(hLogToggle, T("app.012"))
 		mv(hLog, 8, H-statusH-6-logH, W-16, logH)
 	} else {
-		setText(hLogToggle, "실행 기록 펼치기 ▴")
+		setText(hLogToggle, T("app.013"))
 	}
 	mv(hStatus, 12, H-statusH+9, W-12-150, 20)
 	mv(hLogToggle, W-8-136, H-statusH+5, 136, 26)
@@ -597,12 +597,12 @@ func collect() ([]kv, map[string]interface{}, bool) {
 			v := strings.TrimSpace(getText(oc.ctrl))
 			if o.Type == "number" {
 				if _, err := strconv.ParseFloat(v, 64); err != nil {
-					msgBox("'"+label+"' 값이 숫자가 아닙니다: "+v, MB_ICONWARNING)
+					msgBox("'"+label+T("app.014")+v, MB_ICONWARNING)
 					return nil, nil, false
 				}
 			} else if o.Type == "int" {
 				if _, err := strconv.Atoi(v); err != nil {
-					msgBox("'"+label+"' 값이 정수가 아닙니다: "+v, MB_ICONWARNING)
+					msgBox("'"+label+T("app.015")+v, MB_ICONWARNING)
 					return nil, nil, false
 				}
 			}
@@ -639,7 +639,7 @@ func browse(i int) {
 	oc := optCtls[i]
 	buf := make([]uint16, 1024)
 	if oc.opt.Type == "folder" {
-		bi := browseInfo{hwndOwner: hMain, pszDisplayName: &buf[0], lpszTitle: ws("폴더 선택"), ulFlags: 0x0001 | 0x0040}
+		bi := browseInfo{hwndOwner: hMain, pszDisplayName: &buf[0], lpszTitle: ws(T("app.016")), ulFlags: 0x0001 | 0x0040}
 		pidl := c(pSHBrowseForFolderW, uintptr(P(&bi)))
 		if pidl == 0 {
 			return
@@ -687,9 +687,9 @@ func refreshWindows() {
 	comboFill(hWinCombo, titles, sel)
 	c(pInvalidateRect, hMain, 0, 1) // 연결 표시 점
 	if len(windows) > 0 {
-		logf("CAD 창 %d개 찾음", len(windows))
+		logf(T("app.017"), len(windows))
 	} else {
-		logf("CAD 창을 찾지 못함 - LT 실행 여부와 키워드를 확인하세요")
+		logf("%s", T("app.018"))
 	}
 }
 
@@ -709,7 +709,7 @@ func send(text string) bool {
 	readSettings()
 	h := targetHwnd()
 	if h == 0 {
-		msgBox("대상 CAD 창이 없습니다. AutoCAD LT를 켜고 '창 찾기'를 눌러 주세요.", MB_ICONWARNING)
+		msgBox(T("app.019"), MB_ICONWARNING)
 		return false
 	}
 	var err error
@@ -719,10 +719,10 @@ func send(text string) bool {
 		err = sendCopyData(h, text, st.Cancel)
 	}
 	if err != nil {
-		logf("전송 오류: %v", err)
+		logf(T("app.020"), err)
 		return false
 	}
-	logf("전송: %s", strings.ReplaceAll(text, "\n", "⏎"))
+	logf(T("app.021"), strings.ReplaceAll(text, "\n", "⏎"))
 	return true
 }
 

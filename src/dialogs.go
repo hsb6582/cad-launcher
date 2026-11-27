@@ -282,12 +282,12 @@ func adoptLisp(p string) string {
 	if err == nil && !strings.HasPrefix(rel, "..") {
 		return filepath.ToSlash(rel)
 	}
-	if !ask("이 리습을 런처의 lsp 폴더로 복사할까요?\n(복사하면 런처 폴더째 옮겨도 동작합니다)\n\n" + p) {
+	if !ask(T("dialogs.001") + p) {
 		return filepath.ToSlash(p)
 	}
 	dst := filepath.Join(lspDir, filepath.Base(p))
 	if _, err := os.Stat(dst); err == nil {
-		if !ask("lsp 폴더에 같은 이름의 파일이 있습니다. 덮어쓸까요?\n" + filepath.Base(p)) {
+		if !ask(T("dialogs.002") + filepath.Base(p)) {
 			return relPath(dst)
 		}
 	}
@@ -297,7 +297,7 @@ func adoptLisp(p string) string {
 		err = os.WriteFile(dst, b, 0644)
 	}
 	if err != nil {
-		msgBox("복사 실패\n"+err.Error(), MB_ICONERROR)
+		msgBox(T("dialogs.003")+err.Error(), MB_ICONERROR)
 		return filepath.ToSlash(p)
 	}
 	return relPath(dst)
@@ -307,7 +307,7 @@ func adoptLisp(p string) string {
 // 평소에는 거의 건드릴 일이 없는 설정(전송 방식·취소·항상 위·인코딩)과
 // 직접 명령 입력을 메인 화면에서 빼서 여기에 모아둔다.
 func advancedDialog() {
-	d := newDialogStyle("설정", 640, 600, true)
+	d := newDialogStyle(T("dialogs.004"), 640, 600, true)
 	const lx, ex = 16, 160
 	head := func(t string) uintptr {
 		h := d.label(t, lx, 0, 200)
@@ -315,28 +315,28 @@ func advancedDialog() {
 		return h
 	}
 
-	hHeadSend := head("CAD 전송")
-	hLblMethod := d.label("전송 방식", lx, 0, 100)
+	hHeadSend := head(T("dialogs.005"))
+	hLblMethod := d.label(T("dialogs.006"), lx, 0, 100)
 	hMethod := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvMethod)
 	comboFill(hMethod, methods, indexOf(methods, st.Method))
-	hNoteMethod := d.note("WM_COPYDATA가 안 먹히면 '키입력'으로 바꿔보세요", 0, 0, 10, 20)
-	hLblKw2 := d.label("창 제목 키워드", lx, 0, 120)
+	hNoteMethod := d.note(T("dialogs.007"), 0, 0, 10, 20)
+	hLblKw2 := d.label(T("dialogs.008"), lx, 0, 120)
 	readSettings()
 	hKw2 := d.mk("EDIT", st.Keyword, ES_AUTOHSCROLL|WS_TABSTOP, WS_EX_CLIENTEDGE, idAdvKw)
 	kwVal := st.Keyword
-	hNoteKw := d.note("제목에 이 글자가 들어간 창을 CAD 창으로 찾습니다", 0, 0, 10, 20)
+	hNoteKw := d.note(T("dialogs.009"), 0, 0, 10, 20)
 
-	hCancel := d.mk("BUTTON", "실행 전 진행 중 명령 취소", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvCancel)
+	hCancel := d.mk("BUTTON", T("dialogs.010"), BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvCancel)
 	setCheck(hCancel, st.Cancel)
-	hTop := d.mk("BUTTON", "항상 위 (런처 창을 다른 창 위에 고정)", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvTop)
+	hTop := d.mk("BUTTON", T("dialogs.011"), BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvTop)
 	setCheck(hTop, st.Topmost)
 
-	hHeadUpd := head("업데이트")
-	hAuto := d.mk("BUTTON", "런처를 켤 때 자동으로 업데이트 확인", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvAuto)
+	hHeadUpd := head(T("dialogs.012"))
+	hAuto := d.mk("BUTTON", T("dialogs.013"), BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvAuto)
 	setCheck(hAuto, st.AutoUpdate)
-	upd := "받는 곳: github.com/" + fixedRepo + " (" + fixedBranch + ")"
+	upd := T("dialogs.014") + fixedRepo + " (" + fixedBranch + ")"
 	if localCatalogChanged() {
-		upd += "\n※ 이 PC에서 리습 목록을 수정했습니다. 다음 업데이트 때 덮어쓸지 물어봅니다."
+		upd += T("dialogs.015")
 	}
 	hNoteUpd := d.note(upd, 0, 0, 10, 20)
 	updH := 20
@@ -347,37 +347,37 @@ func advancedDialog() {
 	pcDate := fmtStamp(st.LastUpdate)
 	if pcDate == "" {
 		if fi, err := os.Stat(catalogPath); err == nil {
-			pcDate = fi.ModTime().Format("2006-01-02 15:04") + " (추정 - 다음 업데이트부터 정확히 기록)"
+			pcDate = fi.ModTime().Format("2006-01-02 15:04") + T("dialogs.016")
 		} else {
-			pcDate = "기록 없음"
+			pcDate = T("dialogs.017")
 		}
 	}
 	ghDate := fmtStamp(st.GitHubDate)
 	if ghDate == "" {
-		ghDate = "아직 확인 전 ('업데이트 확인'을 누르면 표시)"
+		ghDate = T("dialogs.018")
 	} else if ck := fmtStamp(st.LastCheck); ck != "" {
-		ghDate += "   (확인: " + ck + ")"
+		ghDate += T("dialogs.019") + ck + ")"
 	}
-	hLblPc := d.label("이 PC 마지막 업데이트", lx+20, 0, 140)
+	hLblPc := d.label(T("dialogs.020"), lx+20, 0, 140)
 	hValPc := d.label(pcDate, 0, 0, 10)
-	hLblGh := d.label("GitHub 마지막 변경", lx+20, 0, 140)
+	hLblGh := d.label(T("dialogs.021"), lx+20, 0, 140)
 	hValGh := d.label(ghDate, 0, 0, 10)
 
 	hHeadCad := head("AutoCAD")
-	hTrust := d.mk("BUTTON", "런처 폴더를 AutoCAD '신뢰할 수 있는 위치'에 자동 추가", BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvTrust)
+	hTrust := d.mk("BUTTON", T("dialogs.022"), BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvTrust)
 	setCheck(hTrust, st.Trust != "no")
-	hNoteTrust := d.note("끄면 리습 로드가 '파일 로드 취소됨'으로 막힐 수 있습니다", 0, 0, 10, 20)
-	hLblEnc := d.label("옵션파일 인코딩", lx, 0, 120)
+	hNoteTrust := d.note(T("dialogs.023"), 0, 0, 10, 20)
+	hLblEnc := d.label(T("dialogs.024"), lx, 0, 120)
 	hEnc := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvEnc)
 	comboFill(hEnc, encodings, indexOf(encodings, st.Encoding))
-	hNoteEnc := d.note("보통 cp949 그대로 두세요 (한글이 깨질 때만 utf-8)", 0, 0, 10, 20)
+	hNoteEnc := d.note(T("dialogs.025"), 0, 0, 10, 20)
 
-	hHeadFree := head("직접 명령")
+	hHeadFree := head(T("dialogs.026"))
 	hFree := d.edit("", ex, 0, 230)
-	hSend := d.button("보내기", idAdvSend, 0, 0, 90, true)
-	hNoteFree := d.note("목록에 없는 명령어를 바로 AutoCAD로 보냅니다", 0, 0, 10, 20)
+	hSend := d.button(T("dialogs.027"), idAdvSend, 0, 0, 90, true)
+	hNoteFree := d.note(T("dialogs.028"), 0, 0, 10, 20)
 
-	hClose := d.button("닫기", IDCANCEL, 0, 0, 95, false)
+	hClose := d.button(T("dialogs.029"), IDCANCEL, 0, 0, 95, false)
 
 	// 창 크기에 맞춰 배치 (오른쪽 설명 글은 창 폭만큼 늘어남)
 	d.onSize = func(W, H int) {
@@ -477,7 +477,7 @@ func advancedDialog() {
 }
 
 var typeCodes = []string{"text", "number", "int", "check", "choice", "file", "folder"}
-var typeNames = []string{"문자", "실수", "정수", "체크", "선택목록", "파일 경로", "폴더 경로"}
+var typeNames = []string{T("dialogs.030"), T("dialogs.031"), T("dialogs.032"), T("dialogs.033"), T("dialogs.034"), T("dialogs.035"), T("dialogs.036")}
 
 func typeName(t string) string {
 	for i, c := range typeCodes {
@@ -485,7 +485,7 @@ func typeName(t string) string {
 			return typeNames[i]
 		}
 	}
-	return "문자"
+	return T("dialogs.037")
 }
 
 func escNL(s string) string   { return strings.ReplaceAll(s, "\n", `\n`) }
@@ -495,15 +495,15 @@ func unescNL(s string) string { return strings.ReplaceAll(s, `\n`, "\n") }
 var keyRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func editOptionDialog(o *Option, all []Option, self int) bool {
-	d := newDialog("옵션 편집", 480, 440)
+	d := newDialog(T("dialogs.038"), 480, 440)
 	const lx, ex, ew = 14, 110, 350
 
-	d.label("키 (영문)", lx, 16, 90)
+	d.label(T("dialogs.039"), lx, 16, 90)
 	hKey := d.edit(o.Key, ex, 12, 160)
-	d.note("리습에서 (LO:get \"키\" …) 로 읽는 이름", ex+168, 16, ew-168, 20)
-	d.label("표시 이름", lx, 48, 90)
+	d.note(T("dialogs.040"), ex+168, 16, ew-168, 20)
+	d.label(T("dialogs.041"), lx, 48, 90)
 	hLabel := d.edit(o.Label, ex, 44, ew)
-	d.label("종류", lx, 80, 90)
+	d.label(T("dialogs.042"), lx, 80, 90)
 	hType := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, 401)
 	mv(hType, ex, 76, 160, 220)
 	ti := 0
@@ -513,16 +513,16 @@ func editOptionDialog(o *Option, all []Option, self int) bool {
 		}
 	}
 	comboFill(hType, typeNames, ti)
-	d.label("기본값", lx, 112, 90)
+	d.label(T("dialogs.043"), lx, 112, 90)
 	hDef := d.edit(toStr(o.Default), ex, 108, ew)
-	d.note("체크는 1 / 0, 선택목록은 아래 항목의 '값'", ex, 136, ew, 18)
-	d.label("도움말", lx, 164, 90)
+	d.note(T("dialogs.044"), ex, 136, ew, 18)
+	d.label(T("dialogs.045"), lx, 164, 90)
 	hHint := d.edit(o.Hint, ex, 160, ew)
 
-	d.label("LISP 변수", lx, 196, 90)
+	d.label(T("dialogs.046"), lx, 196, 90)
 	hVar := d.edit(o.Var, ex, 192, 200)
-	d.note("예: *TEE-RADIUS* (비우면 옵션파일 방식)", ex+206, 196, ew-206, 20)
-	d.label("선택 항목", lx, 228, 90)
+	d.note(T("dialogs.047"), ex+206, 196, ew-206, 20)
+	d.label(T("dialogs.048"), lx, 228, 90)
 	var lines []string
 	for _, it := range o.items() {
 		if it.Label == it.Value {
@@ -534,10 +534,10 @@ func editOptionDialog(o *Option, all []Option, self int) bool {
 	hVals := d.mk("EDIT", strings.Join(lines, "\r\n"),
 		ES_MULTILINE|ES_AUTOVSCROLL|ES_WANTRETURN|WS_VSCROLL|WS_TABSTOP, WS_EX_CLIENTEDGE, 0)
 	mv(hVals, ex, 224, ew, 110)
-	d.note("선택목록일 때만 사용. 한 줄에 하나씩 '값=표시명' (예: all=도면 전체)", ex, 338, ew, 34)
+	d.note(T("dialogs.049"), ex, 338, ew, 34)
 
-	d.button("확인", IDOK, 270, 396, 95, true)
-	d.button("취소", IDCANCEL, 370, 396, 95, false)
+	d.button(T("dialogs.050"), IDOK, 270, 396, 95, true)
+	d.button(T("dialogs.051"), IDCANCEL, 370, 396, 95, false)
 
 	d.onCmd = func(id, code int) {
 		if id != IDOK {
@@ -551,12 +551,12 @@ func editOptionDialog(o *Option, all []Option, self int) bool {
 			}
 		}
 		if !keyRe.MatchString(key) {
-			msgBox("키는 영문으로 시작하는 영문·숫자·_ 만 쓸 수 있습니다.", MB_ICONWARNING)
+			msgBox(T("dialogs.052"), MB_ICONWARNING)
 			return
 		}
 		for i, x := range all {
 			if i != self && strings.EqualFold(x.Key, key) {
-				msgBox("같은 키가 이미 있습니다: "+key, MB_ICONWARNING)
+				msgBox(T("dialogs.053")+key, MB_ICONWARNING)
 				return
 			}
 		}
@@ -585,13 +585,13 @@ func editOptionDialog(o *Option, all []Option, self int) bool {
 				vals = append(vals, b)
 			}
 			if len(vals) == 0 {
-				msgBox("선택목록 항목을 한 줄 이상 입력하세요.", MB_ICONWARNING)
+				msgBox(T("dialogs.054"), MB_ICONWARNING)
 				return
 			}
 		}
 		if typ == "number" && def != "" {
 			if _, err := parseFloat(def); err != nil {
-				msgBox("기본값이 숫자가 아닙니다.", MB_ICONWARNING)
+				msgBox(T("dialogs.055"), MB_ICONWARNING)
 				return
 			}
 		}

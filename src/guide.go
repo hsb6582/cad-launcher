@@ -228,7 +228,7 @@ func loadPic(rel string) *picEntry {
 	img, _, err := image.Decode(f)
 	f.Close()
 	if err != nil {
-		logf("그림을 읽지 못함 %s: %v", rel, err)
+		logf(T("guide.001"), rel, err)
 		return nil
 	}
 	b := img.Bounds()
@@ -317,7 +317,7 @@ func guideRender(hdc uintptr, W int, draw bool) int {
 	}
 	gPicRects = [2]rectT{}
 	if n > 0 {
-		caps := [2]string{"실행 전", "실행 후"}
+		caps := [2]string{T("guide.002"), T("guide.003")}
 		gap := si(30)
 		side := n == 2 && w >= si(440)
 		colW := w
@@ -387,9 +387,9 @@ func guideRender(hdc uintptr, W int, draw bool) int {
 			fillBox(hdc, x, y, w, 1, clrLine)
 		}
 		y += si(8)
-		label := "▶ 자세한 설명 보기"
+		label := T("guide.004")
 		if gOpen {
-			label = "▼ 자세한 설명 접기"
+			label = T("guide.005")
 		}
 		th := gText(hdc, hFontNum, guideLinkColor(), x, y, w, label, draw)
 		gToggle = rectT{int32(x), int32(y - top - si(4)), int32(x + w), int32(y - top + th + si(4))}

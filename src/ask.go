@@ -132,7 +132,7 @@ func askDialog(r *askReq) (string, bool) {
 	const btnW = 220 // '미끄럼방지 MMA (M)  (기본)' 이 한 줄에 들어가는 폭
 	title := r.title
 	if title == "" {
-		title = "CAD 질문"
+		title = T("ask.001")
 	}
 	helpText := strings.Join(r.help, "\r\n")
 	helpLines := len(r.help)
@@ -155,7 +155,7 @@ func askDialog(r *askReq) (string, bool) {
 		listH += rowH[i] + 6
 	}
 	H := askBandH + 16 + 26 + 8 + helpH + 8 + listH + 8 + 20 + 16 + askBorder
-	d := newDialog("CAD 질문 - "+title, W, H)
+	d := newDialog(T("ask.002")+title, W, H)
 	askDlg = d
 	placeAskDialog(d)
 
@@ -175,7 +175,7 @@ func askDialog(r *askReq) (string, bool) {
 		label := ch.label
 		isDef := strings.EqualFold(ch.kw, r.def)
 		if isDef {
-			label += "  (기본)"
+			label += T("ask.003")
 		}
 		b := d.button(label, idAskBase+i, 20, y+(rowH[i]-30)/2, btnW, isDef)
 		if isDef || focus == 0 {
@@ -187,7 +187,7 @@ func askDialog(r *askReq) (string, bool) {
 		}
 		y += rowH[i] + 6
 	}
-	d.note("창을 닫으면 캐드 명령줄에서 직접 답할 수 있습니다.", 20, y+8, W-40, 20)
+	d.note(T("ask.004"), 20, y+8, W-40, 20)
 	d.onCmd = func(id, code int) {
 		if code == BN_CLICKED && id >= idAskBase && id < idAskBase+len(r.choices) {
 			answer = r.choices[id-idAskBase].kw
@@ -214,9 +214,9 @@ func askBandText(id string) string {
 		name = id[:i]
 	}
 	if name == "" {
-		return "▶ CAD런처 질문"
+		return T("ask.005")
 	}
-	return "▶ " + name + " 질문 · CAD런처"
+	return "▶ " + name + T("ask.006")
 }
 
 // 어두운 CAD 도면 위에서도 잘 보이도록: 창 둘레 굵은 테라코타 테두리 + 맨 위 테라코타 띠
@@ -271,7 +271,7 @@ func sendAnswer(kw string) {
 	readSettings()
 	h := targetHwnd()
 	if h == 0 {
-		msgBox("대상 CAD 창이 없습니다. 캐드 명령줄에서 직접 답해 주세요.", MB_ICONWARNING)
+		msgBox(T("ask.007"), MB_ICONWARNING)
 		return
 	}
 	text := kw + "\n"
@@ -279,7 +279,7 @@ func sendAnswer(kw string) {
 		sendKeys(h, text, false)
 	} else {
 		if err := sendCopyData(h, text, false); err != nil {
-			logf("질문 답 전송 오류: %v", err)
+			logf(T("ask.008"), err)
 			return
 		}
 		if c(pIsIconic, h) != 0 {
@@ -287,5 +287,5 @@ func sendAnswer(kw string) {
 		}
 		c(pSetForegroundWindow, h)
 	}
-	logf("질문 답: %s", kw)
+	logf(T("ask.009"), kw)
 }

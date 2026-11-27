@@ -192,20 +192,20 @@ func toggleStartup() {
 	}
 	st.Startup = next
 	if err := writeStartupLoader(); err != nil {
-		msgBox("시작 로더 파일 저장 실패\n"+err.Error(), MB_ICONERROR)
+		msgBox(T("startup.001")+err.Error(), MB_ICONERROR)
 		setCheck(hStartup, !on)
 		return
 	}
 	if len(startupKeyPaths()) == 0 {
-		msgBox("AutoCAD LT 프로필을 레지스트리에서 찾지 못했습니다.\nAutoCAD LT 를 한 번 실행한 뒤 다시 시도하거나,\nAPPLOAD > 시작하기 세트 > 내용에 아래 파일을 직접 추가하세요.\n\n"+startupLoaderPath(), MB_ICONWARNING)
+		msgBox(T("startup.002")+startupLoaderPath(), MB_ICONWARNING)
 	} else {
 		setStartupSuite(len(st.Startup) > 0)
 	}
 	saveState()
 	if on {
-		logf("시작하기 세트에 추가: %s (이 리습의 모든 명령) → 새로 열거나 만드는 도면부터 자동 로드", l.ID)
-		logf("  적용이 안 되면 AutoCAD 를 다시 시작하고 APPLOAD > 시작하기 세트 > 내용 에서 %s 가 있는지 확인하세요.", startupFile)
+		logf(T("startup.003"), l.ID)
+		logf(T("startup.004"), startupFile)
 	} else {
-		logf("시작하기 세트에서 제외: %s", l.ID)
+		logf(T("startup.005"), l.ID)
 	}
 }

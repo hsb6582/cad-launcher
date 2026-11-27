@@ -74,7 +74,7 @@ func loadCatalog() {
 	cat = Catalog{Version: 2}
 	b, err := os.ReadFile(catalogPath)
 	if err != nil {
-		logf("catalog.json 없음 - 빈 목록으로 시작")
+		logf("%s", T("catalog.001"))
 		return
 	}
 	var raw struct {
@@ -87,7 +87,7 @@ func loadCatalog() {
 		} `json:"categories"`
 	}
 	if err := json.Unmarshal(b, &raw); err != nil {
-		msgBox("catalog.json 형식 오류\n"+err.Error(), MB_ICONERROR)
+		msgBox(T("catalog.002")+err.Error(), MB_ICONERROR)
 		return
 	}
 	cat.Lisps = raw.Lisps
@@ -110,7 +110,7 @@ func loadCatalog() {
 	for _, ct := range cat.Categories {
 		n += len(ct.Items)
 	}
-	logf("리습 목록 불러옴 (기능 %d개)", n)
+	logf(T("catalog.003"), n)
 }
 
 func saveCatalog() {
@@ -120,7 +120,7 @@ func saveCatalog() {
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(cat)
 	if err := os.WriteFile(catalogPath, buf.Bytes(), 0644); err != nil {
-		msgBox("목록 저장 실패\n"+err.Error(), MB_ICONERROR)
+		msgBox(T("catalog.004")+err.Error(), MB_ICONERROR)
 	}
 }
 
@@ -272,7 +272,7 @@ func refreshTree(sel nodeRef) {
 	for _, ct := range cat.Categories {
 		n += len(ct.Items)
 	}
-	setText(hListCnt, itoa(n)+"개")
+	setText(hListCnt, itoa(n)+T("catalog.005"))
 	if h := nodeItem[sel]; h != 0 {
 		c(pSendMessageW, hList, TVM_SELECTITEM, TVGN_CARET, h)
 		c(pSendMessageW, hList, TVM_ENSUREVISIBLE, 0, h)
@@ -312,7 +312,7 @@ func showNode(n nodeRef) {
 		ct := n.category()
 		setText(hTitle, ct.Name)
 		setText(hChip, strings.Trim(strings.TrimSpace(catLispTag(ct)), "()"))
-		setText(hDesc, "기능 "+itoa(len(ct.Items))+"개")
+		setText(hDesc, T("catalog.006")+itoa(len(ct.Items))+T("catalog.007"))
 		var sb strings.Builder
 		for i := range ct.Items {
 			it := &ct.Items[i]
@@ -332,7 +332,7 @@ func showNode(n nodeRef) {
 			man = it.Desc
 		}
 		if l := n.lisp(); l != nil {
-			man += "\n\n────────────────────\n[" + l.ID + " 공통 안내]"
+			man += "\n\n────────────────────\n[" + l.ID + T("catalog.008")
 			if l.Desc != "" {
 				man += "  " + l.Desc
 			}
@@ -348,10 +348,10 @@ func showNode(n nodeRef) {
 		buildOptions(it.Options, st.Values[itemKey(it)])
 		run = 1
 	default:
-		setText(hTitle, "기능을 선택하세요")
+		setText(hTitle, T("catalog.009"))
 		setText(hChip, "")
 		setText(hDesc, "")
-		setManual("왼쪽 목록에서 기능을 선택하면 설명이 여기에 표시됩니다.\n\n▶ 실행을 누르면 AutoCAD LT에서 실행됩니다.\n목록 이름 옆 흐린 글자는 명령어, 제목 옆 꼬리표는 (리습 · 명령어) 입니다.")
+		setManual(T("catalog.010"))
 	}
 	c(pEnableWindow, hRun, run)
 	setGuide(guide)
@@ -383,7 +383,7 @@ func runCurrent() {
 	}
 	l := cur.lisp()
 	if it.Lisp != "" && l == nil {
-		msgBox("목록에 리습 '"+it.Lisp+"' 정보가 없습니다.", MB_ICONWARNING)
+		msgBox(T("catalog.011")+it.Lisp+T("catalog.012"), MB_ICONWARNING)
 		return
 	}
 	if l != nil && !ensureTools(l) {
@@ -410,14 +410,14 @@ func runCurrent() {
 	}
 	if needHelper {
 		if err := writeOptFile(cmdID(it.Command), vals); err != nil {
-			msgBox("옵션 파일 저장 실패\n"+err.Error(), MB_ICONERROR)
+			msgBox(T("catalog.013")+err.Error(), MB_ICONERROR)
 			return
 		}
 		sb.WriteString(`(load "` + lispPath("lsp/launcher_opt.lsp") + `")` + "\n")
 	}
 	if l != nil && l.File != "" {
 		if _, err := os.Stat(absPath(l.File)); err != nil {
-			msgBox("리습 파일을 찾을 수 없습니다.\n"+absPath(l.File), MB_ICONWARNING)
+			msgBox(T("catalog.014")+absPath(l.File), MB_ICONWARNING)
 			return
 		}
 		// 파일이 바뀌었으면 다시 로드, 아니면 아직 로드되지 않았을 때만 로드
@@ -456,7 +456,7 @@ func runCurrent() {
 		body += "\n"
 	}
 	sb.WriteString(body)
-	logf("실행: %s %s", it.Name, itemTag(it))
+	logf(T("catalog.015"), it.Name, itemTag(it))
 	send(sb.String())
 }
 
@@ -467,7 +467,7 @@ func moveNode(dir int) {
 	n := cur
 	if !orderNoted && n.kind != nkNone {
 		orderNoted = true
-		logf("목록 순서는 이 PC에만 저장됩니다")
+		logf("%s", T("catalog.016"))
 	}
 	switch n.kind {
 	case nkCat:

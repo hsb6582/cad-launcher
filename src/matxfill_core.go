@@ -67,7 +67,7 @@ func parseMatxCSV(csvText string) (drawingOrder []string, rows map[int][]string,
 			// 다름. 이 칸 값 자체는 어디에도 쓰이지 않으므로 내용은 보지 않고 첫 줄을 그냥
 			// 머리글로 받아들인다 (도면번호 칸이 하나도 없으면만 오류로 봄).
 			if len(fields) < 2 {
-				return nil, nil, fmt.Errorf("CSV 헤더에 도면번호 칸이 없습니다: %q", line)
+				return nil, nil, fmt.Errorf(T("matxfill_core.001"), line)
 			}
 			drawingOrder = fields[1:]
 			first = false
@@ -80,7 +80,7 @@ func parseMatxCSV(csvText string) (drawingOrder []string, rows map[int][]string,
 		rows[r] = fields[1:]
 	}
 	if first {
-		return nil, nil, fmt.Errorf("CSV에 헤더 줄이 없습니다")
+		return nil, nil, fmt.Errorf("%s", T("matxfill_core.002"))
 	}
 	return drawingOrder, rows, nil
 }
@@ -116,7 +116,7 @@ func matxBuildEdits(csvText string) (edits []matxEdit, warnings []string, err er
 		}
 	}
 	for dn := range unknown {
-		warnings = append(warnings, "도면번호 '"+dn+"' 은 엑셀 양식(G6:AT6)에 없는 열이라 자동 반영을 건너뜀 (excel_matched.csv 를 열어 수동으로 붙여넣어 주세요)")
+		warnings = append(warnings, T("matxfill_core.003")+dn+T("matxfill_core.004"))
 	}
 	return edits, warnings, nil
 }
@@ -296,7 +296,7 @@ func matxBuildExcel(templateXlsx []byte, csvText string, notesText string) (outB
 
 	zr, err := zip.NewReader(bytes.NewReader(templateXlsx), int64(len(templateXlsx)))
 	if err != nil {
-		return nil, warnings, fmt.Errorf("템플릿 xlsx 열기 실패: %w", err)
+		return nil, warnings, fmt.Errorf(T("matxfill_core.005"), err)
 	}
 
 	var buf bytes.Buffer
@@ -304,19 +304,19 @@ func matxBuildExcel(templateXlsx []byte, csvText string, notesText string) (outB
 	for _, f := range zr.File {
 		rc, err := f.Open()
 		if err != nil {
-			return nil, warnings, fmt.Errorf("템플릿 안 %s 읽기 실패: %w", f.Name, err)
+			return nil, warnings, fmt.Errorf(T("matxfill_core.006"), f.Name, err)
 		}
 		data, err := io.ReadAll(rc)
 		rc.Close()
 		if err != nil {
-			return nil, warnings, fmt.Errorf("템플릿 안 %s 읽기 실패: %w", f.Name, err)
+			return nil, warnings, fmt.Errorf(T("matxfill_core.007"), f.Name, err)
 		}
 		switch f.Name {
 		case "xl/worksheets/sheet1.xml":
 			s, missed := matxApplyCellEdits(string(data), editMap)
 			data = []byte(s)
 			for _, ref := range missed {
-				warnings = append(warnings, "셀 "+ref+" 을 템플릿에 넣지 못했습니다 (양식이 바뀌었을 수 있음)")
+				warnings = append(warnings, T("matxfill_core.008")+ref+T("matxfill_core.009"))
 			}
 		case "xl/workbook.xml":
 			data = []byte(matxForceFullCalcOnLoad(string(data)))
@@ -385,7 +385,7 @@ func matxParseNotes(text string) (notes []matxNote, warnings []string) {
 		r, err := strconv.Atoi(strings.TrimSpace(f[1]))
 		col, ok := colOf[strings.TrimSpace(f[0])]
 		if err != nil || !ok {
-			warnings = append(warnings, "메모를 붙일 칸을 못 찾음: "+line)
+			warnings = append(warnings, T("matxfill_core.010")+line)
 			continue
 		}
 		notes = append(notes, matxNote{ref: fmt.Sprintf("%s%d", col, r), col: colNumber(col), row: r, text: f[2]})

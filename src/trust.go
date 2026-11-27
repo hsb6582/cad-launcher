@@ -35,8 +35,8 @@ func wcEscape(s string) string {
 // 처음 한 번 묻기. true 면 신뢰 위치 줄을 붙인다.
 func wantTrust() bool {
 	if st.Trust == "" {
-		if ask("AutoCAD 의 '신뢰할 수 있는 위치'에 런처 리습 폴더를 추가할까요?\n\n" + strings.Join(trustDirs(), "\n") +
-			"\n\n추가하지 않으면 AutoCAD 보안 설정(SECURELOAD) 때문에\n리습 로드가 '파일 로드 취소됨'으로 막힐 수 있습니다.\n(나중에 설정 창에서 바꿀 수 있습니다)") {
+		if ask(T("trust.001") + strings.Join(trustDirs(), "\n") +
+			T("trust.002")) {
 			st.Trust = "yes"
 		} else {
 			st.Trust = "no"

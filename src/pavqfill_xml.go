@@ -46,7 +46,7 @@ func pqSetHeaderCellText(sheetXML, ref, text string) string {
 	if m != nil && m[2] != "" {
 		style, _ = strconv.Atoi(m[2])
 	}
-	return re.ReplaceAllLiteralString(sheetXML, pqCStr(ref, style, "▶ 공사명 : "+text))
+	return re.ReplaceAllLiteralString(sheetXML, pqCStr(ref, style, T("pavqfill_xml.001")+text))
 }
 
 // mergeCells : min_row>=7 인 기존 항목(템플릿의 "틀" 영역)은 버리고, 1~6행 머리글 병합은 그대로 두고,
@@ -223,18 +223,18 @@ func pqBuildSummary(ss *pqStyleSheet, csv *pqCSV, top, r0, r1 int) (rows []*pqRo
 		used = cols[:2]
 	}
 
-	rows = append(rows, &pqRowBuf{row: top, cells: map[int]string{4: pqCStr("D"+itoa(top), titleStyle, "■ 포장구분별 연장 요약 (M)")}})
+	rows = append(rows, &pqRowBuf{row: top, cells: map[int]string{4: pqCStr("D"+itoa(top), titleStyle, T("pavqfill_xml.002"))}})
 
 	h := top + 1
 	c0 := 4 // D
-	heads := append([]string{"관경"}, func() []string {
+	heads := append([]string{T("pavqfill_xml.003")}, func() []string {
 		var s []string
 		for _, u := range used {
 			s = append(s, u.name)
 		}
 		return s
 	}()...)
-	heads = append(heads, "계")
+	heads = append(heads, T("pavqfill_xml.004"))
 
 	merges = append(merges, fmt.Sprintf("%s%d:%s%d", pqColLetters(c0), h, pqColLetters(c0+2), h))
 	pos := []int{c0}
@@ -285,7 +285,7 @@ func pqBuildSummary(ss *pqStyleSheet, csv *pqCSV, top, r0, r1 int) (rows []*pqRo
 	R := h + 1 + len(pipes)
 	rb := &pqRowBuf{row: R, ht: "22", cells: map[int]string{}}
 	merges = append(merges, fmt.Sprintf("%s%d:%s%d", pqColLetters(c0), R, pqColLetters(c0+2), R))
-	rb.set(c0, pqCStr(pqColLetters(c0)+itoa(R), totalLabelStyle, "합 계"))
+	rb.set(c0, pqCStr(pqColLetters(c0)+itoa(R), totalLabelStyle, T("pavqfill_xml.005")))
 	rb.set(c0+1, pqCEmpty(pqColLetters(c0+1)+itoa(R), fillerStyle))
 	rb.set(c0+2, pqCEmpty(pqColLetters(c0+2)+itoa(R), fillerStyle))
 	for _, p := range pos[1:] {

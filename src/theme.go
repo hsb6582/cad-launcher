@@ -35,17 +35,17 @@ type theme struct {
 func rgbHex(v uint32) uintptr { return RGB(byte(v>>16), byte(v>>8), byte(v)) }
 
 var themes = []theme{
-	{key: "dark", name: "차콜 다크", dark: true, // 강조색: 파랑 #3A6EA5 (크림은 테라코타)
+	{key: "dark", name: T("theme.001"), dark: true, // 강조색: 파랑 #3A6EA5 (크림은 테라코타)
 		bg: rgbHex(0x2B2E34), text: rgbHex(0xF7F5F1), sub: rgbHex(0xBCC2CA), panel: rgbHex(0x22252A),
 		accent: rgbHex(0x3A6EA5), accentDk: rgbHex(0x2B5278), accentHot: rgbHex(0x4D84BE), accentPress: rgbHex(0x2B5278), disBg: rgbHex(0x3A3E45), disBorder: rgbHex(0x4A4F57),
 		border: rgbHex(0x454A52), winBorder: rgbHex(0x3A3E45), hover: rgbHex(0x2C3440), hoverTxt: rgbHex(0xB9D3EE), press: rgbHex(0x2A3A4E), sel: rgbHex(0x2C3A4A),
 		selText: rgbHex(0xB9D3EE), hot: rgbHex(0x33373E), soft: rgbHex(0x4A3A2A), line: rgbHex(0x3A3E45)},
-	{key: "cream", name: "크림",
+	{key: "cream", name: T("theme.002"),
 		bg: rgbHex(0xF7F4EC), text: rgbHex(0x2D2924), sub: rgbHex(0x8C857A), panel: rgbHex(0xFFFFFF),
 		accent: rgbHex(0xCC785C), accentDk: rgbHex(0xAD5F46), accentHot: rgbHex(0x9A4630), accentPress: rgbHex(0x7A3523), disBg: rgbHex(0xE4E0D8), disBorder: rgbHex(0xC9C4BA),
 		border: rgbHex(0xE0D9CC), winBorder: rgbHex(0xD9D2C4), hover: rgbHex(0xFBEFEA), hoverTxt: rgbHex(0xAD5F46), press: rgbHex(0xF4DFD6), sel: rgbHex(0xF6E4DC),
 		selText: rgbHex(0x7A3E2A), hot: rgbHex(0xFAF6EF), soft: rgbHex(0xF3E6DF), line: rgbHex(0xE4DFD4)},
-	{key: "slate", name: "슬레이트", dark: true, // 배경 #454F61 (사용자 지정), 강조색: 진한 파랑
+	{key: "slate", name: T("theme.003"), dark: true, // 배경 #454F61 (사용자 지정), 강조색: 진한 파랑
 		bg: rgbHex(0x454F61), text: rgbHex(0xF3F5F9), sub: rgbHex(0xC4CBD7), panel: rgbHex(0x3A4352),
 		accent: rgbHex(0x2F6FB8), accentDk: rgbHex(0x255A96), accentHot: rgbHex(0x3E82CF), accentPress: rgbHex(0x255A96), disBg: rgbHex(0x4F596B), disBorder: rgbHex(0x5F6A7D),
 		border: rgbHex(0x5C6779), winBorder: rgbHex(0x505A6C), hover: rgbHex(0x4C5A70), hoverTxt: rgbHex(0xCFE1F6), press: rgbHex(0x42536B), sel: rgbHex(0x55667F),

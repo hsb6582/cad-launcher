@@ -35,6 +35,15 @@ AutoCAD LT 2026 리습 런처. 각 PC의 CAD런처.exe 가 실행 때마다 이 
 ## 대화로 고쳐 달라고 할 때 ("○○ 이름을 △△로")
 catalog.json 에서 해당 항목만 python 한두 줄로 수정 → `export` → 커밋·push
 
+## 문구 고치기 (토큰 절약: 코드·catalog.json 을 통째로 읽지 말 것)
+- 런처 화면 문구(버튼·안내창·로그·엑셀 메모 등)는 `src/texts.txt` 에 `키 = "문구"` 로 모여 있다. 코드에서는 `T("키")`.
+  → `grep -n '찾을 글자' src/texts.txt` 로 줄을 찾아 따옴표 안만 고친다 → 테스트 런처 다시 빌드 → 커밋·push.
+  `%s %d %v` 자리는 지우거나 순서를 바꾸지 않는다. 새 문구를 코드에 넣을 때도 texts.txt 에 키를 추가하고 T("키") 로 쓴다.
+  리습 결과·엑셀 양식·설정값과 글자가 맞아야 하는 문자열(포장 종류, `[검토 사항]`, `키입력`, `개발 중` 등)은 코드에 그대로 둔다.
+- 설명서(기능 이름·desc·when·steps·warn·manual)는 catalog.json 에 있다 (exe 빌드 필요 없음).
+  → `python dev/manual.py find 단어` / `show 명령어` / `set 명령어 칸 "문구"` → `python dev/catalog_xlsx.py export` → 커밋·push.
+- 리습(lsp/) 안의 명령행 문구는 이 방식에 넣지 않는다.
+
 ## 런처 코드 (src/, Go 표준 라이브러리 + Win32, 외부 라이브러리 없음)
 - 테스트용 (dev 에서 평소): `cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w -X main.fixedBranch=dev -X main.exeRepoName=CAD런처-테스트.exe" -o ../CAD런처-테스트.exe .`
 - 배포용 (배포 지시 때 main 에서만): `cd src && GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui -s -w" -o ../CAD런처.exe .`

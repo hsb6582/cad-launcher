@@ -42,7 +42,7 @@ func runMatxFill(dir string) int {
 	csvPath := filepath.Join(dir, matxCsvName)
 	csvBytes, err := os.ReadFile(csvPath)
 	if err != nil {
-		matxLog(dir, "[실패] %s 를 읽을 수 없습니다: %v", csvPath, err)
+		matxLog(dir, T("matx.001"), csvPath, err)
 		return 1
 	}
 	// MATX.lsp 가 AutoLISP open/write-line 으로 쓴 파일이라 CP949(한글 윈도우 코드페이지)로
@@ -54,18 +54,18 @@ func runMatxFill(dir string) int {
 	}
 	out, warnings, err := matxBuildExcel(matxTemplateXlsx, fromCP949(csvBytes), notesText)
 	for _, w := range warnings {
-		matxLog(dir, "[경고] %s", w)
+		matxLog(dir, T("matx.002"), w)
 	}
 	if err != nil {
-		matxLog(dir, "[실패] 엑셀 생성 중 오류: %v", err)
+		matxLog(dir, T("matx.003"), err)
 		return 1
 	}
 	outPath := filepath.Join(dir, matxResultName)
 	if err := os.WriteFile(outPath, out, 0644); err != nil {
-		matxLog(dir, "[실패] %s 저장 실패: %v", outPath, err)
+		matxLog(dir, T("matx.004"), outPath, err)
 		return 1
 	}
-	matxLog(dir, "완료: %s 생성 (경고 %d건)", outPath, len(warnings))
+	matxLog(dir, T("matx.005"), outPath, len(warnings))
 	c(pShellExecuteW, 0, uintptr(P(ws("open"))), uintptr(P(ws(outPath))), 0, 0, SW_SHOWNORMAL)
 	return 0
 }
