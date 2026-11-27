@@ -209,8 +209,15 @@
   res
 )
 
+;; 쉼표 앞뒤 공백 제거: "LP-001, 002-001" -> "LP-001,002-001" (마지막 -숫자를 번호로 읽게)
+(defun dn-comma-nospace (u)
+  (while (vl-string-search ", " u) (setq u (vl-string-subst "," ", " u)))
+  (while (vl-string-search " ," u) (setq u (vl-string-subst "," " ," u)))
+  u
+)
+
 (defun dn-parse (s / u)
-  (setq u (strcase s))
+  (setq u (dn-comma-nospace (strcase s)))
   (dn-def (dn-try u "LP") (dn-try u "MP"))
 )
 
