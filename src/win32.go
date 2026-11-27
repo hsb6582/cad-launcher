@@ -12,7 +12,7 @@ import (
 	"unsafe"
 )
 
-var appTitle = "CAD 런처"
+var appTitle = T("app.100") // 프로그램 이름 (창 제목·안내창 제목)
 
 type P = unsafe.Pointer
 

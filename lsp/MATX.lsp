@@ -972,11 +972,11 @@
             (vl-catch-all-apply 'startapp
               (list *CADLAUNCHER-EXE* (strcat "--matx-fill " (matx-quote-arg (matx-output-dir)))))
           )
-        (princ "\n[MATX] 자동 실행에 실패했습니다(LT 제한 가능성). CAD런처를 열고 아무 기능이나 한 번 실행한 뒤 MATX를 다시 실행해 보세요.")
+        (princ "\n[MATX] 자동 실행에 실패했습니다(LT 제한 가능성). 전자제도 도우미를 열고 아무 기능이나 한 번 실행한 뒤 MATX를 다시 실행해 보세요.")
         (princ "\n[MATX] 자동 실행을 시도했습니다. 완료되면 MATX 폴더의 auto_matx_log.txt를 확인하세요.")
       )
     )
-    (princ "\n[MATX] CAD런처.exe 경로를 몰라 엑셀 자동 생성을 건너뜁니다. (CAD런처에서 아무 기능이나 한 번 실행한 뒤 다시 시도하거나, excel_matched.csv 를 자재내역.xlsx 의 G8 셀에 직접 붙여넣으세요)")
+    (princ "\n[MATX] CAD런처.exe 경로를 몰라 엑셀 자동 생성을 건너뜁니다. (전자제도 도우미에서 아무 기능이나 한 번 실행한 뒤 다시 시도하거나, excel_matched.csv 를 자재내역.xlsx 의 G8 셀에 직접 붙여넣으세요)")
   )
   (princ)
 )

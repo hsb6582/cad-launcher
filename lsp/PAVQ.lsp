@@ -5035,7 +5035,7 @@
               (progn
                 (startapp *CADLAUNCHER-EXE* (strcat "--pavq-fill " (strcat "\"" f2 "\"")))
                 (princ "\n복구수량산출서 작성 중... (완료되면 엑셀이 열립니다)"))
-              (princ "\n[알림] CAD런처.exe 경로를 몰라 복구수량산출서는 만들지 않았습니다. (CAD런처에서 아무 기능이나 한 번 실행한 뒤 다시 시도하세요)"))))
+              (princ "\n[알림] CAD런처.exe 경로를 몰라 복구수량산출서는 만들지 않았습니다. (전자제도 도우미에서 아무 기능이나 한 번 실행한 뒤 다시 시도하세요)"))))
         (progn
           (princ (strcat "\n\n[주의] 일부 파일 저장 실패 - 폴더 : " dir))
           (cond

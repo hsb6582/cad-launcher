@@ -326,26 +326,8 @@ func mainBottomY(H int) int {
 	return b
 }
 
-var hFontHeader, hHeaderIcon uintptr
-var titleEndX = 180 // 제목 글자 오른쪽 끝 (96DPI 기준, layout 에서 잼)
-
-// 제목('CAD 런처 (테스트)') 글자 폭을 재서 대상 CAD 창 선택칸 위치를 정함
-func measureTitle() {
-	if hFontHeader == 0 {
-		hFontHeader = makeFont(17, true)
-		hHeaderIcon = c(pLoadImageW, hInst, 1, 1, s(32), s(32), 0)
-	}
-	dc := c(pGetDC, hMain)
-	old := c(pSelectObject, dc, hFontHeader)
-	t := utf16.Encode([]rune(appTitle))
-	var sz [2]int32
-	if len(t) > 0 {
-		c(pGetTextExtentPoint32W, dc, uintptr(P(&t[0])), uintptr(len(t)), uintptr(P(&sz)))
-	}
-	c(pSelectObject, dc, old)
-	c(pReleaseDC, hMain, dc)
-	titleEndX = 10 + 32 + 10 + int(float64(sz[0])/scale)
-}
+// 맨 위 줄 왼쪽 여백: 큰 제목·아이콘은 빼고 연결 점부터 시작 (점은 titleEndX+16, 선택칸은 titleEndX+30)
+const titleEndX = -4
 
 // 대상 CAD 창 연결 표시 (초록 = 선택된 CAD 창이 살아 있음)
 func cadConnected() bool {
@@ -353,22 +335,8 @@ func cadConnected() bool {
 	return i >= 0 && i < len(windows) && c(pIsWindow, windows[i].h) != 0
 }
 
-// 맨 위 제목 줄: 런처 아이콘 + 큰 'CAD 런처' 글자 + 아래 구분선
+// 맨 위 줄: CAD 연결 점 + 아래 구분선 (큰 제목은 뺌)
 func paintHeader(hdc uintptr) {
-	if hFontHeader == 0 {
-		measureTitle()
-	}
-	x := int(s(10))
-	if hHeaderIcon != 0 {
-		c(pDrawIconEx, hdc, uintptr(x), s(7), hHeaderIcon, s(32), s(32), 0, 0, 3 /*DI_NORMAL*/)
-		x += int(s(32 + 10))
-	}
-	old := c(pSelectObject, hdc, hFontHeader)
-	c(pSetBkMode, hdc, TRANSPARENT)
-	c(pSetTextColor, hdc, clrText)
-	rc := rectT{int32(x), 0, int32(x) + int32(s(400)), int32(s(hdrH))}
-	c(pDrawTextW, hdc, uintptr(P(ws(appTitle))), ^uintptr(0), uintptr(P(&rc)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX)
-	c(pSelectObject, hdc, old)
 	// 연결 표시 점
 	dot := RGB(0x4C, 0xC3, 0x8A)
 	if !cadConnected() {
@@ -389,15 +357,12 @@ func paintHeader(hdc uintptr) {
 
 func layout() {
 	W, H := clientSize()
-	if hFontHeader == 0 {
-		measureTitle()
-	}
-	// 맨 위 줄: 제목 · (연결 점) 대상 CAD 창 · ↻ ······ 전구 · 설정 · 업데이트
+	// 맨 위 줄: (연결 점) 대상 CAD 창 · ↻ ······ 전구 · 설정 · 업데이트
 	mv(hUpdate, W-90, 10-updPad, 82+updPad, 26+updPad) // 위·오른쪽 여백에 업데이트 알림 빨간 점 (style2.go)
 	mv(hAdvanced, W-160, 10, 64, 26)
 	mv(hThemeBtn, W-198, 10, 32, 26)
 	cx := titleEndX + 30
-	cw := min(max(W-198-12-36-cx, 120), 460)
+	cw := min(max(W-198-12-36-cx, 120), 640)
 	mv(hWinCombo, cx, 11, cw, 300)
 	mv(hFind, cx+cw+4, 10, 30, 26)
 
