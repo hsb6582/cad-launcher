@@ -307,50 +307,56 @@ func adoptLisp(p string) string {
 // 평소에는 거의 건드릴 일이 없는 설정(전송 방식·취소·항상 위·인코딩)과
 // 직접 명령 입력을 메인 화면에서 빼서 여기에 모아둔다.
 func advancedDialog() {
-	d := newDialogStyle(T("dialogs.004"), 640, 662, true)
-	const lx, ex = 16, 160
+	d := newDialogStyle(T("dialogs.004"), 860, 500, true)
+	// 구역 제목: 굵은 글씨, 폭은 글자만큼 (오른쪽에 구분선을 그림)
+	var heads []uintptr
 	head := func(t string) uintptr {
-		h := d.label(t, lx, 0, 200)
+		h := d.label(t, 0, 0, 10)
 		c(pSendMessageW, h, WM_SETFONT, hFontBtnBold, 1)
+		heads = append(heads, h)
 		return h
 	}
+	label := func(t string) uintptr { return d.label(t, 0, 0, 10) }
+	hint := func(t string) uintptr { return d.note(t, 0, 0, 10, 20) }
+	check := func(t string, id int, on bool) uintptr {
+		h := d.mk("BUTTON", t, BS_AUTOCHECKBOX|WS_TABSTOP, 0, id)
+		setCheck(h, on)
+		return h
+	}
+	combo := func(id int, items []string, sel int) uintptr {
+		h := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, id)
+		comboFill(h, items, sel)
+		return h
+	}
+	readSettings()
+
+	// ── 왼쪽 단: 화면 / CAD 연결 / 직접 명령 ──
+	hHeadView := head(T("dialogs.090"))
+	hLblFont := label(T("dialogs.091"))
+	hFontSel := combo(idAdvFont, []string{T("dialogs.094"), T("dialogs.095"), T("dialogs.096"), T("dialogs.097"), T("dialogs.098")}, fontLevel()-1)
+	hNoteFont := hint(T("dialogs.092"))
+	fontChanged := false
+	hTop := check(T("dialogs.011"), idAdvTop, st.Topmost)
 
 	hHeadSend := head(T("dialogs.005"))
-	hLblMethod := d.label(T("dialogs.006"), lx, 0, 100)
-	hMethod := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvMethod)
-	comboFill(hMethod, methods, indexOf(methods, st.Method))
-	hNoteMethod := d.note(T("dialogs.007"), 0, 0, 10, 20)
-	hLblKw2 := d.label(T("dialogs.008"), lx, 0, 120)
-	readSettings()
+	hLblMethod := label(T("dialogs.006"))
+	hMethod := combo(idAdvMethod, methods, indexOf(methods, st.Method))
+	hNoteMethod := hint(T("dialogs.007"))
+	hLblKw2 := label(T("dialogs.008"))
 	hKw2 := d.mk("EDIT", st.Keyword, ES_AUTOHSCROLL|WS_TABSTOP, WS_EX_CLIENTEDGE, idAdvKw)
 	kwVal := st.Keyword
-	hNoteKw := d.note(T("dialogs.009"), 0, 0, 10, 20)
+	hNoteKw := hint(T("dialogs.009"))
+	hCancel := check(T("dialogs.010"), idAdvCancel, st.Cancel)
 
-	hCancel := d.mk("BUTTON", T("dialogs.010"), BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvCancel)
-	setCheck(hCancel, st.Cancel)
-	hTop := d.mk("BUTTON", T("dialogs.011"), BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvTop)
-	setCheck(hTop, st.Topmost)
+	hHeadFree := head(T("dialogs.026"))
+	hFree := d.edit("", 0, 0, 10)
+	hSend := d.button(T("dialogs.027"), idAdvSend, 0, 0, 90, true)
+	hNoteFree := hint(T("dialogs.028"))
 
-	hHeadView := head(T("dialogs.090"))
-	hLblFont := d.label(T("dialogs.091"), lx, 0, 120)
-	hFontSel := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvFont)
-	comboFill(hFontSel, []string{T("dialogs.094"), T("dialogs.095"), T("dialogs.096"), T("dialogs.097"), T("dialogs.098")}, fontLevel()-1)
-	hNoteFont := d.note(T("dialogs.092"), 0, 0, 10, 20)
-	fontChanged := false
-
+	// ── 오른쪽 단: 업데이트 / AutoCAD ──
 	hHeadUpd := head(T("dialogs.012"))
-	hAuto := d.mk("BUTTON", T("dialogs.013"), BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvAuto)
-	setCheck(hAuto, st.AutoUpdate)
-	upd := T("dialogs.014") + fixedRepo + " (" + fixedBranch + ")"
-	if localCatalogChanged() {
-		upd += T("dialogs.015")
-	}
-	hNoteUpd := d.note(upd, 0, 0, 10, 20)
-	updH := 20
-	if strings.Contains(upd, "\n") {
-		updH = 40
-	}
-	// 마지막 업데이트 날짜
+	hAuto := check(T("dialogs.013"), idAdvAuto, st.AutoUpdate)
+	hNoteAuto := hint(T("dialogs.099"))
 	pcDate := fmtStamp(st.LastUpdate)
 	if pcDate == "" {
 		if fi, err := os.Stat(catalogPath); err == nil {
@@ -362,89 +368,115 @@ func advancedDialog() {
 	ghDate := fmtStamp(st.GitHubDate)
 	if ghDate == "" {
 		ghDate = T("dialogs.018")
-	} else if ck := fmtStamp(st.LastCheck); ck != "" {
-		ghDate += T("dialogs.019") + ck + ")"
 	}
-	hLblPc := d.label(T("dialogs.020"), lx+20, 0, 140)
-	hValPc := d.label(pcDate, 0, 0, 10)
-	hLblGh := d.label(T("dialogs.021"), lx+20, 0, 140)
-	hValGh := d.label(ghDate, 0, 0, 10)
+	ckDate := fmtStamp(st.LastCheck)
+	if ckDate == "" {
+		ckDate = T("dialogs.017")
+	}
+	type infoRow struct{ k, v uintptr }
+	info := []infoRow{
+		{hint(T("dialogs.020")), label(pcDate)},
+		{hint(T("dialogs.021")), label(ghDate)},
+		{hint(T("dialogs.100")), label(ckDate)},
+		{hint(T("dialogs.014")), hint("github.com/" + fixedRepo + " (" + fixedBranch + ")")},
+	}
+	var hNoteLocal uintptr
+	if localCatalogChanged() {
+		hNoteLocal = hint(strings.TrimPrefix(T("dialogs.015"), "\n"))
+	}
 
 	hHeadCad := head("AutoCAD")
-	hTrust := d.mk("BUTTON", T("dialogs.022"), BS_AUTOCHECKBOX|WS_TABSTOP, 0, idAdvTrust)
-	setCheck(hTrust, st.Trust != "no")
-	hNoteTrust := d.note(T("dialogs.023"), 0, 0, 10, 20)
-	hLblEnc := d.label(T("dialogs.024"), lx, 0, 120)
-	hEnc := d.mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_TABSTOP, 0, idAdvEnc)
-	comboFill(hEnc, encodings, indexOf(encodings, st.Encoding))
-	hNoteEnc := d.note(T("dialogs.025"), 0, 0, 10, 20)
-
-	hHeadFree := head(T("dialogs.026"))
-	hFree := d.edit("", ex, 0, 230)
-	hSend := d.button(T("dialogs.027"), idAdvSend, 0, 0, 90, true)
-	hNoteFree := d.note(T("dialogs.028"), 0, 0, 10, 20)
+	hTrust := check(T("dialogs.022"), idAdvTrust, st.Trust != "no")
+	hNoteTrust := hint(T("dialogs.023"))
+	hLblEnc := label(T("dialogs.024"))
+	hEnc := combo(idAdvEnc, encodings, indexOf(encodings, st.Encoding))
+	hNoteEnc := hint(T("dialogs.025"))
 
 	hClose := d.button(T("dialogs.029"), IDCANCEL, 0, 0, 95, false)
 
-	// 창 크기에 맞춰 배치 (오른쪽 설명 글은 창 폭만큼 늘어남)
+	// 구역 제목 오른쪽 구분선 + 닫기 버튼 위 선 (컨트롤이 없는 자리에만 그림)
+	var lines []rectT
+	d.paint = func(hdc uintptr) {
+		br := c(pCreateSolidBrush, clrBorder)
+		for _, r := range lines {
+			rr := rectT{int32(s(int(r.left))), int32(s(int(r.top))), int32(s(int(r.right))), int32(s(int(r.top))) + 1}
+			c(pFillRect, hdc, uintptr(P(&rr)), br)
+		}
+		c(pDeleteObject, br)
+	}
+
+	// 배치: 두 단, 각 단은 [이름 칸 | 입력 칸], 설명은 입력 칸 아래 회색 글씨
+	const pad, gap, lblW = 20, 28, 118
 	d.onSize = func(W, H int) {
-		rw := func(x int) int { return max(W-x-16, 40) }
-		y := 14
-		mv(hHeadSend, lx, y, 200, 20)
-		y += 28
-		mv(hLblMethod, lx, y+4, 120, 20)
-		mv(hMethod, ex, y, 150, 200)
-		mv(hNoteMethod, ex+160, y+4, rw(ex+160), 20)
-		y += 34
-		mv(hLblKw2, lx, y+4, 120, 20)
-		mv(hKw2, ex, y, 150, 24)
-		mv(hNoteKw, ex+160, y+4, rw(ex+160), 20)
-		y += 34
-		mv(hCancel, lx, y, rw(lx), 22)
-		y += 28
-		mv(hTop, lx, y, rw(lx), 22)
-		y += 40
+		lines = lines[:0]
+		colW := (W - pad*2 - gap) / 2
+		type col struct{ x, y int }
+		sec := func(cl *col, h uintptr) {
+			tw := textW(h, hFontBtnBold) + 4
+			mv(h, cl.x, cl.y, tw, 22)
+			lines = append(lines, rectT{int32(cl.x + tw + 8), int32(cl.y + 11), int32(cl.x + colW), 0})
+			cl.y += 32
+		}
+		row := func(cl *col, lbl, ctl uintptr, ctlW, ctlH int, note uintptr) {
+			cx := cl.x + lblW
+			if ctlW <= 0 {
+				ctlW = colW - lblW
+			}
+			mv(lbl, cl.x, cl.y+4, lblW-6, 22)
+			mv(ctl, cx, cl.y, ctlW, ctlH)
+			cl.y += 30
+			if note != 0 {
+				mv(note, cx, cl.y-2, colW-lblW, 20)
+				cl.y += 22
+			}
+		}
+		chk := func(cl *col, h, note uintptr) {
+			mv(h, cl.x, cl.y, colW, 24)
+			cl.y += 26
+			if note != 0 {
+				mv(note, cl.x+20, cl.y-2, colW-20, 20)
+				cl.y += 22
+			}
+		}
 
-		mv(hHeadView, lx, y, 200, 20)
-		y += 28
-		mv(hLblFont, lx, y+4, 120, 20)
-		mv(hFontSel, ex, y, 150, 200)
-		mv(hNoteFont, ex+160, y+4, rw(ex+160), 20)
-		y += 40
+		L := &col{pad, 16}
+		sec(L, hHeadView)
+		row(L, hLblFont, hFontSel, 160, 300, hNoteFont)
+		chk(L, hTop, 0)
+		L.y += 16
+		sec(L, hHeadSend)
+		row(L, hLblMethod, hMethod, 160, 300, hNoteMethod)
+		row(L, hLblKw2, hKw2, 160, 24, hNoteKw)
+		chk(L, hCancel, 0)
+		L.y += 16
+		sec(L, hHeadFree)
+		ew := max(colW-98, 80)
+		mv(hFree, L.x, L.y, ew, 24)
+		mv(hSend, L.x+ew+8, L.y-2, 90, 28)
+		L.y += 30
+		mv(hNoteFree, L.x, L.y-2, colW, 20)
 
-		mv(hHeadUpd, lx, y, 200, 20)
-		y += 28
-		mv(hAuto, lx, y, rw(lx), 22)
-		y += 26
-		mv(hNoteUpd, lx+20, y, rw(lx+20), updH)
-		y += updH + 8
-		mv(hLblPc, lx+20, y, 140, 20)
-		mv(hValPc, lx+170, y, rw(lx+170), 20)
-		y += 24
-		mv(hLblGh, lx+20, y, 140, 20)
-		mv(hValGh, lx+170, y, rw(lx+170), 20)
-		y += 40
+		R := &col{pad + colW + gap, 16}
+		sec(R, hHeadUpd)
+		chk(R, hAuto, hNoteAuto)
+		R.y += 4
+		for _, ir := range info {
+			mv(ir.k, R.x+20, R.y, lblW+20, 20)
+			mv(ir.v, R.x+20+lblW+24, R.y, colW-lblW-44, 20)
+			R.y += 22
+		}
+		if hNoteLocal != 0 {
+			mv(hNoteLocal, R.x+20, R.y+2, colW-20, 40)
+			R.y += 44
+		}
+		R.y += 16
+		sec(R, hHeadCad)
+		chk(R, hTrust, hNoteTrust)
+		R.y += 4
+		row(R, hLblEnc, hEnc, 110, 300, hNoteEnc)
 
-		mv(hHeadCad, lx, y, 200, 20)
-		y += 28
-		mv(hTrust, lx, y, rw(lx), 22)
-		y += 24
-		mv(hNoteTrust, lx+20, y, rw(lx+20), 20)
-		y += 30
-		mv(hLblEnc, lx, y+4, 140, 20)
-		mv(hEnc, ex, y, 100, 200)
-		mv(hNoteEnc, ex+110, y+4, rw(ex+110), 20)
-		y += 46
-
-		mv(hHeadFree, lx, y, 200, 20)
-		y += 28
-		ew := max(W-ex-16-98, 120)
-		mv(hFree, ex, y, ew, 24)
-		mv(hSend, ex+ew+8, y-1, 90, 28)
-		y += 30
-		mv(hNoteFree, ex, y, rw(ex), 20)
-
-		mv(hClose, W-16-95, H-14-28, 95, 28)
+		lines = append(lines, rectT{int32(pad), int32(H - 58), int32(W - pad), 0})
+		mv(hClose, W-pad-95, H-16-30, 95, 30)
 	}
 	var cr rectT
 	c(pGetClientRect, d.h, uintptr(P(&cr)))
