@@ -162,8 +162,20 @@ func btnProc(h, msg, wp, lp uintptr) uintptr {
 func drawButton(lp uintptr) uintptr {
 	dis := (*drawItemStruct)(unsafe.Pointer(lp))
 	h := dis.hwndItem
+	if h != 0 && h == hWinCombo { // 작업할 도면 선택칸 (ui2.go)
+		drawCadItem(dis)
+		return 1
+	}
 	if h != hRun && !flatBtn[h] {
 		return 0
+	}
+	if h == hRun { // 그라데이션·그림자 실행 버튼 (ui2.go)
+		drawRunButton(dis)
+		return 1
+	}
+	if h == hStartup { // 자동 로드 스위치 (ui2.go)
+		drawSwitch(dis)
+		return 1
 	}
 	hdc := dis.hDC
 	c(pFillRect, hdc, uintptr(P(&dis.rcItem)), hBgBrush) // 둥근 모서리 바깥은 창 배경색
@@ -219,6 +231,12 @@ func drawButton(lp uintptr) uintptr {
 		if getText(h) == "★" {
 			c(pSetTextColor, hdc, favStarClr)
 		}
+	}
+	if h == hFind { // 다시 찾기: 새로고침 아이콘
+		font, label = hFontIcon, "\uE72C"
+	}
+	if h == hAdvanced { // 설정: 톱니바퀴 아이콘
+		font, label = hFontIcon, "\uE713"
 	}
 	if h == hThemeBtn { // 전구: 다크(불 꺼짐)는 회색, 크림(불 켜짐)은 노란색
 		font, label = hFontIcon, "\uE82F"

@@ -454,6 +454,7 @@ func showNode(n nodeRef) {
 		setManual(T("catalog.010"))
 	}
 	c(pEnableWindow, hRun, run)
+	heroGlyph = pickGlyph(n) // 오른쪽 머리 아이콘 (ui2.go)
 	setGuide(guide)
 	updateFavBtn()
 	l := n.lisp()

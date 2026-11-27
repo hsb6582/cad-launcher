@@ -159,6 +159,7 @@ var (
 	hTools, hStartup                                            uintptr
 	hListHdr, hListCnt, hChip, hOptHdr, hStatus, hLogToggle     uintptr
 	hFontSec                                                    uintptr // 칸 제목(리습 목록·옵션·설명서) 글꼴
+	hFontTitle                                                  uintptr // 오른쪽 기능 제목 (크게)
 
 	pPostMessageW = user32.NewProc("PostMessageW")
 )
@@ -225,11 +226,12 @@ func createControls() {
 	hKeyword = mk("EDIT", st.Keyword, ES_AUTOHSCROLL|WS_TABSTOP, WS_EX_CLIENTEDGE, idKeyword)
 	show(hLblKw, false)
 	show(hKeyword, false)
-	hFind = mk("BUTTON", "↻", WS_TABSTOP, 0, idFind)
-	hCadLbl = mk("STATIC", T("app.101"), SS_LEFT, 0, 0) // CAD 창 선택칸 앞 이름표 ('작업 목록'과 같은 굵은 글씨)
-	c(pSendMessageW, hCadLbl, WM_SETFONT, hFontSec, 1)
-	hWinCombo = mk("COMBOBOX", "", CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP, 0, idWinCombo)
+	hFind = mk("BUTTON", "↻", WS_TABSTOP, 0, idFind) // 새로고침 아이콘으로 그림 (style2.go)
+	hCadLbl = mk("STATIC", T("app.101"), SS_LEFT, 0, 0)
+	show(hCadLbl, false) // 새 화면: 이름표 없이 선택칸 안에 연결 점·도면 이름·연결 상태를 그림 (ui2.go)
+	hWinCombo = mk("COMBOBOX", "", CBS_DROPDOWNLIST|0x0010 /*CBS_OWNERDRAWFIXED*/ |0x0200 /*CBS_HASSTRINGS*/ |WS_VSCROLL|WS_TABSTOP, 0, idWinCombo)
 	hCadState = mk("STATIC", "", SS_LEFT|0x4000 /*SS_ENDELLIPSIS*/, 0, 0)
+	show(hCadState, false)
 
 	hUpdate = mk("BUTTON", T("app.002"), WS_TABSTOP, 0, idUpdate)
 	hAdvanced = mk("BUTTON", T("app.003"), WS_TABSTOP, 0, idAdvanced)
@@ -251,8 +253,9 @@ func createControls() {
 	show(hAddCat, false)
 
 	// 오른쪽: 제목 + (리습 · 명령어) 꼬리표 / 설명 / 옵션 / 설명서 / 실행 줄
-	hTitle = mk("STATIC", "", SS_LEFT, 0, 0)
-	c(pSendMessageW, hTitle, WM_SETFONT, hFontSec, 1)
+	hTitle = mk("STATIC", "", SS_LEFT|0x4000 /*SS_ENDELLIPSIS*/, 0, 0)
+	hFontTitle = makeFont(15, true)
+	c(pSendMessageW, hTitle, WM_SETFONT, hFontTitle, 1)
 	hChip = mk("STATIC", "", 0x0001|0x0200|0x4000 /*SS_CENTER|SS_CENTERIMAGE|SS_ENDELLIPSIS: 한 줄, 넘치면 …*/, 0, 0)
 	hDesc = mk("STATIC", "", SS_LEFT, 0, 0)
 	grey[hDesc] = true
@@ -261,12 +264,13 @@ func createControls() {
 	hReset = mk("BUTTON", T("app.007"), WS_TABSTOP, 0, idReset)
 	hLblManual = mk("STATIC", T("app.008"), SS_LEFT, 0, 0)
 	c(pSendMessageW, hLblManual, WM_SETFONT, hFontSec, 1)
+	show(hLblManual, false) // 새 화면: '설명서' 제목 없이 바로 내용
 	hManual = mk("EDIT", "", ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL, WS_EX_CLIENTEDGE, idManual)
 	hRun = mk("BUTTON", T("app.009"), WS_TABSTOP|BS_OWNERDRAW, 0, idRun) // 직접 그려서 강조색 버튼으로 표시
 	hFavBtn = mk("BUTTON", "☆", WS_TABSTOP, 0, idFav)                    // 설명서 머리 줄 즐겨찾기 별 (favorites.go)
 	show(hFavBtn, false)
 	hTools = mk("BUTTON", T("app.010"), WS_TABSTOP, 0, idTools)
-	hStartup = mk("BUTTON", T("app.011"), BS_AUTOCHECKBOX|WS_TABSTOP, 0, idStartup)
+	hStartup = mk("BUTTON", T("app.011"), BS_OWNERDRAW|WS_TABSTOP, 0, idStartup) // 켜고 끄는 스위치로 그림 (ui2.go)
 
 	// 아래: 마지막 결과 한 줄 + 실행 기록 펼치기
 	hStatus = mk("STATIC", "", SS_LEFT|0x0100 /*SS_NOTIFY*/ |0x4000 /*SS_ENDELLIPSIS*/, 0, 0)
@@ -327,7 +331,7 @@ func show(h uintptr, on bool) {
 }
 
 const (
-	hdrH    = 46          // 맨 위 제목 줄 높이 (96DPI 기준)
+	hdrH    = 54          // 맨 위 제목 줄 높이 (96DPI 기준)
 	secTop  = hdrH + 10   // '리습 목록' 제목 줄 y
 	listTop = secTop + 30 // 목록 칸 시작 y
 	statusH = 36          // 맨 아래 상태 줄 높이
@@ -367,7 +371,7 @@ func updateCadState() {
 	} else {
 		setText(hCadState, T("app.103"))
 	}
-	c(pInvalidateRect, hMain, 0, 1) // 연결 표시 점도 같이
+	c(pInvalidateRect, hWinCombo, 0, 1) // 선택칸 안의 연결 점·상태 문구 (ui2.go)
 }
 
 // 대상 CAD 창 연결 표시 (초록 = 선택된 CAD 창이 살아 있음)
@@ -376,20 +380,15 @@ func cadConnected() bool {
 	return i >= 0 && i < len(windows) && c(pIsWindow, windows[i].h) != 0
 }
 
-// 맨 위 줄: CAD 연결 점 + 아래 구분선 (큰 제목은 뺌)
+// 맨 위 줄 아래·상태 줄 위 구분선 + 오른쪽 머리의 기능 아이콘 (ui2.go)
 func paintHeader(hdc uintptr) {
-	// 연결 표시 점
-	dot := RGB(0x4C, 0xC3, 0x8A)
-	if !cadConnected() {
-		dot = RGB(0xD9, 0x5C, 0x5C)
-	}
-	fillRoundEllipse(hdc, int(s(titleEndX+16)), int(s(hdrH/2-4)), int(s(9)), dot)
+	paintHeroIcon(hdc)
 	W, H := clientSize()
 	br := c(pCreateSolidBrush, clrBorder)
 	for _, ln := range []rectT{
-		{int32(s(8)), int32(s(hdrH)), int32(s(W - 8)), int32(s(hdrH)) + 1},                                  // 제목 줄 아래
-		{int32(s(rightX)), int32(s(mainBottomY(H) - 46)), int32(s(W - 8)), int32(s(mainBottomY(H)-46)) + 1}, // 실행 줄 위
-		{int32(s(8)), int32(s(H - statusH)), int32(s(W - 8)), int32(s(H-statusH)) + 1},                      // 상태 줄 위
+		{0, int32(s(hdrH)), int32(s(W)), int32(s(hdrH)) + 1},                                          // 제목 줄 아래
+		{int32(s(8 + leftW + 4)), int32(s(hdrH)) + 1, int32(s(8+leftW+4)) + 1, int32(s(H - statusH))}, // 목록·설명 사이 세로줄
+		{0, int32(s(H - statusH)), int32(s(W)), int32(s(H-statusH)) + 1},                              // 상태 줄 위
 	} {
 		c(pFillRect, hdc, uintptr(P(&ln)), br)
 	}
@@ -398,20 +397,16 @@ func paintHeader(hdc uintptr) {
 
 func layout() {
 	W, H := clientSize()
-	// 맨 위 줄: 작업할 도면 (연결 점) 대상 CAD 창 · ↻ ······ 전구 · 설정 · 업데이트
-	mv(hUpdate, W-90, 10-updPad, 82+updPad, 26+updPad) // 위·오른쪽 여백에 업데이트 알림 빨간 점 (style2.go)
-	mv(hAdvanced, W-160, 10, 64, 26)
-	mv(hThemeBtn, W-198, 10, 32, 26)
-	lw := textW(hCadLbl, hFontSec) + 4
-	mv(hCadLbl, 12, 13, lw, 26)
-	titleEndX = 12 + lw - 6 // 점은 이름표 오른쪽 10px
-	cx := titleEndX + 30
-	// 상태 문구 칸: 두 문구 중 긴 쪽 폭 (문구가 바뀌어도 선택칸이 출렁이지 않게)
-	stW := max(strW(T("app.102"), hFont), strW(T("app.103"), hFont)) + 6
-	cw := min(max(W-198-12-36-cx-stW-10, 120), 640)
-	mv(hWinCombo, cx, 11, cw, 300)
-	mv(hFind, cx+cw+4, 10, 30, 26)
-	mv(hCadState, cx+cw+4+30+10, 15, min(stW, max(W-198-12-(cx+cw+44), 20)), 20)
+	// 맨 위 줄: [● 도면 이름 ······ AutoCAD LT 2026 · 연결됨 ▾] ↻ 전구 ⚙ [업데이트]
+	const by, bh = 10, 34
+	uw := strW(T("app.002"), hFont) + 34
+	mv(hUpdate, W-10-uw, by-updPad, uw+updPad, bh+updPad) // 위·오른쪽 여백에 업데이트 알림 빨간 점 (style2.go)
+	gx := W - 10 - uw - 8 - bh
+	mv(hAdvanced, gx, by, bh, bh)
+	mv(hThemeBtn, gx-6-bh, by, bh, bh)
+	fx := gx - 6 - bh - 6 - bh
+	mv(hFind, fx, by, bh, bh)
+	mv(hWinCombo, 12, by, max(fx-10-12, 160), 300)
 
 	mainBottom := mainBottomY(H)
 	// 왼쪽: 리습 목록
@@ -422,18 +417,27 @@ func layout() {
 	mv(hDown, 8+leftW-28, secTop, 28, 26)
 	mv(hList, 8, listTop, leftW, max(mainBottom-listTop, 60))
 
-	// 오른쪽: 제목 + 꼬리표 / 설명
+	// 오른쪽 머리: [아이콘] 제목 / 설명 / 명령어·리습 꼬리표 ········ ☆ [▶ 실행]
 	rw := max(W-rightX-8, 200)
-	// 실행 버튼: 오른쪽 위 (제목·설명 줄 오른쪽). 버튼이 보일 때는 제목·설명이 그 앞까지만 차지
-	const runW = 150
-	mv(hRun, rightX+rw-runW, secTop+2, runW, 46)
-	tr := rw // 제목·설명이 쓸 수 있는 폭
+	ix := rightX + heroIconSz + 14 // 아이콘(paintHeroIcon) 오른쪽
+	const runW, runH = 160 + 2*runPadX, 58 + runPadTop + runPadBot
+	mv(hRun, rightX+rw-runW+runPadX, secTop-1, runW, runH) // 그림자 여백만큼 바깥으로
+	tr := rightX + rw - ix                                 // 제목·설명이 쓸 수 있는 폭
 	if c(pIsWindowVisible, hRun) != 0 {
-		tr = max(rw-runW-12, 120)
+		tr = max(tr-160-16, 120)
 	}
-	mv(hTitle, rightX, secTop, tr, 28)
-	mv(hDesc, rightX, secTop+30, tr, 20)
-	y := secTop + 58
+	if c(pIsWindowVisible, hFavBtn) != 0 {
+		mv(hFavBtn, rightX+rw-160-12-30, secTop+15, 30, 28)
+		tr = max(tr-36, 100)
+	}
+	mv(hTitle, ix, secTop-2, tr, 30)
+	mv(hDesc, ix, secTop+29, tr, 20)
+	chip := getText(hChip)
+	show(hChip, chip != "")
+	chipW := min(textW(hChip, hFont)+16, tr)
+	mv(hChip, ix, secTop+53, chipW, 20)
+	c(pInvalidateRect, hChip, 0, 1) // 폭·위치가 바뀌면 예전 글자 조각이 남지 않게 전체를 다시 그림
+	y := secTop + heroIconSz + 26
 	if len(optCtls) > 0 {
 		show(hOptGroup, true)
 		show(hReset, true)
@@ -466,28 +470,17 @@ func layout() {
 		show(hOptGroup, false)
 		show(hReset, false)
 	}
-	actTop := mainBottom - 38 // 실행 줄
-	mv(hLblManual, rightX, y+1, 90, 26)
-	// 명령어·리습 꼬리표: 설명서 머리 줄 오른쪽 끝 (목록·제목에는 표시하지 않음)
-	chip := getText(hChip)
-	show(hChip, chip != "")
-	favW := 0 // 별 버튼 (기능을 골랐을 때만)
-	if c(pIsWindowVisible, hFavBtn) != 0 {
-		favW = 30
-		mv(hFavBtn, rightX+rw-28, y, 28, 26)
-	}
-	chipW := min(textW(hChip, hFont)+16, max(rw-90-favW, 40))
-	mv(hChip, rightX+rw-favW-chipW, y+3, chipW, 20)
-	c(pInvalidateRect, hChip, 0, 1) // 폭·위치가 바뀌면 예전 글자 조각이 남지 않게 전체를 다시 그림
-	mh := max(actTop-12-(y+28), 40)
-	mv(hManual, rightX, y+28, rw, mh)
-	mv(hGuide, rightX, y+28, rw, mh)
+	actTop := mainBottom - 38 // 아래 줄 (자동 로드 스위치·외부 프로그램 설치)
+	mh := max(actTop-6-y, 40)
+	mv(hManual, rightX, y, rw, mh)
+	mv(hGuide, rightX, y, rw, mh)
 
-	// 아래 줄: 부가 기능 (실행 버튼은 오른쪽 위로 옮김)
+	// 아래 줄: 자동 로드 스위치 + 외부 프로그램 설치
 	sx := rightX
-	mv(hStartup, sx, actTop+7, 190, 24)
+	swW := 36 + 10 + strW(getText(hStartup), hFont) + 8
+	mv(hStartup, sx, actTop+6, swW, 26)
 	if c(pIsWindowVisible, hStartup) != 0 {
-		sx += 198
+		sx += swW + 14
 	}
 	mv(hTools, sx, actTop+4, 140, 28)
 
@@ -786,6 +779,10 @@ func onCommand(id, code int) {
 		return
 	}
 	switch {
+	case id == IDOK: // Enter: 목록이나 실행 버튼에 있을 때만 실행 (입력칸에서 누른 Enter 는 무시)
+		if f := c(pGetFocus); (f == hList || f == hRun) && c(pIsWindowEnabled, hRun) != 0 {
+			runCurrent()
+		}
 	case id == idFind:
 		refreshWindows()
 	case id == idUpdate:
@@ -808,6 +805,8 @@ func onCommand(id, code int) {
 		st.LogOpen = !st.LogOpen
 		layout()
 	case id == idStartup:
+		startupOn = !startupOn // 스위치 (ui2.go) - toggleStartup 이 isChecked 로 읽음
+		c(pInvalidateRect, hStartup, 0, 0)
 		toggleStartup()
 	case id == idReset:
 		resetOptions()
@@ -889,6 +888,15 @@ func wndProc(h, msg, wp, lp uintptr) uintptr {
 		return eraseBg(h, wp)
 	case WM_DRAWITEM:
 		return drawButton(lp)
+	case 0x002C: // WM_MEASUREITEM: 작업할 도면 선택칸 높이 (ui2.go)
+		if mi := (*measureItemStruct)(P(lp)); mi.ctlID == idWinCombo {
+			if int32(mi.itemID) == -1 {
+				mi.itemHeight = uint32(s(26))
+			} else {
+				mi.itemHeight = uint32(s(28))
+			}
+			return 1
+		}
 	case WM_PAINT:
 		paintFrames(h)
 		hdc := c(pGetDC, h)
