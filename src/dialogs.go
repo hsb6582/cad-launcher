@@ -385,11 +385,17 @@ func advancedDialog() {
 		hNoteLocal = hint(strings.TrimPrefix(T("dialogs.015"), "\n"))
 	}
 
-	// GitHub 토큰 (선택): 글자는 ● 로 가림 (ES_PASSWORD)
+	// GitHub 토큰 (선택): 설정 창에는 상태만 보이고, 입력은 [토큰 설정…] 버튼으로 여는 작은 창에서
 	hLblTok := label(T("dialogs.101"))
-	hTok := d.mk("EDIT", st.Token, ES_AUTOHSCROLL|0x0020|WS_TABSTOP, WS_EX_CLIENTEDGE, idAdvToken)
+	hTokBtn := d.button(T("dialogs.105"), idAdvToken, 0, 0, 10, false)
+	tokState := func() string {
+		if st.Token != "" {
+			return T("dialogs.106")
+		}
+		return T("dialogs.107")
+	}
+	hTokState := hint(tokState())
 	hNoteTok := hint(T("dialogs.102"))
-	tokVal := st.Token
 
 	hHeadCad := head("AutoCAD")
 	hTrust := check(T("dialogs.022"), idAdvTrust, st.Trust != "no")
@@ -486,7 +492,9 @@ func advancedDialog() {
 			R.y += 44
 		}
 		R.y += 6
-		row(R, hLblTok, hTok, 0, 24, hNoteTok)
+		tokY := R.y
+		row(R, hLblTok, hTokBtn, 120, 28, hNoteTok)
+		mv(hTokState, R.x+lblW+130, tokY+5, colW-lblW-130, 20) // 버튼 오른쪽: 설정됨 / 설정 안 됨
 		R.y += 16
 		sec(R, hHeadCad)
 		chk(R, hTrust, hNoteTrust)
@@ -502,8 +510,10 @@ func advancedDialog() {
 
 	d.onCmd = func(id, code int) {
 		switch {
-		case id == idAdvToken && code == 0x0300: // EN_CHANGE
-			tokVal = getText(hTok)
+		case id == idAdvToken && code == BN_CLICKED:
+			if tokenDialog() {
+				setText(hTokState, tokState())
+			}
 		case id == idAdvKw && code == 0x0300: // EN_CHANGE (창이 닫히면 글자를 못 읽으므로 바뀔 때마다 보관)
 			kwVal = getText(hKw2)
 		case id == idAdvMethod && code == CBN_SELCHANGE:
@@ -543,16 +553,6 @@ func advancedDialog() {
 	if fontChanged && ask(T("dialogs.093")) {
 		c(pShellExecuteW, 0, uintptr(P(ws("open"))), uintptr(P(ws(exePath))), 0, uintptr(P(ws(appDir))), SW_SHOWNORMAL)
 		c(pPostMessageW, hMain, WM_CLOSE, 0, 0)
-	}
-	// GitHub 토큰: 앞뒤 공백을 지우고 저장 (비우면 토큰 없이 확인)
-	if tv := strings.TrimSpace(tokVal); tv != st.Token {
-		st.Token = tv
-		saveState()
-		if tv != "" {
-			logf("%s", T("dialogs.103"))
-		} else {
-			logf("%s", T("dialogs.104"))
-		}
 	}
 	// 창 제목 키워드가 바뀌었으면 CAD 창을 다시 찾음
 	if kw := strings.TrimSpace(kwVal); kw != "" && kw != st.Keyword {
@@ -696,4 +696,47 @@ func editOptionDialog(o *Option, all []Option, self int) bool {
 		d.ok, d.done = true, true
 	}
 	return d.run(hKey)
+}
+
+// GitHub 토큰 입력 창 (설정 창의 [토큰 설정…] 버튼). 저장했거나 지웠으면 true.
+// 입력한 글자는 ● 로 가리고, 기존 토큰은 칸에 채우지 않는다 (비워 두고 확인 = 그대로 둠).
+func tokenDialog() bool {
+	d := newDialog(T("dialogs.108"), 460, 210)
+	d.note(T("dialogs.102"), 16, 14, 428, 38)
+	d.label(T("dialogs.101"), 16, 62, 100)
+	hTok := d.mk("EDIT", "", ES_AUTOHSCROLL|0x0020 /*ES_PASSWORD*/ |WS_TABSTOP, WS_EX_CLIENTEDGE, 0)
+	mv(hTok, 110, 58, 334, 24)
+	state := T("dialogs.107")
+	if st.Token != "" {
+		state = T("dialogs.109")
+	}
+	d.note(state, 110, 86, 334, 20)
+	const idClear = 9001
+	hClear := d.button(T("dialogs.110"), idClear, 16, 160, 110, false)
+	show(hClear, st.Token != "")
+	d.button(T("dialogs.050"), IDOK, 250, 160, 95, true)
+	d.button(T("dialogs.051"), IDCANCEL, 350, 160, 95, false)
+	changed := false
+	d.onCmd = func(id, code int) {
+		switch id {
+		case IDOK:
+			if tv := strings.TrimSpace(getText(hTok)); tv != "" && tv != st.Token {
+				st.Token = tv
+				saveState()
+				logf("%s", T("dialogs.103"))
+				changed = true
+			}
+			d.ok, d.done = true, true
+		case idClear:
+			if ask(T("dialogs.111")) {
+				st.Token = ""
+				saveState()
+				logf("%s", T("dialogs.104"))
+				changed = true
+				d.ok, d.done = true, true
+			}
+		}
+	}
+	d.run(hTok)
+	return changed
 }
