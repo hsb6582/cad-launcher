@@ -2,7 +2,7 @@
 ;;; 리습: GLC
 ;;; 분류: 단순기능
 ;;; 설명: 선 길이로 지반고·관상부레벨 문자 자동 계산
-;;; 기능: 지반고·관상부레벨 계산 | GLC | 선 길이/5 + 숫자A → 지반고, 지반고 - 심도 → 관상부레벨
+;;; 기능: 지반고·관상부레벨 계산 | GLC | 선 길이/5 + 종단 기준레벨 → 지반고, 지반고 - 심도 → 관상부레벨
 ;;; @end
 ;;; ======================================================================
 ;;; gl_level_calc.lsp
@@ -11,13 +11,13 @@
 ;;;
 ;;; 사용법 : 명령행에 GLC 입력 후 다음 순서로 선택
 ;;;   1) 선 또는 폴리선 선택   (선A)
-;;;   2) 텍스트 선택           (숫자A)   *지반고 계산에 사용됨
+;;;   2) 텍스트 선택           (종단 기준레벨 = 종단면도 그래프 Y축 최하단 숫자)   *지반고 계산에 사용됨
 ;;;   3) 텍스트 선택           (심도)
 ;;;   4) 텍스트 선택           (관상부레벨)
 ;;;   5) 텍스트 선택           (지반고)
 ;;;
 ;;; 계산식
-;;;   지반고(신규)      = 선A 길이 / 5 + 숫자A       -> 소수 둘째자리(**.** )로 반영
+;;;   지반고(신규)      = 선A 길이 / 5 + 종단 기준레벨       -> 소수 둘째자리(**.** )로 반영
 ;;;   관상부레벨(신규)  = 지반고(신규) - 심도        -> 소수 둘째자리(**.** )로 반영
 ;;;
 ;;; 주의사항
@@ -95,8 +95,8 @@
     (progn (princ "\n선택이 취소되었습니다.") (exit))
   )
 
-  ;; 2) 숫자A 텍스트 선택 (지반고 계산에 사용)
-  (setq numAEnt (car (entsel "\n숫자A 텍스트를 선택하세요: ")))
+  ;; 2) 종단 기준레벨 텍스트 선택 (종단면도 그래프 Y축 최하단 숫자, 지반고 계산에 사용)
+  (setq numAEnt (car (entsel "\n종단 기준레벨 텍스트를 선택하세요 (종단면도 그래프 Y축 최하단 숫자): ")))
 
   ;; 3) 심도 텍스트 선택
   (setq depthEnt (car (entsel "\n심도 텍스트를 선택하세요: ")))
@@ -112,13 +112,13 @@
       ;; 선A 길이
       (setq lineLen (gl:get-curve-length lineEnt))
 
-      ;; 숫자A 값
+      ;; 종단 기준레벨 값
       (setq numAVal (gl:extract-number (gl:get-text-value numAEnt)))
 
       ;; 심도 값
       (setq depthVal (gl:extract-number (gl:get-text-value depthEnt)))
 
-      ;; 지반고(신규) = 선A/5 + 숫자A
+      ;; 지반고(신규) = 선A/5 + 종단 기준레벨
       (setq groundVal (+ (/ lineLen 5.0) numAVal))
       (setq groundStr (gl:fmt2 groundVal))
       (gl:set-text-value groundEnt groundStr)
@@ -130,7 +130,7 @@
 
       ;; 결과 출력
       (princ (strcat "\n선A 길이         : " (rtos lineLen 2 3)))
-      (princ (strcat "\n숫자A 값         : " (rtos numAVal 2 2)))
+      (princ (strcat "\n종단 기준레벨    : " (rtos numAVal 2 2)))
       (princ (strcat "\n심도             : " (rtos depthVal 2 2)))
       (princ (strcat "\n계산된 지반고     : " groundStr))
       (princ (strcat "\n계산된 관상부레벨 : " crownStr))
