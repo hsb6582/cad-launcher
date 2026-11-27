@@ -181,7 +181,7 @@ func drawButton(lp uintptr) uintptr {
 		return 1
 	}
 	hdc := dis.hDC
-	c(pFillRect, hdc, uintptr(P(&dis.rcItem)), hBgBrush) // 둥근 모서리 바깥은 창 배경색
+	fillBox(hdc, int(dis.rcItem.left), int(dis.rcItem.top), int(dis.rcItem.right-dis.rcItem.left), int(dis.rcItem.bottom-dis.rcItem.top), ctlBg(h)) // 둥근 모서리 바깥은 바탕색 (실행 막대 안이면 막대색)
 
 	disabled := dis.itemState&ODS_DISABLED != 0
 	pressed := dis.itemState&ODS_SELECTED != 0

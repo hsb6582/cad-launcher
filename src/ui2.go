@@ -221,7 +221,8 @@ func drawRunButton(dis *drawItemStruct) {
 	pressed := dis.itemState&ODS_SELECTED != 0
 	hot := hotBtn == dis.hwndItem
 
-	cv := newCanvas(W, H, clrBg)
+	under := ctlBg(dis.hwndItem) // 실행 막대 바탕
+	cv := newCanvas(W, H, under)
 	x0, y0 := float64(si(runPadX)), float64(si(runPadTop))
 	x1, y1 := float64(W-si(runPadX)), float64(H-si(runPadBot))
 	if pressed {
@@ -236,7 +237,7 @@ func drawRunButton(dis *drawItemStruct) {
 	body := func(x, y float64) float64 { return aa(sdRoundRect(x, y, x0, y0, x1, y1, rad)) }
 	if !disabled && !pressed { // 아래로 번지는 그림자
 		blur, off := float64(si(7)), float64(si(4))
-		sh := mixClr(bot, clrBg, 0.25)
+		sh := mixClr(bot, under, 0.25)
 		cv.paint(func(x, y float64) float64 {
 			d := sdRoundRect(x, y-off, x0+float64(si(6)), y0, x1-float64(si(6)), y1, rad)
 			return 0.55 * (1 - smoothstep(-blur, blur, d))
@@ -358,10 +359,11 @@ var startupOn bool
 func drawSwitch(dis *drawItemStruct) {
 	hdc := dis.hDC
 	r := dis.rcItem
-	c(pFillRect, hdc, uintptr(P(&r)), hBgBrush)
+	under := ctlBg(dis.hwndItem)
+	fillBox(hdc, int(r.left), int(r.top), int(r.right-r.left), int(r.bottom-r.top), under)
 	H := int(r.bottom - r.top)
 	tw, th := si(36), si(20)
-	cv := newCanvas(tw+2, th+2, clrBg)
+	cv := newCanvas(tw+2, th+2, under)
 	on := startupOn
 	track := clrBtnBorder
 	if on {

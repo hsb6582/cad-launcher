@@ -379,9 +379,35 @@ func cadConnected() bool {
 	return i >= 0 && i < len(windows) && c(pIsWindow, windows[i].h) != 0
 }
 
+// 아래 실행 막대 (layout 에서 위치를 정함, 96DPI 기준)
+var barTop int
+
+const barH = 56
+
+// 실행 막대 바탕: 창 바탕보다 한 톤 진하게
+func barBgClr() uintptr {
+	if curTheme.dark {
+		return mixClr(clrBg, 0, 0.16)
+	}
+	return mixClr(clrBg, 0, 0.04)
+}
+
+// 실행 막대 안 컨트롤은 막대 바탕색 위에 그림
+func ctlBg(h uintptr) uintptr {
+	if h != 0 && (h == hRun || h == hFavBtn || h == hStartup || h == hTools) {
+		return barBgClr()
+	}
+	return clrBg
+}
+
 // 맨 위 줄 아래·상태 줄 위 구분선 + 오른쪽 머리의 기능 아이콘 (ui2.go)
 func paintHeader(hdc uintptr) {
 	W, H := clientSize()
+	if barTop > 0 { // 아래 실행 막대 바탕 + 위 선
+		bx := int(s(8+leftW+5)) + 1
+		fillBox(hdc, bx, int(s(barTop)), int(s(W))-bx, int(s(barTop+barH))-int(s(barTop)), barBgClr())
+		fillBox(hdc, bx, int(s(barTop)), int(s(W))-bx, 1, clrBorder)
+	}
 	br := c(pCreateSolidBrush, clrBorder)
 	for _, ln := range []rectT{
 		{0, int32(s(hdrH)), int32(s(W)), int32(s(hdrH)) + 1},                                          // 제목 줄 아래
@@ -410,24 +436,11 @@ func layout() {
 	// 왼쪽: 리습 목록
 	layoutListPane(mainBottom) // 검색칸 / 보기 버튼 / 목록 (listpane.go)
 
-	// 오른쪽 머리 한 줄: 제목 ················ ☆ [▶ 실행]  (셋 다 같은 가운데 높이에 맞춤)
+	// 오른쪽 위: 기능 제목만 (실행·별·꼬리표·자동 로드는 아래 실행 막대로)
 	rw := max(W-rightX-8, 200)
-	ix := rightX
-	const runVisW, runVisH = 150, 46 // 보이는 버튼 크기 (그림자 여백 빼고)
-	const runW, runH = runVisW + 2*runPadX, runVisH + runPadTop + runPadBot
-	mid := secTop + runVisH/2                                      // 머리 줄 가운데 높이 (왼쪽 보기 버튼 줄과 위를 맞춤)
-	mv(hRun, rightX+rw-runW+runPadX, secTop-runPadTop, runW, runH) // 그림자 여백만큼 바깥으로
-	tr := rightX + rw - ix                                         // 제목이 쓸 수 있는 폭
-	if c(pIsWindowVisible, hRun) != 0 {
-		tr = max(tr-runVisW-14, 120)
-	}
-	if c(pIsWindowVisible, hFavBtn) != 0 {
-		mv(hFavBtn, rightX+rw-runVisW-10-30, mid-14, 30, 28)
-		tr = max(tr-40, 100)
-	}
-	mv(hTitle, ix, mid-15, tr, 30)
+	mv(hTitle, rightX, secTop-1, rw, 30)
 	show(hDesc, false)
-	y := secTop + runVisH + 12 // 머리 줄 바로 아래부터
+	y := secTop + 40
 	if len(optCtls) > 0 {
 		show(hOptGroup, true)
 		show(hReset, true)
@@ -460,24 +473,34 @@ func layout() {
 		show(hOptGroup, false)
 		show(hReset, false)
 	}
-	actTop := mainBottom - 38 // 아래 줄 (자동 로드 스위치·외부 프로그램 설치)
-	mh := max(actTop-6-y, 40)
+	// 아래 실행 막대: [자동 로드 스위치] [외부 프로그램 설치] ····· [명령어·리습] [☆] [▶ 실행]
+	barTop = mainBottom + 8 - barH
+	mh := max(barTop-8-y, 40)
 	mv(hManual, rightX, y, rw, mh)
 	mv(hGuide, rightX, y, rw, mh)
-
-	// 아래 줄: 자동 로드 스위치 + 외부 프로그램 설치
+	cy := barTop + barH/2
 	sx := rightX
 	swW := 36 + 10 + strW(getText(hStartup), hFont) + 8
-	mv(hStartup, sx, actTop+6, swW, 26)
+	mv(hStartup, sx, cy-13, swW, 26)
 	if c(pIsWindowVisible, hStartup) != 0 {
 		sx += swW + 14
 	}
-	mv(hTools, sx, actTop+4, 140, 28)
-	// 명령어·리습 꼬리표: 아래 줄 오른쪽 끝
+	mv(hTools, sx, cy-14, 140, 28)
+	if c(pIsWindowVisible, hTools) != 0 {
+		sx += 140 + 10
+	}
+	const runVisW, runVisH = 140, 38 // 보이는 버튼 크기 (그림자 여백 빼고)
+	rx := rightX + rw
+	mv(hRun, rx-runVisW-runPadX, cy-runVisH/2-runPadTop, runVisW+2*runPadX, runVisH+runPadTop+runPadBot)
+	rx -= runVisW + 10
+	if c(pIsWindowVisible, hFavBtn) != 0 {
+		mv(hFavBtn, rx-32, cy-15, 32, 30)
+		rx -= 32 + 10
+	}
 	chip := getText(hChip)
 	show(hChip, chip != "")
-	chipW := min(textW(hChip, hFont)+16, max(rightX+rw-sx-150, 60))
-	mv(hChip, rightX+rw-chipW, actTop+9, chipW, 20)
+	chipW := min(textW(hChip, hFont)+16, max(rx-sx, 60))
+	mv(hChip, rx-chipW, cy-10, chipW, 20)
 	c(pInvalidateRect, hChip, 0, 1) // 폭·위치가 바뀌면 예전 글자 조각이 남지 않게 전체를 다시 그림
 
 	// 맨 아래: 마지막 결과 한 줄 + 실행 기록 펼치기 / 펼친 기록 칸

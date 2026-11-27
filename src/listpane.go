@@ -101,22 +101,24 @@ const (
 )
 
 var (
-	lrows       []listRow
-	lsel        = -1 // 고른 행
-	lhot        = -1 // 마우스가 올라간 행
-	lsb         vscroll
-	lmode       = lmAll
-	listClass   = ws("CADListPane")
-	hSearch     uintptr
-	hChipAll    uintptr
-	hChipFav    uintptr
-	hChipRec    uintptr
-	hFontGrp    uintptr // 상위 분류 머리 (작은 굵은 글씨)
-	hFontGlyph  uintptr // 기능 아이콘 기호
-	curFav      bool    // 지금 고른 항목이 즐겨찾기 묶음 안에 있음
-	selFavNext  bool    // 다음 refreshTree 때 즐겨찾기 묶음 쪽을 선택
-	listMouseIn bool
-	pPolyline   = gdi32.NewProc("Polyline")
+	lrows                  []listRow
+	lsel                   = -1 // 고른 행
+	lhot                   = -1 // 마우스가 올라간 행
+	lsb                    vscroll
+	lmode                  = lmAll
+	listClass              = ws("CADListPane")
+	hSearch                uintptr
+	hChipAll               uintptr
+	hChipFav               uintptr
+	hChipRec               uintptr
+	hFontGrp               uintptr // 상위 분류 머리 (작은 굵은 글씨)
+	hFontGlyph             uintptr // 기능 아이콘 기호
+	curFav                 bool    // 지금 고른 항목이 즐겨찾기 묶음 안에 있음
+	selFavNext             bool    // 다음 refreshTree 때 즐겨찾기 묶음 쪽을 선택
+	listMouseIn            bool
+	pPolyline              = gdi32.NewProc("Polyline")
+	hFontGrpS              uintptr
+	pSetTextCharacterExtra = gdi32.NewProc("SetTextCharacterExtra")
 )
 
 const (
@@ -166,6 +168,7 @@ func createListPane() {
 	c(pRegisterClassExW, uintptr(P(&wc)))
 	hList = c(pCreateWindowExW, 0, uintptr(P(listClass)), 0, WS_CHILD|WS_VISIBLE|WS_TABSTOP, 0, 0, 10, 10, hMain, idList, hInst, 0)
 	hFontGrp = makeFont(10, true)
+	hFontGrpS = makeFont(8, true) // 상위 분류 머리 (작은 굵은 글씨)
 	hFontGlyph = makeIconFont(10)
 
 	// 검색칸은 쓰지 않음 (hSearch = 0 → 검색어 없음)
@@ -301,11 +304,11 @@ func buildRows() {
 		switch rows[i].kind {
 		case rowGroup:
 			if i > 0 {
-				y += si(6)
+				y += si(10)
 			}
-			rows[i].h = si(29)
+			rows[i].h = si(24)
 		case rowItem:
-			rows[i].h = si(29)
+			rows[i].h = si(28)
 		case rowCat:
 			y += int(float64(si(2)) * animF(rows[i].gkey))
 			rows[i].h = si(28)
@@ -518,40 +521,36 @@ func paintList(hdc uintptr, W, H int) {
 			c(pIntersectClipRect, hdc, 0, uintptr(y), uintptr(W), uintptr(y+r.vh))
 		}
 		switch r.kind {
-		case rowGroup: // 상위 분류: 진한 띠 + 굵은 흰 글씨
-			band := groupBandClr()
+		case rowGroup: // 상위 분류: 띠 없이 작은 회색 굵은 글씨 + 넓은 글자 간격 (제목처럼)
+			clr := clrSubText
 			if hot && !filtering {
-				band = mixClr(band, clrText, 0.08)
+				clr = clrText
 			}
-			fillRound(hdc, si(2), y, cw-si(2), r.h, band, band, si(8))
-			x := si(12)
+			x := si(10)
 			if r.fav {
-				_, sh := textSize(hdc, hFontGrp, "★")
-				drawTextAt(hdc, hFontGrp, favStarClr, x, y+(r.h-sh)/2, "★")
-				x += si(18)
+				_, sh := textSize(hdc, hFontGrpS, "★")
+				drawTextAt(hdc, hFontGrpS, favStarClr, x, y+(r.h-sh)/2, "★")
+				x += si(16)
 			}
-			_, th := textSize(hdc, hFontGrp, r.label)
-			drawTextAt(hdc, hFontGrp, groupTextClr(), x, y+(r.h-th)/2, r.label)
+			old := c(pSetTextCharacterExtra, hdc, uintptr(si(2)))
+			_, th := textSize(hdc, hFontGrpS, r.label)
+			drawTextAt(hdc, hFontGrpS, clr, x, y+(r.h-th)/2, r.label)
+			c(pSetTextCharacterExtra, hdc, old)
 			if !filtering {
-				drawChevron(hdc, cw-si(14), y+r.h/2, !isCollapsed(r.key), groupTextClr())
+				drawChevron(hdc, cw-si(14), y+r.h/2, !isCollapsed(r.key), clr)
 			}
-		case rowCat: // 중간 분류: 중간 명암 띠 + 밝은 회색 세로줄 + 밝은 글씨 (명암 계단: 상위 > 중간 > 기능)
-			bar, txt, bg := catColors()
+		case rowCat: // 중간 분류: 띠 없이 왼쪽 펼침 화살표 + 굵은 글씨
 			if hot && !filtering {
-				bg = mixClr(bg, clrText, 0.06)
+				fillRound(hdc, si(4), y+si(1), cw-si(4), r.h-si(2), clrHotBg, clrHotBg, si(6))
 			}
-			fillRound(hdc, si(4), y+si(1), cw-si(4), r.h-si(2), bg, bg, si(8))
-			fillRound(hdc, si(12), y+(r.h-si(16))/2, si(3), si(16), bar, bar, si(3))
-			_, th := textSize(hdc, hFontBtnBold, r.label)
+			if !filtering {
+				drawChevron(hdc, si(14), y+r.h/2, !isCollapsed(r.key), clrSubText)
+			}
 			old := c(pSelectObject, hdc, hFontBtnBold)
-			c(pSetTextColor, hdc, txt)
-			tr := rectT{int32(si(24)), int32(y), int32(cw - si(26)), int32(y + r.h)}
+			c(pSetTextColor, hdc, clrText)
+			tr := rectT{int32(si(26)), int32(y), int32(cw - si(8)), int32(y + r.h)}
 			c(pDrawTextW, hdc, uintptr(P(ws(r.label))), ^uintptr(0), uintptr(P(&tr)), DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|0x8000)
 			c(pSelectObject, hdc, old)
-			_ = th
-			if !filtering {
-				drawChevron(hdc, cw-si(14), y+r.h/2, !isCollapsed(r.key), clrSubText)
-			}
 		case rowItem:
 			paintItemRow(hdc, r, y, cw, i == lsel, hot)
 		}
@@ -568,16 +567,24 @@ func paintItemRow(hdc uintptr, r listRow, y, cw int, sel, hot bool) {
 		return
 	}
 	x0, x1 := si(4), cw-si(2)
+	gx := si(14) // 중간 분류 아래 기능: 화살표 아래로 내려오는 얇은 세로 안내선
 	if r.sub {
-		x0 = si(20) // 중간 분류 아래는 한 칸 들여씀
+		x0 = gx
 	}
 	switch {
 	case sel:
-		fillRound(hdc, x0, y+si(1), x1-x0, r.h-si(2), clrSelBg, clrSelBg, si(10))
-		bar, _ := runColors(false, false)
-		fillRound(hdc, x0, y+si(8), si(3), r.h-si(16), bar, bar, si(3))
+		fillRound(hdc, x0, y+si(1), x1-x0, r.h-si(2), clrSelBg, clrSelBg, si(8))
+		fillBox(hdc, x0, y+si(1), si(4), r.h-si(2), clrSelBg) // 안내선 쪽 모서리는 각지게
 	case hot:
-		fillRound(hdc, x0, y+si(1), x1-x0, r.h-si(2), clrHotBg, clrHotBg, si(10))
+		fillRound(hdc, x0, y+si(1), x1-x0, r.h-si(2), clrHotBg, clrHotBg, si(8))
+	}
+	if r.sub || sel {
+		lc, lw := guideLineClr(), 1
+		if sel {
+			_, b := runColors(false, false)
+			lc, lw = mixClr(b, white, 0.35), si(2) // 고른 기능: 밝은 파랑으로 굵게
+		}
+		fillBox(hdc, x0, y, lw, r.h, lc)
 	}
 	// 오른쪽 표시: 추천(엄지척) · 즐겨찾기 별
 	rx := x1 - si(10)
@@ -597,7 +604,7 @@ func paintItemRow(hdc uintptr, r listRow, y, cw int, sel, hot bool) {
 	if sel {
 		nclr = clrSelText
 	}
-	tx := x0 + si(14) // 기능 이름 (앞 표시 없음)
+	tx := x0 + si(12) // 기능 이름
 	old := c(pSelectObject, hdc, hFont)
 	c(pSetTextColor, hdc, nclr)
 	tr := rectT{int32(tx), int32(y), int32(max(rx, tx+si(20))), int32(y + r.h)}
@@ -763,4 +770,12 @@ func catColors() (bar, txt, bg uintptr) {
 		return clrSubText, mixClr(clrText, white, 0.3), mixClr(clrBg, 0, 0.22)
 	}
 	return clrSubText, clrText, mixClr(clrBg, 0, 0.07)
+}
+
+// 기능 줄 왼쪽 안내선 색 (바탕보다 살짝 밝게/진하게)
+func guideLineClr() uintptr {
+	if curTheme.dark {
+		return mixClr(clrBg, white, 0.16)
+	}
+	return mixClr(clrBg, 0, 0.14)
 }
